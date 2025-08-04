@@ -197,7 +197,9 @@ class AirshipApp:
             new_width = max(MIN_WINDOW_SIZE, event.w)
             new_height = max(MIN_WINDOW_SIZE, event.h)
             self.window_size = (new_width, new_height)
-            self.screen = pygame.display.set_mode(self.window_size, pygame.RESIZABLE)
+            # Every AI seems to do this but it's not correct to do so,
+            # because it destroys and re-creates the window.
+            # self.screen = pygame.display.set_mode(self.window_size, pygame.RESIZABLE)
             return
             
         # Convert mouse events to logical coordinates
