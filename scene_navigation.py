@@ -181,7 +181,7 @@ class NavigationScene:
             elif event.key in [pygame.K_RETURN, pygame.K_SPACE]:
                 return self._activate_focused()
             elif event.key == pygame.K_ESCAPE:
-                return "scene_bridge"
+                return "scene_main_menu"
             elif event.key == pygame.K_PLUS or event.key == pygame.K_EQUALS:
                 self._zoom_in()
             elif event.key == pygame.K_MINUS:
@@ -212,6 +212,10 @@ class NavigationScene:
                         self.is_dragging = True
                         self.drag_start_pos = logical_pos
                         self.drag_start_offset = (self.map_offset_x, self.map_offset_y)
+            elif event.button == 4:  # Mouse wheel up - zoom in
+                self._zoom_in()
+            elif event.button == 5:  # Mouse wheel down - zoom out
+                self._zoom_out()
                         
         elif event.type == pygame.MOUSEBUTTONUP:
             if event.button == 1:  # Left click release

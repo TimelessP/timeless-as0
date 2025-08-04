@@ -1,159 +1,162 @@
-# 🎈 Airship Zero - Agentic Vibe Coder Challenge
+# 🎈 Airship Zero - Steam & Copper Dreams
 
-> **Transform a comprehensive game design document into a fully playable flight simulator using AI coding agents**
+> **A retro-inspired airship simulation game with brutally simple 320x320 pixel UI**
 
-## The Challenge
+## Overview
 
-This repository contains a complete, meticulously detailed game design specification for a realistic airship flight simulator. Your mission: **fork this repo and use your favorite AI coding agents to bring it to life**.
+Airship Zero is a steampunk-aesthetic flight simulator built with Python and Pygame. The game features a fixed 320x320 logical resolution that scales beautifully to any window size while maintaining crisp, pixel-perfect rendering.
 
-Think of this as the ultimate test of agentic programming - you have:
-- ✅ **Complete specifications** in [`data-model.md`](data-model.md) (3,500+ lines)
-- ✅ **Working project structure** with `pyproject.toml` and dependencies
-- ✅ **Basic entry point** to get you started
-- ✅ **Clear architecture guidelines** for AI-friendly development
+## Features
 
-Your AI agents should be able to read the specifications and implement the entire game. How far can they get?
+### ✅ **Currently Implemented**
+- 🎮 **Complete Scene System** - Main menu, bridge, engine room, navigation
+- 🗺️ **Interactive Navigation** - Zoomable world map with click/drag panning and mousewheel zoom
+- ⚡ **Real-time Engine Simulation** - Boiler pressure, temperature, fuel management
+- 💾 **Auto-Save System** - Game saves automatically when returning to menu or exiting
+- 🎯 **Tab-based Focus** - Consistent UI navigation across all scenes
+- 🎨 **Retro Aesthetics** - Pixelify Sans font, steampunk color palette, pixel-perfect scaling
 
-## Quick Start for Challengers
+### 🛩️ **Flight Systems**
+- **Navigation Display** - Real-time position, heading, and speed indicators
+- **Engine Monitoring** - Throttle control, boiler management, system diagnostics  
+- **World Map** - Interactive navigation with zoom levels from 0.25x to 4.0x
+- **Centralized Simulator** - Single source of truth for all game state
 
-### 1. Fork This Repository
-Click the "Fork" button above to create your own copy.
+### 🎛️ **User Interface**
+- **Fixed Logical Resolution** - Everything designed for 320x320, then scaled
+- **Anti-aliased Fonts** - Crisp text rendering with pixel-perfect final scaling
+- **Mouse & Keyboard Support** - Click, drag, zoom, and keyboard shortcuts
+- **Scene-based Architecture** - Clean separation between game areas
+## Quick Start
 
-### 2. Test the Current State
-```bash
-# Clone your fork (replace YOUR_USERNAME)
-git clone https://github.com/YOUR_USERNAME/airshipzero
-cd airshipzero
-
-# Test current functionality
-uv run main.py
-```
-
-### 3. Point Your AI Agents at the Specs
-The complete game design is in [`data-model.md`](data-model.md). Give this to your AI agents and see what they can build!
-
-### 4. Alternative Testing Methods
-```bash
-# Direct from your fork
-uv tool run --from git+https://github.com/YOUR_USERNAME/airshipzero airshipzero
-
-# Or traditional installation
-pip install git+https://github.com/YOUR_USERNAME/airshipzero
-airshipzero
-```
-
-## What You're Building
-
-A comprehensive airship flight simulator featuring:
-
-- 🛩️ **Realistic flight dynamics** with complex systems management
-- ⚡ **Electrical systems** - Battery management, dual bus architecture, fuse replacement
-- ⛽ **Fuel management** - Multi-tank balance system with pump controls
-- 🎛️ **Engine simulation** - Timing adjustment, temperature management, power curves  
-- 📷 **Photography missions** - Aerial survey and artistic challenges
-- 📚 **Book collection system** - In-game library with markdown content
-- 👨‍✈️ **Crew management** - Fatigue, experience, inventory systems
-- 🌤️ **Weather simulation** - Realistic environmental effects
-- 📡 **Communications** - ATC simulation with proper aviation phraseology
-- 🎯 **Mission system** - Structured objectives and economic progression
-
-## The Agentic Advantage
-
-This project is designed to be **AI-agent friendly**:
-
-- **Data-driven architecture** - Single JSON game state
-- **Function-based systems** - No complex inheritance hierarchies  
-- **Clear specifications** - Every system documented in detail
-- **Modular design** - Independent, testable components
-- **Simple dependencies** - Just pygame, numpy, pillow, markdown
-
-## Requirements
+### Requirements
 
 - **Python 3.12+**
 - **UV package manager** (recommended)
 
-### Installing UV
+### Installation
 
-**Linux/macOS:**
+**Install UV (if you don't have it):**
+
+Linux/macOS:
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-**Windows (PowerShell):**
+Windows (PowerShell):
 ```powershell
 powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
 ```
 
-**Alternative methods:**
-```bash
-# Using pip
-pip install uv
-
-# Using pipx  
-pipx install uv
-
-# Using Homebrew (macOS)
-brew install uv
-
-# Using Scoop (Windows)
-scoop install uv
-```
-
-For more installation options, see the [UV documentation](https://docs.astral.sh/uv/getting-started/installation/).
-
-## Challenge Categories
-
-### 🥉 **Bronze Challenge** - Basic Implementation
-- Core game loop with pygame
-- Basic UI framework
-- Simple navigation system
-- Engine simulation basics
-
-### 🥈 **Silver Challenge** - System Integration  
-- All major systems implemented
-- Save/load functionality
-- Mission system
-- Basic AI for non-player elements
-
-### 🥇 **Gold Challenge** - Full Featured
-- Complete implementation matching all specifications
-- Polished UI/UX
-- Advanced features (autopilot, complex failures)
-- Documentation and testing
-
-### 💎 **Diamond Challenge** - Beyond the Specs
-- Multiplayer support
-- VR integration
-- Enhanced graphics/audio
-- New features not in original design
-
-## Documentation
-
-- **[`data-model.md`](data-model.md)** - Complete game design specification (READ THIS FIRST!)
-- **[`LICENSE`](LICENSE)** - MIT License
-- **Development approach** - Function-based, data-driven, AI-friendly architecture
-
-## Development Commands
+### Running the Game
 
 ```bash
-# Install development dependencies
-uv sync --dev
+# Quick launch
+./run.sh
 
-# Run tests (when implemented)
-uv run pytest
-
-# Format code
-uv run black .
-uv run ruff check .
+# Or directly
+uv run python main.py
 ```
 
-## Share Your Progress
+## Controls
 
-Built something awesome? Share it!
-- Tag your repo with `#airshipzerochallenge`
-- Document your AI agent approach
-- Show before/after comparisons
-- Contribute improvements back upstream
+### Universal
+- **Tab / Shift+Tab** - Cycle through UI widgets
+- **Enter / Space** - Activate focused widget
+- **Escape** - Return to main menu (auto-saves)
+
+### Navigation Scene
+- **Arrow Keys** - Pan the map
+- **+/-** - Zoom in/out
+- **Mouse Wheel** - Zoom in/out
+- **Click & Drag** - Pan the map
+- **C** - Center on current position
+
+## Game Systems
+
+### Save System
+- **Auto-save** when returning to main menu
+- **Auto-save** on application exit
+- **Resume Game** button appears when save file exists
+- Single save slot in `saved_game.json`
+
+### Navigation
+- **World Map** - 640x320 pixel world view
+- **Position Tracking** - Real-time lat/lon display
+- **Zoom Levels** - 0.25x to 4.0x magnification
+- **Click & Drag** - Intuitive map exploration
+- **Position Indicator** - Red marker with heading arrow
+
+### Engine Room
+- **Boiler Management** - Pressure and temperature monitoring
+- **Throttle Control** - Engine power adjustment
+- **System Diagnostics** - Real-time status displays
+
+## Architecture
+
+### Design Principles
+- **Fixed Logical Resolution** - Everything designed for 320x320 pixels, then scaled
+- **Scene-Based Architecture** - Each major area is a separate, self-contained scene
+- **Centralized Simulation** - Single `core_simulator.py` manages all game state
+- **Anti-aliasing on Fonts** - Crisp text rendering, pixel-perfect final scaling
+- **Retro Aesthetics** - Pixelify Sans font, steampunk color palette
+
+### File Structure
+```
+/
+├── main.py                 # Application entry point and scene management
+├── core_simulator.py       # Centralized game state and physics simulation  
+├── scene_main_menu.py      # Main menu and game start
+├── scene_bridge.py         # Primary flight interface
+├── scene_engine_room.py    # Engine controls and monitoring
+├── scene_navigation.py     # World map and navigation
+├── assets/
+│   ├── fonts/              # Pixelify Sans font files
+│   └── png/                # World map and other images
+├── pyproject.toml         # UV project configuration
+├── uv.lock               # Locked dependencies
+└── run.sh                # Quick launch script
+```
+
+## Development
+
+### Adding New Features
+See `.github/copilot-instructions.md` for detailed development guidelines including:
+- Widget system patterns
+- Scene transition handling
+- Simulator integration
+- Code style standards
+
+### Dependencies
+- **pygame** - Graphics and input handling
+- **Python 3.12+** - Modern Python features
+
+### Development Commands
+```bash
+# Install dependencies
+uv sync
+
+# Run the game
+uv run python main.py
+
+# Quick launch
+./run.sh
+```
+
+## Future Enhancements
+
+### Planned Features
+- **Weather System** - Wind, storms affecting navigation
+- **Cargo Management** - Loading, delivery missions  
+- **Advanced Navigation** - Waypoint system, autopilot
+- **Sound System** - Engine sounds, ambient audio
+- **Enhanced Graphics** - Improved world map, animations
+
+### Technical Improvements  
+- **Multiplayer Support** - Network functionality
+- **Save Slots** - Multiple save files
+- **Settings Menu** - Graphics, audio, control options
+- **Performance** - Optimized rendering, larger maps
 
 ## License
 
@@ -161,6 +164,6 @@ MIT License - see [`LICENSE`](LICENSE) file for details.
 
 ---
 
-**Ready to test the limits of agentic programming?** Fork this repo and let your AI agents loose on the most detailed game specification you've ever seen. 
+**Experience the golden age of airship travel in glorious 320x320 pixels!** 
 
-*How much of a complete flight simulator can AI build from specifications alone?*
+*Steam & Copper Dreams await...*

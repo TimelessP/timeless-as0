@@ -1,4 +1,5 @@
 **/*.zip
+saved_game.json
 
 # Python
 __pycache__/
