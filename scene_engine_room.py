@@ -226,10 +226,6 @@ class EngineRoomScene:
                     self._focus_previous()
                 else:
                     self._focus_next()
-            elif event.key in [pygame.K_UP, pygame.K_LEFT]:
-                self._focus_previous()
-            elif event.key in [pygame.K_DOWN, pygame.K_RIGHT]:
-                self._focus_next()
             elif event.key in [pygame.K_RETURN, pygame.K_SPACE]:
                 return self._activate_focused()
             elif event.key == pygame.K_MINUS:

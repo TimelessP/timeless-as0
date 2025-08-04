@@ -152,6 +152,7 @@ GOOD_COLOR = (100, 255, 100)         # Green good
   - Arrow keys for panning
   - `C` to center on position
   - `Esc` to return to bridge
+  - `Tab/Shift+Tab` for widget focus cycling
 
 ## Development Guidelines
 
@@ -161,6 +162,12 @@ GOOD_COLOR = (100, 255, 100)         # Green good
 - **Type Hints**: Use Optional, List, Dict imports from typing
 - **Constants**: Define colors and sizes as module-level constants
 - **Error Handling**: Graceful fallbacks for missing assets
+
+### Focus Management
+
+- **Consistent Controls**: Only `Tab` and `Shift+Tab` cycle widget focus across all scenes
+- **Arrow Keys**: Reserved for scene-specific functionality (navigation panning, etc.)
+- **Scene-Specific**: Each scene can define its own arrow key behavior without conflicts
 
 ### Event Handling Pattern
 
@@ -233,9 +240,24 @@ uv run python main.py
 ## Known Issues & Limitations
 
 - **World Map**: Placeholder map included, high-res version needed
-- **Save System**: Not yet implemented
 - **Sound**: No audio system currently
 - **Animations**: Static UI, no smooth transitions
+
+## Save System
+
+### Auto-Save Features
+
+- **Game saves automatically** when returning to main menu via Escape
+- **Game saves automatically** on application exit
+- **Single save slot** system for simplicity
+- **Resume button** automatically enabled when save file exists
+
+### Save File
+
+- **Location**: `saved_game.json` in project root
+- **Format**: JSON with complete game state
+- **Persistence**: Survives application restarts
+- **Validation**: Automatic format checking on load
 
 ## Future Enhancements
 

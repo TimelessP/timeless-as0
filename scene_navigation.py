@@ -178,10 +178,6 @@ class NavigationScene:
                     self._focus_previous()
                 else:
                     self._focus_next()
-            elif event.key == pygame.K_UP:
-                self._focus_previous()
-            elif event.key == pygame.K_DOWN:
-                self._focus_next()
             elif event.key in [pygame.K_RETURN, pygame.K_SPACE]:
                 return self._activate_focused()
             elif event.key == pygame.K_ESCAPE:

@@ -84,10 +84,6 @@ class MainMenuScene:
                     self._focus_previous()
                 else:
                     self._focus_next()
-            elif event.key == pygame.K_UP:
-                self._focus_previous()
-            elif event.key == pygame.K_DOWN:
-                self._focus_next()
             elif event.key in [pygame.K_RETURN, pygame.K_SPACE]:
                 return self._activate_focused()
             elif event.key == pygame.K_ESCAPE:
@@ -161,7 +157,7 @@ class MainMenuScene:
             if widget_id == "new_game":
                 return "new_game"  # Start new game
             elif widget_id == "resume_game":
-                return "scene_bridge"  # Resume game on bridge
+                return "resume_game"  # Resume saved game
             elif widget_id == "settings":
                 return "scene_settings"  # Go to settings
             elif widget_id == "quit":

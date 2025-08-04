@@ -182,6 +182,49 @@ class CoreSimulator:
         self.game_state["gameInfo"]["paused"] = False
         self.last_update_time = time.time()
         
+    def save_game(self, filename: str = "saved_game.json") -> bool:
+        """Save current game state to file"""
+        try:
+            # Update save timestamp
+            self.game_state["gameInfo"]["lastSaved"] = time.time()
+            
+            with open(filename, 'w') as f:
+                json.dump(self.game_state, f, indent=2)
+            print(f"✅ Game saved to {filename}")
+            return True
+        except Exception as e:
+            print(f"❌ Failed to save game: {e}")
+            return False
+            
+    def load_game(self, filename: str = "saved_game.json") -> bool:
+        """Load game state from file"""
+        try:
+            with open(filename, 'r') as f:
+                loaded_state = json.load(f)
+            
+            # Validate the loaded state has required structure
+            if "gameInfo" in loaded_state and "navigation" in loaded_state:
+                self.game_state = loaded_state
+                self.running = True
+                self.last_update_time = time.time()
+                print(f"✅ Game loaded from {filename}")
+                return True
+            else:
+                print(f"❌ Invalid save file format: {filename}")
+                return False
+                
+        except FileNotFoundError:
+            print(f"❌ Save file not found: {filename}")
+            return False
+        except Exception as e:
+            print(f"❌ Failed to load game: {e}")
+            return False
+            
+    def has_saved_game(self, filename: str = "saved_game.json") -> bool:
+        """Check if a saved game file exists"""
+        import os
+        return os.path.exists(filename)
+        
     def update(self, real_dt: float):
         """
         Update the simulation state

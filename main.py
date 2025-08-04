@@ -86,6 +86,10 @@ class AirshipApp:
         # Set current scene
         self.current_scene = self.scenes[self.scene_name]
         
+        # Check for existing saved game and enable resume button
+        if self.simulator.has_saved_game():
+            self.scenes["scene_main_menu"].set_game_exists(True)
+        
     def _transition_to_scene(self, scene_name: str):
         """Transition to a new scene"""
         if scene_name == "quit":
@@ -95,7 +99,18 @@ class AirshipApp:
             # Start a new game
             self.simulator.start_new_game()
             scene_name = "scene_bridge"
-            
+        elif scene_name == "resume_game":
+            # Load saved game
+            if self.simulator.load_game():
+                scene_name = "scene_bridge"
+            else:
+                # Failed to load, stay on main menu
+                return
+        elif scene_name == "scene_main_menu":
+            # Save game when returning to main menu
+            if self.simulator.running:
+                self.simulator.save_game()
+                
         if scene_name in self.scenes:
             self.scene_name = scene_name
             self.current_scene = self.scenes[scene_name]
@@ -217,6 +232,11 @@ class AirshipApp:
             self.render()
             
         # Cleanup
+        # Auto-save game state on exit if game is running
+        if self.simulator.running:
+            print("Auto-saving game state...")
+            self.simulator.save_game()
+        
         pygame.quit()
         print("Airship Zero shutdown complete.")
 
