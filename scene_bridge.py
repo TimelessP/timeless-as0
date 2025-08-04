@@ -192,7 +192,16 @@ class BridgeScene:
                 else:
                     self._focus_next()
             elif event.key in [pygame.K_RETURN, pygame.K_SPACE]:
-                return self._activate_focused()
+                # Check if we have an active textbox first
+                focused_widget = self.widgets[self.focus_index] if 0 <= self.focus_index < len(self.widgets) else None
+                if focused_widget and focused_widget["type"] == "textbox" and focused_widget.get("active", False):
+                    # Deactivate active textbox and apply value
+                    focused_widget["active"] = False
+                    self._update_all_widgets_inactive_status()
+                    self._apply_textbox_value(focused_widget)
+                else:
+                    # Normal widget activation
+                    return self._activate_focused()
             elif event.key == pygame.K_LEFT:
                 # Rudder left (only in manual mode)
                 self._handle_rudder_input("left")
@@ -401,6 +410,18 @@ class BridgeScene:
         # Update rudder indicator
         rudder_angle = nav["controls"].get("rudder", 0.0)
         self._update_widget_text("rudder_indicator", f"RUD: {rudder_angle:+4.1f}°")
+        
+        # Update target values in textboxes (if not currently being edited)
+        altitude_widget = next((w for w in self.widgets if w["id"] == "altitude_set"), None)
+        heading_widget = next((w for w in self.widgets if w["id"] == "heading_set"), None)
+        
+        if altitude_widget and not altitude_widget.get("active", False):
+            target_alt = nav["targets"].get("altitude", nav["position"]["altitude"])
+            altitude_widget["text"] = f"{target_alt:.0f}"
+            
+        if heading_widget and not heading_widget.get("active", False):
+            target_hdg = nav["targets"].get("heading", nav["position"]["heading"])
+            heading_widget["text"] = f"{target_hdg:03.0f}"
         
     def _update_widget_text(self, widget_id: str, new_text: str):
         """Update the text of a specific widget"""

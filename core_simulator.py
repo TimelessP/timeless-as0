@@ -414,7 +414,7 @@ class CoreSimulator:
             
             # Apply discrete rudder adjustment at autopilot rate (slower than manual)
             # Autopilot makes adjustments every 0.5 seconds instead of instantly
-            if not hasattr(autopilot, "lastRudderAdjust"):
+            if "lastRudderAdjust" not in autopilot:
                 autopilot["lastRudderAdjust"] = 0.0
                 
             autopilot["lastRudderAdjust"] += dt
@@ -607,7 +607,11 @@ class CoreSimulator:
     def set_nav_mode(self, mode: str):
         """Set navigation mode"""
         if mode in ["manual", "heading_hold", "altitude_hold", "route_follow"]:
-            self.game_state["navigation"]["mode"] = mode
+            nav = self.game_state["navigation"]
+            nav["mode"] = mode
+            
+            # Navigation mode just sets the mode - autopilot engagement is separate
+            # The pilot must manually engage the autopilot using the AP button
             
     def toggle_battery(self, battery: str = "A"):
         """Toggle battery switch"""
@@ -660,12 +664,37 @@ class CoreSimulator:
                 
     def toggle_main_autopilot(self):
         """Toggle main autopilot engagement"""
-        autopilot = self.game_state["navigation"]["autopilot"]
-        autopilot["engaged"] = not autopilot["engaged"]
-        # If disengaging, turn off all modes
-        if not autopilot["engaged"]:
-            for mode in ["headingHold", "altitudeHold", "airspeedHold", "verticalSpeedHold"]:
-                autopilot[mode] = False
+        nav = self.game_state["navigation"]
+        autopilot = nav["autopilot"]
+        current_mode = nav.get("mode", "manual")
+        
+        if autopilot["engaged"]:
+            # Disengage autopilot - turn off all modes
+            autopilot["engaged"] = False
+            autopilot["headingHold"] = False
+            autopilot["altitudeHold"] = False
+        else:
+            # Engage autopilot based on current navigation mode
+            autopilot["engaged"] = True
+            
+            if current_mode == "heading_hold":
+                autopilot["headingHold"] = True
+                autopilot["altitudeHold"] = False
+                # Set current heading as target if not already set
+                if nav["targets"]["heading"] == 0:  # Default value
+                    nav["targets"]["heading"] = nav["position"]["heading"]
+            elif current_mode == "altitude_hold":
+                autopilot["headingHold"] = False
+                autopilot["altitudeHold"] = True
+                # Set current altitude as target if not already set
+                if nav["targets"]["altitude"] == 0:  # Default value
+                    nav["targets"]["altitude"] = nav["position"]["altitude"]
+            elif current_mode == "route_follow":
+                autopilot["headingHold"] = True
+                autopilot["altitudeHold"] = True
+            else:
+                # Manual mode - autopilot disengaged
+                autopilot["engaged"] = False
 
 
 # Global simulator instance
