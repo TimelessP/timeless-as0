@@ -165,13 +165,13 @@ class NavigationScene:
         # Get current position to center on
         game_state = self.simulator.get_state()
         pos = game_state["navigation"]["position"]
-        map_x, map_y = self._lat_lon_to_map_coords(pos["latitude"], pos["longitude"])
+        ship_map_x, ship_map_y = self._lat_lon_to_map_coords(pos["latitude"], pos["longitude"])
         
-        # Center viewport on position (with offsets)
-        center_x = map_x + self.map_offset_x
-        center_y = map_y + self.map_offset_y
+        # Apply manual pan offsets to the ship position
+        center_x = ship_map_x + self.map_offset_x
+        center_y = ship_map_y + self.map_offset_y
         
-        # Calculate viewport rectangle
+        # Calculate viewport rectangle centered on the (potentially offset) position
         view_x = center_x - viewport_w // 2
         view_y = center_y - viewport_h // 2
         
@@ -412,19 +412,23 @@ class NavigationScene:
         game_state = self.simulator.get_state()
         position = game_state["navigation"]["position"]
         
-        # Get position in map coordinates
-        map_x, map_y = self._lat_lon_to_map_coords(position["latitude"], position["longitude"])
+        # Get ship's absolute position in map coordinates
+        ship_map_x, ship_map_y = self._lat_lon_to_map_coords(position["latitude"], position["longitude"])
         
-        # Convert to screen coordinates accounting for zoom and offset
+        # Get the current viewport
         map_rect = self._get_visible_map_rect()
-        if map_rect.collidepoint(map_x, map_y):
-            # Position relative to visible map area
-            rel_x = (map_x - map_rect.x) / map_rect.width
-            rel_y = (map_y - map_rect.y) / map_rect.height
+        
+        # Check if ship position is within the visible viewport
+        if map_rect.collidepoint(ship_map_x, ship_map_y):
+            # Calculate ship position relative to the visible map area
+            rel_x = (ship_map_x - map_rect.x) / map_rect.width
+            rel_y = (ship_map_y - map_rect.y) / map_rect.height
             
-            # Convert to screen coordinates
-            screen_x = 8 + rel_x * (LOGICAL_SIZE - 16)
-            screen_y = 32 + rel_y * (LOGICAL_SIZE - 60)
+            # Convert to screen coordinates (adjusted for header and UI)
+            display_w = LOGICAL_SIZE - 16
+            display_h = LOGICAL_SIZE - 84
+            screen_x = 8 + rel_x * display_w
+            screen_y = 56 + rel_y * display_h  # 56 = 32 (header) + 24 (info area)
             
             # Draw position marker
             pygame.draw.circle(surface, POSITION_COLOR, (int(screen_x), int(screen_y)), 3)
