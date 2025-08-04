@@ -26,6 +26,11 @@ class NavigationScene:
         self.map_offset_x = 0
         self.map_offset_y = 0
         
+        # Mouse dragging state
+        self.is_dragging = False
+        self.drag_start_pos = None
+        self.drag_start_offset = None
+        
         # Initialize widgets
         self._init_widgets()
         
@@ -132,6 +137,8 @@ class NavigationScene:
         if not self.world_map:
             return pygame.Rect(0, 0, LOGICAL_SIZE, LOGICAL_SIZE)
             
+        map_w, map_h = self.world_map.get_size()
+        
         # Available space for map (minus UI areas)
         map_area_w = LOGICAL_SIZE - 16
         map_area_h = LOGICAL_SIZE - 60  # Leave space for top and bottom UI
@@ -139,6 +146,10 @@ class NavigationScene:
         # Calculate map viewport size based on zoom
         viewport_w = int(map_area_w / self.zoom_level)
         viewport_h = int(map_area_h / self.zoom_level)
+        
+        # Ensure viewport is at least 1 pixel and not larger than map
+        viewport_w = max(1, min(map_w, viewport_w))
+        viewport_h = max(1, min(map_h, viewport_h))
         
         # Get current position to center on
         game_state = self.simulator.get_state()
@@ -154,11 +165,10 @@ class NavigationScene:
         view_y = center_y - viewport_h // 2
         
         # Clamp to map bounds
-        map_w, map_h = self.world_map.get_size()
         view_x = max(0, min(map_w - viewport_w, view_x))
         view_y = max(0, min(map_h - viewport_h, view_y))
         
-        return pygame.Rect(view_x, view_y, viewport_w, viewport_h)
+        return pygame.Rect(int(view_x), int(view_y), viewport_w, viewport_h)
         
     def handle_event(self, event) -> Optional[str]:
         """Handle pygame events"""
@@ -199,6 +209,34 @@ class NavigationScene:
                 if clicked_widget is not None:
                     self._set_focus(clicked_widget)
                     return self._activate_focused()
+                else:
+                    # Check if clicking on map area for dragging
+                    x, y = logical_pos
+                    if 8 <= x <= LOGICAL_SIZE - 8 and 32 <= y <= LOGICAL_SIZE - 28:
+                        self.is_dragging = True
+                        self.drag_start_pos = logical_pos
+                        self.drag_start_offset = (self.map_offset_x, self.map_offset_y)
+                        
+        elif event.type == pygame.MOUSEBUTTONUP:
+            if event.button == 1:  # Left click release
+                self.is_dragging = False
+                self.drag_start_pos = None
+                self.drag_start_offset = None
+                
+        elif event.type == pygame.MOUSEMOTION:
+            if self.is_dragging and self.drag_start_pos and self.drag_start_offset:
+                # Calculate drag delta
+                current_pos = event.pos
+                dx = current_pos[0] - self.drag_start_pos[0]
+                dy = current_pos[1] - self.drag_start_pos[1]
+                
+                # Convert screen delta to map delta (accounting for zoom)
+                map_dx = dx / self.zoom_level
+                map_dy = dy / self.zoom_level
+                
+                # Update map offset
+                self.map_offset_x = self.drag_start_offset[0] - map_dx
+                self.map_offset_y = self.drag_start_offset[1] - map_dy
                     
         return None
         
@@ -312,21 +350,27 @@ class NavigationScene:
         """Draw the world map with current zoom and position"""
         map_rect = self._get_visible_map_rect()
         
+        # Validate map rect
+        if map_rect.width <= 0 or map_rect.height <= 0:
+            return
+            
         # Extract the visible portion of the map
         try:
             map_section = self.world_map.subsurface(map_rect)
-        except ValueError:
-            # Handle edge case where rect is outside map bounds
-            return
+        except (ValueError, pygame.error):
+            # Handle edge case where rect is outside map bounds or invalid
+            # Create a fallback surface
+            map_section = pygame.Surface((max(1, map_rect.width), max(1, map_rect.height)))
+            map_section.fill((0, 50, 100))  # Ocean blue
             
         # Scale to fit the display area
         display_w = LOGICAL_SIZE - 16
         display_h = LOGICAL_SIZE - 60
         
-        scaled_map = pygame.transform.scale(map_section, (display_w, display_h))
-        
-        # Draw to surface
-        surface.blit(scaled_map, (8, 32))
+        if map_section.get_width() > 0 and map_section.get_height() > 0:
+            scaled_map = pygame.transform.scale(map_section, (display_w, display_h))
+            # Draw to surface
+            surface.blit(scaled_map, (8, 32))
         
     def _draw_position_indicator(self, surface):
         """Draw current position on the map"""
@@ -369,7 +413,7 @@ class NavigationScene:
         """Render a label widget"""
         if self.font:
             color = FOCUS_COLOR if widget.get("focused", False) else TEXT_COLOR
-            text_surface = self.font.render(widget["text"], False, color)
+            text_surface = self.font.render(widget["text"], True, color)
             surface.blit(text_surface, widget["position"])
             
     def _render_button(self, surface, widget):
@@ -389,7 +433,7 @@ class NavigationScene:
         
         # Draw text
         if self.font:
-            text_surface = self.font.render(widget["text"], False, text_color)
+            text_surface = self.font.render(widget["text"], True, text_color)
             text_rect = text_surface.get_rect()
             text_x = x + (w - text_rect.width) // 2
             text_y = y + (h - text_rect.height) // 2

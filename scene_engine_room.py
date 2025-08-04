@@ -427,7 +427,7 @@ class EngineRoomScene:
         
         # Draw title
         if self.font:
-            title_text = self.font.render("ENGINE ROOM", False, TEXT_COLOR)
+            title_text = self.font.render("ENGINE ROOM", True, TEXT_COLOR)
             surface.blit(title_text, (8, 180))
             
             # Draw engine schematic
@@ -504,7 +504,7 @@ class EngineRoomScene:
             if widget.get("focused", False):
                 color = FOCUS_COLOR
                 
-            text_surface = self.font.render(text, False, color)
+            text_surface = self.font.render(text, True, color)
             surface.blit(text_surface, widget["position"])
             
     def _render_button(self, surface, widget):
@@ -529,7 +529,7 @@ class EngineRoomScene:
         
         # Draw text
         if self.font:
-            text_surface = self.font.render(widget["text"], False, text_color)
+            text_surface = self.font.render(widget["text"], True, text_color)
             text_rect = text_surface.get_rect()
             text_x = x + (w - text_rect.width) // 2
             text_y = y + (h - text_rect.height) // 2
@@ -565,12 +565,12 @@ class EngineRoomScene:
             
             # Label
             if label:
-                label_surface = self.font.render(label, False, text_color)
+                label_surface = self.font.render(label, True, text_color)
                 surface.blit(label_surface, (x, y - 14))
                 
             # Value percentage
             value_text = f"{value * 100:.0f}%"
-            value_surface = self.font.render(value_text, False, text_color)
+            value_surface = self.font.render(value_text, True, text_color)
             value_rect = value_surface.get_rect()
             value_x = x + w - value_rect.width
             value_y = y - 14

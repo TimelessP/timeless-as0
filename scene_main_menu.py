@@ -176,12 +176,12 @@ class MainMenuScene:
         
         # Draw title
         if self.font:
-            title_text = self.font.render("AIRSHIP ZERO", False, TEXT_COLOR)
+            title_text = self.font.render("AIRSHIP ZERO", True, TEXT_COLOR)
             title_rect = title_text.get_rect()
             title_x = (LOGICAL_SIZE - title_rect.width) // 2
             surface.blit(title_text, (title_x, 60))
             
-            subtitle_text = self.font.render("Steam & Copper Dreams", False, (180, 180, 180))
+            subtitle_text = self.font.render("Steam & Copper Dreams", True, (180, 180, 180))
             subtitle_rect = subtitle_text.get_rect()
             subtitle_x = (LOGICAL_SIZE - subtitle_rect.width) // 2
             surface.blit(subtitle_text, (subtitle_x, 80))
@@ -222,7 +222,7 @@ class MainMenuScene:
         
         # Draw button text
         if self.font and enabled:
-            text_surface = self.font.render(widget["text"], False, text_color)
+            text_surface = self.font.render(widget["text"], True, text_color)
             text_rect = text_surface.get_rect()
             text_x = x + (w - text_rect.width) // 2
             text_y = y + (h - text_rect.height) // 2

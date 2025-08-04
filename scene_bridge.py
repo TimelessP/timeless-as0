@@ -386,7 +386,7 @@ class BridgeScene:
         
         # Draw title
         if self.font:
-            title_text = self.font.render("BRIDGE", False, TEXT_COLOR)
+            title_text = self.font.render("BRIDGE", True, TEXT_COLOR)
             surface.blit(title_text, (8, 120))
             
             # Draw artificial horizon
@@ -467,7 +467,7 @@ class BridgeScene:
         """Render a label widget"""
         if self.font:
             color = FOCUS_COLOR if widget.get("focused", False) else TEXT_COLOR
-            text_surface = self.font.render(widget["text"], False, color)
+            text_surface = self.font.render(widget["text"], True, color)
             surface.blit(text_surface, widget["position"])
             
     def _render_button(self, surface, widget):
@@ -487,7 +487,7 @@ class BridgeScene:
         
         # Draw text
         if self.font:
-            text_surface = self.font.render(widget["text"], False, text_color)
+            text_surface = self.font.render(widget["text"], True, text_color)
             text_rect = text_surface.get_rect()
             text_x = x + (w - text_rect.width) // 2
             text_y = y + (h - text_rect.height) // 2
@@ -520,7 +520,7 @@ class BridgeScene:
         
         # Draw text
         if self.font:
-            text_surface = self.font.render(widget["text"], False, text_color)
+            text_surface = self.font.render(widget["text"], True, text_color)
             surface.blit(text_surface, (x + 4, y + (h - text_surface.get_height()) // 2))
             
             # Draw cursor if active
