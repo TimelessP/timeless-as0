@@ -102,17 +102,17 @@ class BridgeScene:
             {
                 "id": "autopilot",
                 "type": "button",
-                "position": [240, 56],
+                "position": [240, 80],
                 "size": [72, 20],
                 "text": "A/P: OFF",
                 "focused": False
             },
             
-            # Navigation controls
+            # Navigation controls (shifted down to avoid overlap)
             {
                 "id": "nav_mode",
                 "type": "button",
-                "position": [8, 84],
+                "position": [8, 108],
                 "size": [120, 20],
                 "text": "NAV: MANUAL",
                 "focused": True
@@ -120,7 +120,7 @@ class BridgeScene:
             {
                 "id": "altitude_set",
                 "type": "textbox",
-                "position": [140, 84],
+                "position": [140, 108],
                 "size": [80, 20],
                 "text": "1250",
                 "focused": False,
@@ -129,7 +129,7 @@ class BridgeScene:
             {
                 "id": "heading_set",
                 "type": "textbox",
-                "position": [232, 84],
+                "position": [232, 108],
                 "size": [80, 20],
                 "text": "045",
                 "focused": False,
