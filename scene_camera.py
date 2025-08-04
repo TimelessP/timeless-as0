@@ -13,6 +13,7 @@ BUTTON_COLOR = (60, 60, 80)
 BUTTON_FOCUSED_COLOR = (80, 80, 120)
 GOOD_COLOR = (100, 255, 100)
 WARNING_COLOR = (255, 100, 100)
+CAMERA_HEADER_COLOR = (40, 20, 60)  # Purple for camera scene
 
 class CameraScene:
     def __init__(self, simulator):
@@ -31,8 +32,8 @@ class CameraScene:
         """Initialize camera widgets"""
         self.widgets = [
             # Navigation buttons
-            {"id": "prev_scene", "type": "button", "position": [8, 290], "size": [60, 24], "text": "← [", "focused": True},
-            {"id": "next_scene", "type": "button", "position": [252, 290], "size": [60, 24], "text": "] →", "focused": False},
+            {"id": "prev_scene", "type": "button", "position": [8, 290], "size": [60, 24], "text": "< [", "focused": True},
+            {"id": "next_scene", "type": "button", "position": [252, 290], "size": [60, 24], "text": "] >", "focused": False},
             
             # Camera status
             {"id": "camera_status", "type": "label", "position": [8, 40], "size": [150, 16], "text": "Camera: READY", "focused": False},
@@ -58,7 +59,7 @@ class CameraScene:
         if self.widgets:
             self.widgets[self.focused_widget]["focused"] = True
     
-    def update(self):
+    def update(self, dt: float):
         """Update camera display with current simulator data"""
         if not self.simulator:
             return
@@ -206,9 +207,14 @@ class CameraScene:
         if not self.font:
             return
         
-        # Title
+        # Draw colored title header
+        pygame.draw.rect(surface, CAMERA_HEADER_COLOR, (0, 0, 320, 24))
+        pygame.draw.rect(surface, TEXT_COLOR, (0, 0, 320, 24), 1)
+        
+        # Centered title
         title = self.font.render("CAMERA SYSTEM", True, TEXT_COLOR)
-        surface.blit(title, (8, 8))
+        title_x = (320 - title.get_width()) // 2
+        surface.blit(title, (title_x, 4))
         
         # Render widgets
         for widget in self.widgets:

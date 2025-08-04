@@ -13,6 +13,7 @@ TEXT_COLOR = (255, 255, 255)
 FOCUS_COLOR = (255, 200, 50)
 POSITION_COLOR = (255, 100, 100)  # Red for current position
 ROUTE_COLOR = (100, 255, 100)     # Green for route
+NAV_HEADER_COLOR = (40, 60, 100)  # Blue for navigation scene
 
 class NavigationScene:
     def __init__(self, simulator):
@@ -40,7 +41,7 @@ class NavigationScene:
             {
                 "id": "position_label",
                 "type": "label",
-                "position": [8, 8],
+                "position": [8, 32],
                 "size": [150, 16],
                 "text": "POS: 40.7128°N 74.0060°W",
                 "focused": False
@@ -48,7 +49,7 @@ class NavigationScene:
             {
                 "id": "heading_label",
                 "type": "label",
-                "position": [170, 8],
+                "position": [170, 32],
                 "size": [100, 16],
                 "text": "HDG: 045°",
                 "focused": False
@@ -56,7 +57,7 @@ class NavigationScene:
             {
                 "id": "ground_speed_label",
                 "type": "label",
-                "position": [280, 8],
+                "position": [280, 32],
                 "size": [32, 16],
                 "text": "GS: 82",
                 "focused": False
@@ -65,24 +66,24 @@ class NavigationScene:
             {
                 "id": "prev_scene",
                 "type": "button",
-                "position": [8, 280],
+                "position": [8, 290],
                 "size": [60, 24],
-                "text": "← [",
+                "text": "< [",
                 "focused": True
             },
             {
                 "id": "next_scene",
                 "type": "button",
-                "position": [252, 280],
+                "position": [252, 290],
                 "size": [60, 24],
-                "text": "] →",
+                "text": "] >",
                 "focused": False
             },
-            # Zoom controls
+            # Zoom controls (moved up to make room)
             {
                 "id": "zoom_in",
                 "type": "button",
-                "position": [76, 280],
+                "position": [76, 290],
                 "size": [30, 24],
                 "text": "+",
                 "focused": False
@@ -90,7 +91,7 @@ class NavigationScene:
             {
                 "id": "zoom_out",
                 "type": "button",
-                "position": [114, 280],
+                "position": [114, 290],
                 "size": [30, 24],
                 "text": "-",
                 "focused": False
@@ -98,17 +99,9 @@ class NavigationScene:
             {
                 "id": "center_pos",
                 "type": "button",
-                "position": [152, 280],
+                "position": [152, 290],
                 "size": [50, 24],
                 "text": "Center",
-                "focused": False
-            },
-            {
-                "id": "back_to_bridge",
-                "type": "button",
-                "position": [210, 280],
-                "size": [34, 24],
-                "text": "Brdg",
                 "focused": False
             }
         ]
@@ -157,9 +150,9 @@ class NavigationScene:
             
         map_w, map_h = self.world_map.get_size()
         
-        # Available space for map (minus UI areas)
+        # Available space for map (minus UI areas and header)
         map_area_w = LOGICAL_SIZE - 16
-        map_area_h = LOGICAL_SIZE - 60  # Leave space for top and bottom UI
+        map_area_h = LOGICAL_SIZE - 84  # Leave space for header, top info, and bottom controls
         
         # Calculate map viewport size based on zoom
         viewport_w = int(map_area_w / self.zoom_level)
@@ -324,8 +317,6 @@ class NavigationScene:
                 self._zoom_out()
             elif widget_id == "center_pos":
                 self._center_on_position()
-            elif widget_id == "back_to_bridge":
-                return "scene_bridge"
                 
         return None
         
@@ -369,7 +360,17 @@ class NavigationScene:
         """Render the navigation scene"""
         surface.fill(BACKGROUND_COLOR)
         
-        # Draw world map
+        # Draw colored title header
+        pygame.draw.rect(surface, NAV_HEADER_COLOR, (0, 0, 320, 24))
+        pygame.draw.rect(surface, TEXT_COLOR, (0, 0, 320, 24), 1)
+        
+        # Centered title
+        if self.font:
+            title_text = self.font.render("NAVIGATION", True, TEXT_COLOR)
+            title_x = (320 - title_text.get_width()) // 2
+            surface.blit(title_text, (title_x, 4))
+        
+        # Draw world map (shifted down for header)
         if self.world_map:
             self._draw_world_map(surface)
         
@@ -397,14 +398,14 @@ class NavigationScene:
             map_section = pygame.Surface((max(1, map_rect.width), max(1, map_rect.height)))
             map_section.fill((0, 50, 100))  # Ocean blue
             
-        # Scale to fit the display area
+        # Scale to fit the display area (adjusted for header)
         display_w = LOGICAL_SIZE - 16
-        display_h = LOGICAL_SIZE - 60
+        display_h = LOGICAL_SIZE - 84
         
         if map_section.get_width() > 0 and map_section.get_height() > 0:
             scaled_map = pygame.transform.scale(map_section, (display_w, display_h))
-            # Draw to surface
-            surface.blit(scaled_map, (8, 32))
+            # Draw to surface (shifted down for header)
+            surface.blit(scaled_map, (8, 56))
         
     def _draw_position_indicator(self, surface):
         """Draw current position on the map"""

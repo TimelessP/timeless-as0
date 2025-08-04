@@ -14,6 +14,7 @@ FOCUS_COLOR = (255, 200, 50)
 INSTRUMENT_COLOR = (40, 60, 80)
 WARNING_COLOR = (220, 60, 60)
 GOOD_COLOR = (60, 180, 60)
+BRIDGE_HEADER_COLOR = (40, 80, 120)  # Blue for bridge scene
 
 class BridgeScene:
     def __init__(self, simulator):
@@ -29,11 +30,11 @@ class BridgeScene:
     def _init_widgets(self):
         """Initialize the bridge widgets"""
         self.widgets = [
-            # Navigation display
+            # Navigation display (shifted down for header)
             {
                 "id": "altitude",
                 "type": "label",
-                "position": [8, 8],
+                "position": [8, 32],
                 "size": [100, 16],
                 "text": "ALT: 1250 ft",
                 "focused": False
@@ -41,7 +42,7 @@ class BridgeScene:
             {
                 "id": "airspeed",
                 "type": "label", 
-                "position": [120, 8],
+                "position": [120, 32],
                 "size": [100, 16],
                 "text": "IAS: 85 kts",
                 "focused": False
@@ -49,7 +50,7 @@ class BridgeScene:
             {
                 "id": "heading",
                 "type": "label",
-                "position": [240, 8],
+                "position": [240, 32],
                 "size": [72, 16],
                 "text": "HDG: 045°",
                 "focused": False
@@ -59,7 +60,7 @@ class BridgeScene:
             {
                 "id": "engine_rpm",
                 "type": "label",
-                "position": [8, 32],
+                "position": [8, 56],
                 "size": [100, 16],
                 "text": "RPM: 2650",
                 "focused": False
@@ -67,7 +68,7 @@ class BridgeScene:
             {
                 "id": "manifold_pressure",
                 "type": "label",
-                "position": [120, 32],
+                "position": [120, 56],
                 "size": [100, 16],
                 "text": "MAP: 24.5\"",
                 "focused": False
@@ -75,7 +76,7 @@ class BridgeScene:
             {
                 "id": "fuel_flow",
                 "type": "label",
-                "position": [240, 32],
+                "position": [240, 56],
                 "size": [72, 16],
                 "text": "FF: 12.8",
                 "focused": False
@@ -85,7 +86,7 @@ class BridgeScene:
             {
                 "id": "battery_status",
                 "type": "button",
-                "position": [8, 56],
+                "position": [8, 80],
                 "size": [100, 20],
                 "text": "BAT A: ON",
                 "focused": False
@@ -93,7 +94,7 @@ class BridgeScene:
             {
                 "id": "fuel_pumps",
                 "type": "button",
-                "position": [120, 56],
+                "position": [120, 80],
                 "size": [100, 20],
                 "text": "PUMPS: AUTO",
                 "focused": False
@@ -139,50 +140,17 @@ class BridgeScene:
             {
                 "id": "prev_scene",
                 "type": "button",
-                "position": [8, 280],
+                "position": [8, 290],
                 "size": [60, 24],
-                "text": "← [",
+                "text": "< [",
                 "focused": False
             },
             {
                 "id": "next_scene",
                 "type": "button",
-                "position": [252, 280],
+                "position": [252, 290],
                 "size": [60, 24],
-                "text": "] →",
-                "focused": False
-            },
-            # Quick access buttons
-            {
-                "id": "engine_room",
-                "type": "button",
-                "position": [76, 280],
-                "size": [40, 24],
-                "text": "Eng",
-                "focused": False
-            },
-            {
-                "id": "navigation",
-                "type": "button",
-                "position": [124, 280],
-                "size": [40, 24],
-                "text": "Nav",
-                "focused": False
-            },
-            {
-                "id": "fuel_system",
-                "type": "button",
-                "position": [172, 280],
-                "size": [40, 24],
-                "text": "Fuel",
-                "focused": False
-            },
-            {
-                "id": "missions",
-                "type": "button",
-                "position": [220, 280],
-                "size": [24, 24],
-                "text": "M",
+                "text": "] >",
                 "focused": False
             }
         ]
@@ -321,14 +289,6 @@ class BridgeScene:
                     return self._get_prev_scene()
                 elif widget_id == "next_scene":
                     return self._get_next_scene()
-                elif widget_id == "engine_room":
-                    return "scene_engine_room"
-                elif widget_id == "fuel_system":
-                    return "scene_fuel"
-                elif widget_id == "navigation":
-                    return "scene_navigation"
-                elif widget_id == "missions":
-                    return "scene_missions"
                 elif widget_id == "battery_status":
                     self._toggle_battery()
                 elif widget_id == "fuel_pumps":
@@ -418,13 +378,18 @@ class BridgeScene:
         """Render the bridge scene to the logical surface"""
         surface.fill(BACKGROUND_COLOR)
         
-        # Draw title
+        # Draw colored title header
+        pygame.draw.rect(surface, BRIDGE_HEADER_COLOR, (0, 0, 320, 24))
+        pygame.draw.rect(surface, TEXT_COLOR, (0, 0, 320, 24), 1)
+        
+        # Centered title
         if self.font:
             title_text = self.font.render("BRIDGE", True, TEXT_COLOR)
-            surface.blit(title_text, (8, 120))
+            title_x = (320 - title_text.get_width()) // 2
+            surface.blit(title_text, (title_x, 4))
             
-            # Draw artificial horizon
-            self._draw_artificial_horizon(surface, 160, 180, 140, 80)
+            # Draw artificial horizon (shifted down for header)
+            self._draw_artificial_horizon(surface, 160, 200, 140, 80)
         
         # Draw all widgets
         for widget in self.widgets:

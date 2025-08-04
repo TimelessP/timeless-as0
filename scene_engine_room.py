@@ -3,8 +3,6 @@ Engine Room Scene for Airship Zero
 Engine monitoring and control interface
 """
 import pygame
-from typing import List, Dict, Any, Optional
-import pygame
 import math
 from typing import List, Dict, Any, Optional
 
@@ -16,6 +14,7 @@ FOCUS_COLOR = (255, 200, 50)
 WARNING_COLOR = (220, 60, 60)
 GOOD_COLOR = (60, 180, 60)
 CAUTION_COLOR = (220, 180, 60)
+ENGINE_HEADER_COLOR = (100, 40, 40)  # Red for engine room
 
 class EngineRoomScene:
     def __init__(self, simulator):
@@ -30,11 +29,11 @@ class EngineRoomScene:
     def _init_widgets(self):
         """Initialize engine room widgets"""
         self.widgets = [
-            # Engine status displays
+            # Engine status displays (shifted down for header)
             {
                 "id": "engine_status",
                 "type": "label",
-                "position": [8, 8],
+                "position": [8, 32],
                 "size": [120, 16],
                 "text": "ENGINE: RUNNING",
                 "focused": False
@@ -42,7 +41,7 @@ class EngineRoomScene:
             {
                 "id": "rpm_display",
                 "type": "label",
-                "position": [140, 8],
+                "position": [140, 32],
                 "size": [100, 16],
                 "text": "RPM: 2650",
                 "focused": False
@@ -50,7 +49,7 @@ class EngineRoomScene:
             {
                 "id": "manifold_pressure",
                 "type": "label",
-                "position": [250, 8],
+                "position": [250, 32],
                 "size": [60, 16],
                 "text": "MP: 24.5",
                 "focused": False
@@ -60,7 +59,7 @@ class EngineRoomScene:
             {
                 "id": "oil_temp",
                 "type": "label",
-                "position": [8, 32],
+                "position": [8, 56],
                 "size": [100, 16],
                 "text": "OIL TEMP: 185°F",
                 "focused": False
@@ -68,7 +67,7 @@ class EngineRoomScene:
             {
                 "id": "cyl_head_temp",
                 "type": "label",
-                "position": [120, 32],
+                "position": [120, 56],
                 "size": [100, 16],
                 "text": "CHT: 320°F",
                 "focused": False
@@ -76,7 +75,7 @@ class EngineRoomScene:
             {
                 "id": "exhaust_temp",
                 "type": "label",
-                "position": [230, 32],
+                "position": [230, 56],
                 "size": [80, 16],
                 "text": "EGT: 1450°F",
                 "focused": False
@@ -185,42 +184,17 @@ class EngineRoomScene:
             {
                 "id": "prev_scene",
                 "type": "button",
-                "position": [8, 280],
+                "position": [8, 290],
                 "size": [60, 24],
-                "text": "← [",
+                "text": "< [",
                 "focused": False
             },
             {
                 "id": "next_scene",
                 "type": "button",
-                "position": [252, 280],
+                "position": [252, 290],
                 "size": [60, 24],
-                "text": "] →",
-                "focused": False
-            },
-            # Quick access buttons
-            {
-                "id": "back_to_bridge",
-                "type": "button",
-                "position": [76, 280],
-                "size": [44, 24],
-                "text": "Bridge",
-                "focused": False
-            },
-            {
-                "id": "fuel_system",
-                "type": "button",
-                "position": [128, 280],
-                "size": [44, 24],
-                "text": "Fuel",
-                "focused": False
-            },
-            {
-                "id": "electrical",
-                "type": "button",
-                "position": [180, 280],
-                "size": [44, 24],
-                "text": "Elec",
+                "text": "] >",
                 "focused": False
             }
         ]
@@ -334,13 +308,6 @@ class EngineRoomScene:
                     return self._get_prev_scene()
                 elif widget_id == "next_scene":
                     return self._get_next_scene()
-                elif widget_id == "back_to_bridge":
-                    return "scene_bridge"
-                elif widget_id == "fuel_system":
-                    return "scene_fuel"
-                elif widget_id == "electrical":
-                    # TODO: Create electrical scene
-                    return "scene_fuel"  # Temporary fallback
                 elif widget_id == "engine_start":
                     self._start_engine()
                 elif widget_id == "engine_stop":
@@ -454,13 +421,18 @@ class EngineRoomScene:
         """Render the engine room scene"""
         surface.fill(BACKGROUND_COLOR)
         
-        # Draw title
+        # Draw colored title header
+        pygame.draw.rect(surface, ENGINE_HEADER_COLOR, (0, 0, 320, 24))
+        pygame.draw.rect(surface, TEXT_COLOR, (0, 0, 320, 24), 1)
+        
+        # Centered title
         if self.font:
             title_text = self.font.render("ENGINE ROOM", True, TEXT_COLOR)
-            surface.blit(title_text, (8, 180))
+            title_x = (320 - title_text.get_width()) // 2
+            surface.blit(title_text, (title_x, 4))
             
-            # Draw engine schematic
-            self._draw_engine_schematic(surface, 50, 200, 220, 60)
+            # Draw engine schematic (shifted down for header)
+            self._draw_engine_schematic(surface, 50, 220, 220, 60)
         
         # Draw all widgets
         for widget in self.widgets:
