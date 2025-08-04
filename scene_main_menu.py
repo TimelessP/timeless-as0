@@ -99,7 +99,7 @@ class MainMenuScene:
                 logical_pos = self._screen_to_logical(event.pos)
                 if logical_pos:
                     clicked_widget = self._get_widget_at_pos(logical_pos)
-                    if clicked_widget:
+                    if clicked_widget is not None:
                         self._set_focus(clicked_widget)
                         return self._activate_focused()
                         

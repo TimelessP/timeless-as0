@@ -5,9 +5,6 @@ The primary flight interface showing critical flight instruments and controls
 import pygame
 import math
 from typing import List, Dict, Any, Optional
-import pygame
-import math
-from typing import List, Dict, Any, Optional
 
 # Constants
 LOGICAL_SIZE = 320
