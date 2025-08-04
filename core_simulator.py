@@ -334,17 +334,6 @@ class CoreSimulator:
         position["heading"] += motion["rateOfTurn"] * dt
         position["heading"] = position["heading"] % 360
         
-        # Rudder self-centering in manual mode (aerodynamic stability)
-        if nav.get("mode", "manual") == "manual":
-            centering_rate = 15.0  # degrees per second centering
-            if abs(controls["rudder"]) > 0.1:
-                if controls["rudder"] > 0:
-                    controls["rudder"] = max(0, controls["rudder"] - centering_rate * dt)
-                else:
-                    controls["rudder"] = min(0, controls["rudder"] + centering_rate * dt)
-            else:
-                controls["rudder"] = 0.0
-        
         # Thrust from engine (simplified)
         if engine["running"]:
             thrust_factor = engine["controls"]["throttle"]
@@ -391,7 +380,7 @@ class CoreSimulator:
         controls = nav["controls"]
         motion = nav["motion"]
         
-        # Heading hold with rudder control
+        # Heading hold with discrete rudder control (like manual input)
         if autopilot["headingHold"]:
             heading_error = targets["heading"] - position["heading"]
             # Normalize to -180 to +180
@@ -402,37 +391,43 @@ class CoreSimulator:
                 
             autopilot["headingError"] = heading_error
             
-            # PID-like controller for heading
-            # Proportional: turn rate based on heading error
-            target_turn_rate = heading_error * 0.3  # degrees per second per degree error
-            target_turn_rate = max(-2.0, min(2.0, target_turn_rate))  # Limit turn rate
-            autopilot["turnRate"] = target_turn_rate
+            # Discrete rudder adjustments based on heading error
+            abs_error = abs(heading_error)
+            current_rudder = controls["rudder"]
             
-            # Convert desired turn rate to rudder angle
-            # Reverse the physics calculation from _update_navigation
-            airspeed_factor = motion["indicatedAirspeed"] / 85.0
-            max_turn_rate = 3.0 * airspeed_factor
-            
-            if abs(max_turn_rate) > 0.1:
-                target_rudder = (target_turn_rate / max_turn_rate) * 30.0  # Scale to rudder degrees
-                target_rudder = max(-30.0, min(30.0, target_rudder))
+            # Determine target rudder adjustment based on error magnitude
+            if abs_error > 20:
+                # Large error: aggressive correction
+                target_rudder_step = 2.0 if heading_error > 0 else -2.0
+            elif abs_error > 10:
+                # Medium error: moderate correction
+                target_rudder_step = 2.0 if heading_error > 0 else -2.0
+            elif abs_error > 2:
+                # Small error: gentle correction
+                target_rudder_step = 2.0 if heading_error > 0 else -2.0
             else:
-                target_rudder = 0.0
-                
-            autopilot["targetRudder"] = target_rudder
-            
-            # Smooth rudder movement
-            rudder_rate = 20.0  # degrees per second for autopilot
-            rudder_diff = target_rudder - controls["rudder"]
-            
-            if abs(rudder_diff) > 0.1:
-                rudder_change = rudder_rate * dt
-                if rudder_diff > 0:
-                    controls["rudder"] = min(target_rudder, controls["rudder"] + rudder_change)
+                # Very close to target: center the rudder
+                if abs(current_rudder) >= 2.0:
+                    target_rudder_step = -2.0 if current_rudder > 0 else 2.0
                 else:
-                    controls["rudder"] = max(target_rudder, controls["rudder"] - rudder_change)
-            else:
-                controls["rudder"] = target_rudder
+                    target_rudder_step = -current_rudder  # Final centering step
+            
+            # Apply discrete rudder adjustment at autopilot rate (slower than manual)
+            # Autopilot makes adjustments every 0.5 seconds instead of instantly
+            if not hasattr(autopilot, "lastRudderAdjust"):
+                autopilot["lastRudderAdjust"] = 0.0
+                
+            autopilot["lastRudderAdjust"] += dt
+            
+            if autopilot["lastRudderAdjust"] >= 0.5:  # Adjust every 0.5 seconds
+                # Apply the discrete step
+                new_rudder = current_rudder + target_rudder_step
+                controls["rudder"] = max(-30.0, min(30.0, new_rudder))
+                autopilot["lastRudderAdjust"] = 0.0
+                
+                # Store autopilot debug info
+                autopilot["targetRudderStep"] = target_rudder_step
+                autopilot["turnRate"] = target_rudder_step / 2.0  # Approximate turn rate
                 
         # Altitude hold
         if autopilot["altitudeHold"]:
@@ -629,27 +624,39 @@ class CoreSimulator:
         current_index = modes.index(current_mode) if current_mode in modes else 0
         fuel["pumpMode"] = modes[(current_index + 1) % len(modes)]
         
-    def apply_rudder_input(self, input_strength: float):
-        """Apply rudder input (-1.0 to +1.0)"""
+    def adjust_rudder(self, degrees: float):
+        """Adjust rudder position by the specified degrees (manual control)"""
         nav = self.game_state["navigation"]
+        controls = nav["controls"]
         
         # Only allow manual rudder in manual mode
         if nav.get("mode", "manual") == "manual":
-            max_rudder = 30.0  # Maximum rudder deflection in degrees
-            target_rudder = input_strength * max_rudder
+            # Adjust rudder by the specified amount
+            new_rudder = controls["rudder"] + degrees
             
-            # Apply rudder input with some smoothing
-            current_rudder = nav["controls"]["rudder"]
-            rudder_rate = 60.0  # degrees per second rudder movement rate
-            
-            # Move rudder towards target
-            if abs(target_rudder - current_rudder) > 0.1:
-                if target_rudder > current_rudder:
-                    nav["controls"]["rudder"] = min(target_rudder, current_rudder + rudder_rate * 0.1)
-                else:
-                    nav["controls"]["rudder"] = max(target_rudder, current_rudder - rudder_rate * 0.1)
+            # Clamp to realistic limits (-30 to +30 degrees)
+            controls["rudder"] = max(-30.0, min(30.0, new_rudder))
+        
+    def apply_rudder_input(self, input_strength: float):
+        """Apply continuous rudder input (for autopilot use)"""
+        nav = self.game_state["navigation"]
+        
+        # Set rudder directly (used by autopilot)
+        max_rudder = 30.0  # Maximum rudder deflection in degrees
+        target_rudder = input_strength * max_rudder
+        
+        # Apply rudder input with some smoothing
+        current_rudder = nav["controls"]["rudder"]
+        rudder_rate = 60.0  # degrees per second rudder movement rate
+        
+        # Move rudder towards target
+        if abs(target_rudder - current_rudder) > 0.1:
+            if target_rudder > current_rudder:
+                nav["controls"]["rudder"] = min(target_rudder, current_rudder + rudder_rate * 0.1)
             else:
-                nav["controls"]["rudder"] = target_rudder
+                nav["controls"]["rudder"] = max(target_rudder, current_rudder - rudder_rate * 0.1)
+        else:
+            nav["controls"]["rudder"] = target_rudder
                 
     def toggle_main_autopilot(self):
         """Toggle main autopilot engagement"""

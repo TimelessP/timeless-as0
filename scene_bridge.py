@@ -255,9 +255,9 @@ class BridgeScene:
         # Only allow manual rudder control in manual mode
         if nav_mode == "manual":
             if direction == "left":
-                self.simulator.apply_rudder_input(-1.0)  # Left rudder
+                self.simulator.adjust_rudder(-2.0)  # Left rudder by 2 degrees
             elif direction == "right":
-                self.simulator.apply_rudder_input(1.0)   # Right rudder
+                self.simulator.adjust_rudder(2.0)   # Right rudder by 2 degrees
                 
     def _apply_textbox_value(self, widget):
         """Apply the textbox value to game state"""
