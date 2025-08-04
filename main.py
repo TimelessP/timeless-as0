@@ -11,6 +11,8 @@ from typing import Dict, Any, Optional
 from scene_main_menu import MainMenuScene
 from scene_bridge import BridgeScene
 from scene_engine_room import EngineRoomScene
+from scene_navigation import NavigationScene
+from core_simulator import get_simulator
 
 # Constants
 LOGICAL_SIZE = 320
@@ -32,8 +34,8 @@ class AirshipApp:
         # Load font
         self.font = self._load_font()
         
-        # Initialize game state
-        self.game_state = self._create_initial_game_state()
+        # Get the centralized simulator
+        self.simulator = get_simulator()
         
         # Scene management
         self.current_scene = None
@@ -70,79 +72,12 @@ class AirshipApp:
             # Ultimate fallback
             return pygame.font.Font(None, 12)
             
-    def _create_initial_game_state(self) -> Dict[str, Any]:
-        """Create the initial game state"""
-        return {
-            "navigation": {
-                "currentAltitude": 1250.0,
-                "targetAltitude": 1250.0,
-                "indicatedAirspeed": 85.0,
-                "currentHeading": 45.0,
-                "targetHeading": 45.0,
-                "pitch": 0.0,
-                "roll": 0.0,
-                "verticalSpeed": 0.0,
-                "mode": "manual",
-                "autopilot": {
-                    "engaged": False,
-                    "headingHold": False,
-                    "altitudeHold": False
-                }
-            },
-            "engine": {
-                "running": True,
-                "rpm": 2650.0,
-                "manifoldPressure": 24.5,
-                "fuelFlow": 12.8,
-                "oilPressure": 65.0,
-                "oilTemperature": 185.0,
-                "cylinderHeadTemp": 320.0,
-                "exhaustGasTemp": 1450.0,
-                "fuelPressure": 22.0,
-                "throttlePosition": 0.75,
-                "mixturePosition": 0.85,
-                "propellerPosition": 0.80,
-                "propellerFeathered": False,
-                "emergencyShutdown": False
-            },
-            "electrical": {
-                "batteryBusA": {
-                    "switch": True,
-                    "voltage": 12.6,
-                    "current": 8.5
-                },
-                "batteryBusB": {
-                    "switch": True,
-                    "voltage": 12.5,
-                    "current": 6.2
-                },
-                "alternator": {
-                    "online": True,
-                    "voltage": 14.2,
-                    "current": 15.0
-                }
-            },
-            "fuel": {
-                "totalCapacity": 550.0,
-                "currentLevel": 425.0,
-                "pumpMode": "auto",
-                "tanks": {
-                    "forward": {"level": 140.0, "capacity": 180.0},
-                    "center": {"level": 145.0, "capacity": 190.0}, 
-                    "aft": {"level": 140.0, "capacity": 180.0}
-                }
-            },
-            "time": {
-                "totalFlightTime": 0.0,
-                "sessionTime": 0.0
-            }
-        }
-        
     def _init_scenes(self):
         """Initialize all scenes"""
         self.scenes["scene_main_menu"] = MainMenuScene()
-        self.scenes["scene_bridge"] = BridgeScene(self.game_state)
-        self.scenes["scene_engine_room"] = EngineRoomScene(self.game_state)
+        self.scenes["scene_bridge"] = BridgeScene(self.simulator)
+        self.scenes["scene_engine_room"] = EngineRoomScene(self.simulator)
+        self.scenes["scene_navigation"] = NavigationScene(self.simulator)
         
         # Set fonts for all scenes
         for scene in self.scenes.values():
@@ -156,6 +91,10 @@ class AirshipApp:
         if scene_name == "quit":
             self.running = False
             return
+        elif scene_name == "new_game":
+            # Start a new game
+            self.simulator.start_new_game()
+            scene_name = "scene_bridge"
             
         if scene_name in self.scenes:
             self.scene_name = scene_name
@@ -214,14 +153,12 @@ class AirshipApp:
                 
     def update(self, dt: float):
         """Update the game state"""
+        # Update the centralized simulator
+        self.simulator.update(dt)
+        
         # Update current scene
         if self.current_scene and hasattr(self.current_scene, 'update'):
             self.current_scene.update(dt)
-            
-        # Update game time
-        if self.scene_name != "scene_main_menu":
-            self.game_state["time"]["sessionTime"] += dt
-            self.game_state["time"]["totalFlightTime"] += dt
             
     def render(self):
         """Render the current frame"""

@@ -3,6 +3,8 @@ Engine Room Scene for Airship Zero
 Engine monitoring and control interface
 """
 import pygame
+from typing import List, Dict, Any, Optional
+import pygame
 import math
 from typing import List, Dict, Any, Optional
 
@@ -16,11 +18,11 @@ GOOD_COLOR = (60, 180, 60)
 CAUTION_COLOR = (220, 180, 60)
 
 class EngineRoomScene:
-    def __init__(self, game_state):
+    def __init__(self, simulator):
         self.font = None
         self.widgets = []
         self.focus_index = 0
-        self.game_state = game_state
+        self.simulator = simulator
         self.all_widgets_inactive = True
         
         self._init_widgets()
@@ -262,14 +264,13 @@ class EngineRoomScene:
         """Apply slider value to game state"""
         widget_id = widget["id"]
         value = widget["value"]
-        engine = self.game_state["engine"]
         
         if widget_id == "throttle_control":
-            engine["throttlePosition"] = value
+            self.simulator.set_engine_control("throttle", value)
         elif widget_id == "mixture_control":
-            engine["mixturePosition"] = value
+            self.simulator.set_engine_control("mixture", value)
         elif widget_id == "prop_control":
-            engine["propellerPosition"] = value
+            self.simulator.set_engine_control("propeller", value)
             
     def _screen_to_logical(self, screen_pos) -> Optional[tuple]:
         """Convert screen coordinates to logical coordinates"""
@@ -334,37 +335,40 @@ class EngineRoomScene:
         
     def _start_engine(self):
         """Start the engine"""
-        engine = self.game_state["engine"]
-        if not engine["running"]:
-            engine["running"] = True
-            engine["rpm"] = 800.0  # Idle RPM
+        # Use the simulator's toggle method if engine is currently off
+        game_state = self.simulator.get_state()
+        if not game_state["engine"]["running"]:
+            self.simulator.toggle_engine()
             
     def _stop_engine(self):
         """Stop the engine normally"""
-        engine = self.game_state["engine"]
-        engine["running"] = False
-        engine["rpm"] = 0.0
+        # Use the simulator's toggle method if engine is currently on
+        game_state = self.simulator.get_state()
+        if game_state["engine"]["running"]:
+            self.simulator.toggle_engine()
         
     def _emergency_stop(self):
         """Emergency engine shutdown"""
-        engine = self.game_state["engine"]
-        engine["running"] = False
-        engine["rpm"] = 0.0
-        engine["emergencyShutdown"] = True
+        # Force engine off and set emergency flag
+        game_state = self.simulator.get_state()
+        if game_state["engine"]["running"]:
+            self.simulator.toggle_engine()
+        # Set emergency shutdown flag directly (simulator doesn't have this method yet)
+        self.simulator.game_state["engine"]["emergencyShutdown"] = True
         
     def _feather_prop(self):
         """Feather the propeller"""
-        engine = self.game_state["engine"]
-        engine["propellerFeathered"] = True
+        self.simulator.game_state["engine"]["propellerFeathered"] = True
         
     def _unfeather_prop(self):
         """Unfeather the propeller"""
-        engine = self.game_state["engine"]
-        engine["propellerFeathered"] = False
+        self.simulator.game_state["engine"]["propellerFeathered"] = False
         
     def update(self, dt: float):
         """Update the scene"""
-        engine = self.game_state["engine"]
+        # Get current state from simulator
+        game_state = self.simulator.get_state()
+        engine = game_state["engine"]
         
         # Update engine displays
         status = "RUNNING" if engine["running"] else "STOPPED"
@@ -393,13 +397,14 @@ class EngineRoomScene:
         self._update_widget_text("fuel_flow", f"FLOW: {fuel_flow:.1f} GPH")
         
         # Update control positions from game state
-        throttle_pos = engine.get("throttlePosition", 0.75)
+        controls = engine.get("controls", {})
+        throttle_pos = controls.get("throttle", 0.75)
         self._update_widget_value("throttle_control", throttle_pos)
         
-        mixture_pos = engine.get("mixturePosition", 0.85)
+        mixture_pos = controls.get("mixture", 0.85)
         self._update_widget_value("mixture_control", mixture_pos)
         
-        prop_pos = engine.get("propellerPosition", 0.80)
+        prop_pos = controls.get("propeller", 0.80)
         self._update_widget_value("prop_control", prop_pos)
         
     def _update_widget_text(self, widget_id: str, new_text: str):
@@ -434,7 +439,8 @@ class EngineRoomScene:
             
     def _draw_engine_schematic(self, surface, x, y, w, h):
         """Draw a simple engine schematic"""
-        engine = self.game_state["engine"]
+        game_state = self.simulator.get_state()
+        engine = game_state["engine"]
         
         # Engine block
         block_color = GOOD_COLOR if engine["running"] else (100, 100, 100)

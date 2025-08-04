@@ -5,6 +5,9 @@ The primary flight interface showing critical flight instruments and controls
 import pygame
 import math
 from typing import List, Dict, Any, Optional
+import pygame
+import math
+from typing import List, Dict, Any, Optional
 
 # Constants
 LOGICAL_SIZE = 320
@@ -16,11 +19,11 @@ WARNING_COLOR = (220, 60, 60)
 GOOD_COLOR = (60, 180, 60)
 
 class BridgeScene:
-    def __init__(self, game_state):
+    def __init__(self, simulator):
         self.font = None
         self.widgets = []
         self.focus_index = 0
-        self.game_state = game_state
+        self.simulator = simulator
         self.all_widgets_inactive = True
         
         # Initialize widgets
@@ -246,9 +249,9 @@ class BridgeScene:
         try:
             value = widget["text"]
             if widget_id == "altitude_set":
-                self.game_state["navigation"]["targetAltitude"] = float(value)
+                self.simulator.set_autopilot_target("altitude", float(value))
             elif widget_id == "heading_set":
-                self.game_state["navigation"]["targetHeading"] = float(value) % 360
+                self.simulator.set_autopilot_target("heading", float(value) % 360)
         except ValueError:
             # Invalid input, revert to current value
             pass
@@ -321,44 +324,39 @@ class BridgeScene:
         
     def _toggle_battery(self):
         """Toggle battery A status"""
-        electrical = self.game_state["electrical"]
-        battery_a = electrical["batteryBusA"]
-        battery_a["switch"] = not battery_a["switch"]
+        self.simulator.toggle_battery("A")
         
     def _toggle_fuel_pumps(self):
         """Toggle fuel pump mode"""
-        fuel = self.game_state["fuel"]
-        current_mode = fuel["pumpMode"]
-        modes = ["manual", "auto"]
-        current_index = modes.index(current_mode) if current_mode in modes else 0
-        fuel["pumpMode"] = modes[(current_index + 1) % len(modes)]
+        self.simulator.toggle_fuel_pump_mode()
         
     def _toggle_autopilot(self):
         """Toggle autopilot"""
-        navigation = self.game_state["navigation"]
-        autopilot = navigation["autopilot"]
-        autopilot["engaged"] = not autopilot["engaged"]
+        self.simulator.toggle_main_autopilot()
         
     def _cycle_nav_mode(self):
         """Cycle through navigation modes"""
-        navigation = self.game_state["navigation"]
+        game_state = self.simulator.get_state()
+        navigation = game_state["navigation"]
         modes = ["manual", "heading_hold", "route_follow"]
         current = navigation.get("mode", "manual")
         current_index = modes.index(current) if current in modes else 0
-        navigation["mode"] = modes[(current_index + 1) % len(modes)]
+        new_mode = modes[(current_index + 1) % len(modes)]
+        self.simulator.set_nav_mode(new_mode)
         
     def update(self, dt: float):
         """Update the scene with game state"""
-        # Update display values from game state
-        nav = self.game_state["navigation"]
-        engine = self.game_state["engine"]
-        electrical = self.game_state["electrical"]
-        fuel = self.game_state["fuel"]
+        # Get current state from simulator
+        game_state = self.simulator.get_state()
+        nav = game_state["navigation"]
+        engine = game_state["engine"]
+        electrical = game_state["electrical"]
+        fuel = game_state["fuel"]
         
         # Update navigation displays
-        self._update_widget_text("altitude", f"ALT: {nav['currentAltitude']:.0f} ft")
-        self._update_widget_text("airspeed", f"IAS: {nav['indicatedAirspeed']:.0f} kts")
-        self._update_widget_text("heading", f"HDG: {nav['currentHeading']:03.0f}°")
+        self._update_widget_text("altitude", f"ALT: {nav['position']['altitude']:.0f} ft")
+        self._update_widget_text("airspeed", f"IAS: {nav['motion']['indicatedAirspeed']:.0f} kts")
+        self._update_widget_text("heading", f"HDG: {nav['position']['heading']:03.0f}°")
         
         # Update engine displays
         self._update_widget_text("engine_rpm", f"RPM: {engine['rpm']:.0f}")
@@ -404,9 +402,11 @@ class BridgeScene:
     def _draw_artificial_horizon(self, surface, x, y, w, h):
         """Draw a simple artificial horizon display"""
         # Get pitch and roll from game state
-        nav = self.game_state["navigation"] 
-        pitch = nav.get("pitch", 0.0)  # degrees
-        roll = nav.get("roll", 0.0)    # degrees
+        game_state = self.simulator.get_state()
+        nav = game_state["navigation"] 
+        motion = nav.get("motion", {})
+        pitch = motion.get("pitch", 0.0)  # degrees
+        roll = motion.get("roll", 0.0)    # degrees
         
         # Draw background
         pygame.draw.rect(surface, (40, 60, 80), (x, y, w, h))
@@ -420,6 +420,21 @@ class BridgeScene:
         horizon_y = center_y + int(pitch * 2)  # 2 pixels per degree pitch
         
         # Sky (above horizon)
+        if horizon_y > y:
+            sky_rect = pygame.Rect(x + 1, y + 1, w - 2, min(horizon_y - y, h - 2))
+            pygame.draw.rect(surface, (100, 150, 255), sky_rect)
+            
+        # Ground (below horizon)
+        if horizon_y < y + h:
+            ground_rect = pygame.Rect(x + 1, max(horizon_y, y + 1), w - 2, (y + h - 1) - max(horizon_y, y + 1))
+            pygame.draw.rect(surface, (139, 69, 19), ground_rect)
+            
+        # Horizon line
+        pygame.draw.line(surface, (255, 255, 255), (x + 1, horizon_y), (x + w - 1, horizon_y), 2)
+        
+        # Aircraft symbol (center reference)
+        pygame.draw.line(surface, (255, 255, 0), (center_x - 15, center_y), (center_x + 15, center_y), 3)
+        pygame.draw.line(surface, (255, 255, 0), (center_x, center_y - 5), (center_x, center_y + 5), 3)
         if horizon_y > y:
             sky_rect = (x + 1, y + 1, w - 2, min(horizon_y - y, h - 2))
             pygame.draw.rect(surface, (50, 100, 150), sky_rect)

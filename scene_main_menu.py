@@ -107,8 +107,7 @@ class MainMenuScene:
         
     def _screen_to_logical(self, screen_pos) -> Optional[tuple]:
         """Convert screen coordinates to logical 320x320 coordinates"""
-        # This will need to be implemented based on the actual scaling
-        # For now, assume direct mapping
+        # Coordinates are already converted by main.py
         return screen_pos
         
     def _get_widget_at_pos(self, pos) -> Optional[int]:
@@ -160,7 +159,7 @@ class MainMenuScene:
                 
             widget_id = widget["id"]
             if widget_id == "new_game":
-                return "scene_bridge"  # Start new game on bridge
+                return "new_game"  # Start new game
             elif widget_id == "resume_game":
                 return "scene_bridge"  # Resume game on bridge
             elif widget_id == "settings":
