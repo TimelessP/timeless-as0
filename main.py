@@ -12,6 +12,12 @@ from scene_main_menu import MainMenuScene
 from scene_bridge import BridgeScene
 from scene_engine_room import EngineRoomScene
 from scene_navigation import NavigationScene
+from scene_fuel import FuelScene
+from scene_cargo import CargoScene
+from scene_communications import CommunicationsScene
+from scene_camera import CameraScene
+from scene_crew import CrewScene
+from scene_missions import MissionsScene
 from core_simulator import get_simulator
 
 # Constants
@@ -78,6 +84,12 @@ class AirshipApp:
         self.scenes["scene_bridge"] = BridgeScene(self.simulator)
         self.scenes["scene_engine_room"] = EngineRoomScene(self.simulator)
         self.scenes["scene_navigation"] = NavigationScene(self.simulator)
+        self.scenes["scene_fuel"] = FuelScene(self.simulator)
+        self.scenes["scene_cargo"] = CargoScene(self.simulator)
+        self.scenes["scene_communications"] = CommunicationsScene(self.simulator)
+        self.scenes["scene_camera"] = CameraScene(self.simulator)
+        self.scenes["scene_crew"] = CrewScene(self.simulator)
+        self.scenes["scene_missions"] = MissionsScene(self.simulator)
         
         # Set fonts for all scenes
         for scene in self.scenes.values():

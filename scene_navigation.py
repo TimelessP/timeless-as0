@@ -61,36 +61,54 @@ class NavigationScene:
                 "text": "GS: 82",
                 "focused": False
             },
+            # Controls - circular navigation
             {
-                "id": "zoom_in",
+                "id": "prev_scene",
                 "type": "button",
                 "position": [8, 280],
                 "size": [60, 24],
-                "text": "Zoom +",
+                "text": "← [",
                 "focused": True
+            },
+            {
+                "id": "next_scene",
+                "type": "button",
+                "position": [252, 280],
+                "size": [60, 24],
+                "text": "] →",
+                "focused": False
+            },
+            # Zoom controls
+            {
+                "id": "zoom_in",
+                "type": "button",
+                "position": [76, 280],
+                "size": [30, 24],
+                "text": "+",
+                "focused": False
             },
             {
                 "id": "zoom_out",
                 "type": "button",
-                "position": [78, 280],
-                "size": [60, 24],
-                "text": "Zoom -",
+                "position": [114, 280],
+                "size": [30, 24],
+                "text": "-",
                 "focused": False
             },
             {
                 "id": "center_pos",
                 "type": "button",
-                "position": [148, 280],
-                "size": [70, 24],
+                "position": [152, 280],
+                "size": [50, 24],
                 "text": "Center",
                 "focused": False
             },
             {
                 "id": "back_to_bridge",
                 "type": "button",
-                "position": [228, 280],
-                "size": [84, 24],
-                "text": "Bridge",
+                "position": [210, 280],
+                "size": [34, 24],
+                "text": "Brdg",
                 "focused": False
             }
         ]
@@ -173,15 +191,19 @@ class NavigationScene:
     def handle_event(self, event) -> Optional[str]:
         """Handle pygame events"""
         if event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_TAB:
+            if event.key == pygame.K_ESCAPE:
+                return "scene_main_menu"
+            elif event.key == pygame.K_LEFTBRACKET:  # [
+                return self._get_prev_scene()
+            elif event.key == pygame.K_RIGHTBRACKET:  # ]
+                return self._get_next_scene()
+            elif event.key == pygame.K_TAB:
                 if pygame.key.get_pressed()[pygame.K_LSHIFT]:
                     self._focus_previous()
                 else:
                     self._focus_next()
             elif event.key in [pygame.K_RETURN, pygame.K_SPACE]:
                 return self._activate_focused()
-            elif event.key == pygame.K_ESCAPE:
-                return "scene_main_menu"
             elif event.key == pygame.K_PLUS or event.key == pygame.K_EQUALS:
                 self._zoom_in()
             elif event.key == pygame.K_MINUS:
@@ -292,7 +314,11 @@ class NavigationScene:
             widget = self.widgets[self.focus_index]
             widget_id = widget["id"]
             
-            if widget_id == "zoom_in":
+            if widget_id == "prev_scene":
+                return self._get_prev_scene()
+            elif widget_id == "next_scene":
+                return self._get_next_scene()
+            elif widget_id == "zoom_in":
                 self._zoom_in()
             elif widget_id == "zoom_out":
                 self._zoom_out()
@@ -302,6 +328,14 @@ class NavigationScene:
                 return "scene_bridge"
                 
         return None
+        
+    def _get_prev_scene(self) -> str:
+        """Get the previous scene in circular order"""
+        return "scene_engine_room"
+    
+    def _get_next_scene(self) -> str:
+        """Get the next scene in circular order"""
+        return "scene_fuel"
         
     def update(self, dt: float):
         """Update the scene with game state"""

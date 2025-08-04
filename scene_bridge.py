@@ -135,29 +135,54 @@ class BridgeScene:
                 "active": False
             },
             
-            # Scene navigation buttons
+            # Scene navigation buttons - circular navigation
             {
-                "id": "engine_room",
+                "id": "prev_scene",
                 "type": "button",
                 "position": [8, 280],
-                "size": [95, 24],
-                "text": "Engine Room",
+                "size": [60, 24],
+                "text": "← [",
                 "focused": False
             },
             {
-                "id": "fuel_system",
+                "id": "next_scene",
                 "type": "button",
-                "position": [113, 280],
-                "size": [95, 24],
-                "text": "Fuel System",
+                "position": [252, 280],
+                "size": [60, 24],
+                "text": "] →",
+                "focused": False
+            },
+            # Quick access buttons
+            {
+                "id": "engine_room",
+                "type": "button",
+                "position": [76, 280],
+                "size": [40, 24],
+                "text": "Eng",
                 "focused": False
             },
             {
                 "id": "navigation",
                 "type": "button",
-                "position": [218, 280],
-                "size": [95, 24],
-                "text": "Navigation",
+                "position": [124, 280],
+                "size": [40, 24],
+                "text": "Nav",
+                "focused": False
+            },
+            {
+                "id": "fuel_system",
+                "type": "button",
+                "position": [172, 280],
+                "size": [40, 24],
+                "text": "Fuel",
+                "focused": False
+            },
+            {
+                "id": "missions",
+                "type": "button",
+                "position": [220, 280],
+                "size": [24, 24],
+                "text": "M",
                 "focused": False
             }
         ]
@@ -179,7 +204,10 @@ class BridgeScene:
                 else:
                     # Deactivate any active widgets
                     self._deactivate_all_widgets()
-                    
+            elif event.key == pygame.K_LEFTBRACKET:  # [
+                return self._get_prev_scene()
+            elif event.key == pygame.K_RIGHTBRACKET:  # ]
+                return self._get_next_scene()
             elif event.key == pygame.K_TAB:
                 if pygame.key.get_pressed()[pygame.K_LSHIFT]:
                     self._focus_previous()
@@ -289,12 +317,18 @@ class BridgeScene:
             
             if widget["type"] == "button":
                 # Handle button activations
-                if widget_id == "engine_room":
+                if widget_id == "prev_scene":
+                    return self._get_prev_scene()
+                elif widget_id == "next_scene":
+                    return self._get_next_scene()
+                elif widget_id == "engine_room":
                     return "scene_engine_room"
                 elif widget_id == "fuel_system":
-                    return "scene_fuel_system"
+                    return "scene_fuel"
                 elif widget_id == "navigation":
                     return "scene_navigation"
+                elif widget_id == "missions":
+                    return "scene_missions"
                 elif widget_id == "battery_status":
                     self._toggle_battery()
                 elif widget_id == "fuel_pumps":
@@ -310,6 +344,14 @@ class BridgeScene:
                 self._update_all_widgets_inactive_status()
                 
         return None
+        
+    def _get_prev_scene(self) -> str:
+        """Get the previous scene in circular order"""
+        return "scene_missions"
+    
+    def _get_next_scene(self) -> str:
+        """Get the next scene in circular order"""
+        return "scene_engine_room"
         
     def _toggle_battery(self):
         """Toggle battery A status"""

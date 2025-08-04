@@ -181,29 +181,46 @@ class EngineRoomScene:
                 "focused": False
             },
             
-            # Navigation
+            # Navigation - circular navigation
+            {
+                "id": "prev_scene",
+                "type": "button",
+                "position": [8, 280],
+                "size": [60, 24],
+                "text": "← [",
+                "focused": False
+            },
+            {
+                "id": "next_scene",
+                "type": "button",
+                "position": [252, 280],
+                "size": [60, 24],
+                "text": "] →",
+                "focused": False
+            },
+            # Quick access buttons
             {
                 "id": "back_to_bridge",
                 "type": "button",
-                "position": [8, 280],
-                "size": [100, 24],
+                "position": [76, 280],
+                "size": [44, 24],
                 "text": "Bridge",
                 "focused": False
             },
             {
                 "id": "fuel_system",
                 "type": "button",
-                "position": [118, 280],
-                "size": [100, 24],
-                "text": "Fuel System",
+                "position": [128, 280],
+                "size": [44, 24],
+                "text": "Fuel",
                 "focused": False
             },
             {
                 "id": "electrical",
                 "type": "button",
-                "position": [228, 280],
-                "size": [84, 24],
-                "text": "Electrical",
+                "position": [180, 280],
+                "size": [44, 24],
+                "text": "Elec",
                 "focused": False
             }
         ]
@@ -220,7 +237,10 @@ class EngineRoomScene:
                     return "scene_main_menu"
                 else:
                     self._deactivate_all_widgets()
-                    
+            elif event.key == pygame.K_LEFTBRACKET:  # [
+                return self._get_prev_scene()
+            elif event.key == pygame.K_RIGHTBRACKET:  # ]
+                return self._get_next_scene()
             elif event.key == pygame.K_TAB:
                 if pygame.key.get_pressed()[pygame.K_LSHIFT]:
                     self._focus_previous()
@@ -310,12 +330,17 @@ class EngineRoomScene:
             widget_id = widget["id"]
             
             if widget["type"] == "button":
-                if widget_id == "back_to_bridge":
+                if widget_id == "prev_scene":
+                    return self._get_prev_scene()
+                elif widget_id == "next_scene":
+                    return self._get_next_scene()
+                elif widget_id == "back_to_bridge":
                     return "scene_bridge"
                 elif widget_id == "fuel_system":
-                    return "scene_fuel_system"
+                    return "scene_fuel"
                 elif widget_id == "electrical":
-                    return "scene_electrical"
+                    # TODO: Create electrical scene
+                    return "scene_fuel"  # Temporary fallback
                 elif widget_id == "engine_start":
                     self._start_engine()
                 elif widget_id == "engine_stop":
@@ -328,6 +353,14 @@ class EngineRoomScene:
                     self._unfeather_prop()
                     
         return None
+        
+    def _get_prev_scene(self) -> str:
+        """Get the previous scene in circular order"""
+        return "scene_bridge"
+    
+    def _get_next_scene(self) -> str:
+        """Get the next scene in circular order"""
+        return "scene_navigation"
         
     def _start_engine(self):
         """Start the engine"""
