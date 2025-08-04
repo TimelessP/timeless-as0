@@ -46,7 +46,13 @@ class CoreSimulator:
                     "verticalSpeed": 0.0,
                     "pitch": 0.0,
                     "roll": 0.0,
-                    "yaw": 0.0
+                    "yaw": 0.0,
+                    "rateOfTurn": 0.0  # degrees per second
+                },
+                "controls": {
+                    "rudder": 0.0,  # -30 to +30 degrees
+                    "elevator": 0.0,  # -20 to +20 degrees  
+                    "ailerons": 0.0   # -25 to +25 degrees
                 },
                 "targets": {
                     "altitude": 1250.0,
@@ -59,7 +65,10 @@ class CoreSimulator:
                     "headingHold": False,
                     "altitudeHold": False,
                     "airspeedHold": False,
-                    "verticalSpeedHold": False
+                    "verticalSpeedHold": False,
+                    "targetRudder": 0.0,  # Autopilot's target rudder position
+                    "headingError": 0.0,  # Current heading error for autopilot
+                    "turnRate": 0.0       # Autopilot's target turn rate
                 },
                 "route": {
                     "active": False,
@@ -311,6 +320,30 @@ class CoreSimulator:
         # Simple flight dynamics
         position = nav["position"]
         motion = nav["motion"]
+        controls = nav["controls"]
+        
+        # Rudder physics - convert rudder angle to rate of turn
+        rudder_angle = controls["rudder"]  # -30 to +30 degrees
+        airspeed_factor = motion["indicatedAirspeed"] / 85.0  # Normalize to typical cruise speed
+        
+        # Rate of turn based on rudder (simplified aerodynamics)
+        max_turn_rate = 3.0  # degrees per second at full rudder, cruise speed
+        motion["rateOfTurn"] = (rudder_angle / 30.0) * max_turn_rate * airspeed_factor
+        
+        # Apply rate of turn to heading
+        position["heading"] += motion["rateOfTurn"] * dt
+        position["heading"] = position["heading"] % 360
+        
+        # Rudder self-centering in manual mode (aerodynamic stability)
+        if nav.get("mode", "manual") == "manual":
+            centering_rate = 15.0  # degrees per second centering
+            if abs(controls["rudder"]) > 0.1:
+                if controls["rudder"] > 0:
+                    controls["rudder"] = max(0, controls["rudder"] - centering_rate * dt)
+                else:
+                    controls["rudder"] = min(0, controls["rudder"] + centering_rate * dt)
+            else:
+                controls["rudder"] = 0.0
         
         # Thrust from engine (simplified)
         if engine["running"]:
@@ -355,8 +388,10 @@ class CoreSimulator:
         autopilot = nav["autopilot"]
         position = nav["position"]
         targets = nav["targets"]
+        controls = nav["controls"]
+        motion = nav["motion"]
         
-        # Heading hold
+        # Heading hold with rudder control
         if autopilot["headingHold"]:
             heading_error = targets["heading"] - position["heading"]
             # Normalize to -180 to +180
@@ -365,21 +400,47 @@ class CoreSimulator:
             while heading_error < -180:
                 heading_error += 360
                 
-            # Simple P controller for heading
-            turn_rate = heading_error * 0.5  # degrees per second
-            turn_rate = max(-3, min(3, turn_rate))  # Limit turn rate
-            position["heading"] += turn_rate * dt
+            autopilot["headingError"] = heading_error
             
-            # Normalize heading
-            position["heading"] = position["heading"] % 360
+            # PID-like controller for heading
+            # Proportional: turn rate based on heading error
+            target_turn_rate = heading_error * 0.3  # degrees per second per degree error
+            target_turn_rate = max(-2.0, min(2.0, target_turn_rate))  # Limit turn rate
+            autopilot["turnRate"] = target_turn_rate
             
+            # Convert desired turn rate to rudder angle
+            # Reverse the physics calculation from _update_navigation
+            airspeed_factor = motion["indicatedAirspeed"] / 85.0
+            max_turn_rate = 3.0 * airspeed_factor
+            
+            if abs(max_turn_rate) > 0.1:
+                target_rudder = (target_turn_rate / max_turn_rate) * 30.0  # Scale to rudder degrees
+                target_rudder = max(-30.0, min(30.0, target_rudder))
+            else:
+                target_rudder = 0.0
+                
+            autopilot["targetRudder"] = target_rudder
+            
+            # Smooth rudder movement
+            rudder_rate = 20.0  # degrees per second for autopilot
+            rudder_diff = target_rudder - controls["rudder"]
+            
+            if abs(rudder_diff) > 0.1:
+                rudder_change = rudder_rate * dt
+                if rudder_diff > 0:
+                    controls["rudder"] = min(target_rudder, controls["rudder"] + rudder_change)
+                else:
+                    controls["rudder"] = max(target_rudder, controls["rudder"] - rudder_change)
+            else:
+                controls["rudder"] = target_rudder
+                
         # Altitude hold
         if autopilot["altitudeHold"]:
             altitude_error = targets["altitude"] - position["altitude"]
             climb_rate = altitude_error * 0.1  # feet per second
             climb_rate = max(-500, min(500, climb_rate))  # Limit climb rate
             position["altitude"] += climb_rate * dt
-            nav["motion"]["verticalSpeed"] = climb_rate * 60  # Convert to fpm
+            motion["verticalSpeed"] = climb_rate * 60  # Convert to fpm
             
     def _update_fuel_system(self, dt: float):
         """Update fuel consumption and management"""
@@ -568,6 +629,28 @@ class CoreSimulator:
         current_index = modes.index(current_mode) if current_mode in modes else 0
         fuel["pumpMode"] = modes[(current_index + 1) % len(modes)]
         
+    def apply_rudder_input(self, input_strength: float):
+        """Apply rudder input (-1.0 to +1.0)"""
+        nav = self.game_state["navigation"]
+        
+        # Only allow manual rudder in manual mode
+        if nav.get("mode", "manual") == "manual":
+            max_rudder = 30.0  # Maximum rudder deflection in degrees
+            target_rudder = input_strength * max_rudder
+            
+            # Apply rudder input with some smoothing
+            current_rudder = nav["controls"]["rudder"]
+            rudder_rate = 60.0  # degrees per second rudder movement rate
+            
+            # Move rudder towards target
+            if abs(target_rudder - current_rudder) > 0.1:
+                if target_rudder > current_rudder:
+                    nav["controls"]["rudder"] = min(target_rudder, current_rudder + rudder_rate * 0.1)
+                else:
+                    nav["controls"]["rudder"] = max(target_rudder, current_rudder - rudder_rate * 0.1)
+            else:
+                nav["controls"]["rudder"] = target_rudder
+                
     def toggle_main_autopilot(self):
         """Toggle main autopilot engagement"""
         autopilot = self.game_state["navigation"]["autopilot"]

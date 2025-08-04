@@ -136,6 +136,16 @@ class BridgeScene:
                 "active": False
             },
             
+            # Rudder indicator
+            {
+                "id": "rudder_indicator",
+                "type": "label",
+                "position": [8, 136],
+                "size": [120, 16],
+                "text": "RUD: 0.0°",
+                "focused": False
+            },
+            
             # Scene navigation buttons - circular navigation
             {
                 "id": "prev_scene",
@@ -183,6 +193,12 @@ class BridgeScene:
                     self._focus_next()
             elif event.key in [pygame.K_RETURN, pygame.K_SPACE]:
                 return self._activate_focused()
+            elif event.key == pygame.K_LEFT:
+                # Rudder left (only in manual mode)
+                self._handle_rudder_input("left")
+            elif event.key == pygame.K_RIGHT:
+                # Rudder right (only in manual mode)
+                self._handle_rudder_input("right")
             else:
                 # Handle typing for active textboxes
                 self._handle_text_input(event)
@@ -219,15 +235,30 @@ class BridgeScene:
         if focused_widget and focused_widget["type"] == "textbox" and focused_widget.get("active", False):
             if event.key == pygame.K_BACKSPACE:
                 focused_widget["text"] = focused_widget["text"][:-1]
-            elif event.key == pygame.K_RETURN:
+            elif event.key in [pygame.K_RETURN, pygame.K_ESCAPE]:
+                # Both Enter and Escape deactivate editing but keep focus
                 focused_widget["active"] = False
                 self._update_all_widgets_inactive_status()
-                self._apply_textbox_value(focused_widget)
+                # Apply value only on Enter, not Escape
+                if event.key == pygame.K_RETURN:
+                    self._apply_textbox_value(focused_widget)
             elif event.unicode and event.unicode.isprintable():
                 # Limit text length based on widget size
                 if len(focused_widget["text"]) < 10:  # Reasonable limit
                     focused_widget["text"] += event.unicode
                     
+    def _handle_rudder_input(self, direction: str):
+        """Handle rudder input for manual flight control"""
+        game_state = self.simulator.get_state()
+        nav_mode = game_state["navigation"].get("mode", "manual")
+        
+        # Only allow manual rudder control in manual mode
+        if nav_mode == "manual":
+            if direction == "left":
+                self.simulator.apply_rudder_input(-1.0)  # Left rudder
+            elif direction == "right":
+                self.simulator.apply_rudder_input(1.0)   # Right rudder
+                
     def _apply_textbox_value(self, widget):
         """Apply the textbox value to game state"""
         widget_id = widget["id"]
@@ -366,6 +397,10 @@ class BridgeScene:
         
         nav_mode = nav.get("mode", "manual").replace("_", " ").upper()
         self._update_widget_text("nav_mode", f"NAV: {nav_mode}")
+        
+        # Update rudder indicator
+        rudder_angle = nav["controls"].get("rudder", 0.0)
+        self._update_widget_text("rudder_indicator", f"RUD: {rudder_angle:+4.1f}°")
         
     def _update_widget_text(self, widget_id: str, new_text: str):
         """Update the text of a specific widget"""
