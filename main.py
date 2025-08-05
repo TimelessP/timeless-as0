@@ -24,6 +24,7 @@ from core_simulator import get_simulator
 LOGICAL_SIZE = 320
 MIN_WINDOW_SIZE = 640
 DEFAULT_WINDOW_SIZE = 960
+FULLSCREEN_RESOLUTION = (1920, 1080)
 DEFAULT_FONT_SIZE = 13
 
 class AirshipApp:
@@ -33,8 +34,12 @@ class AirshipApp:
         # Text rendering configuration
         self.is_text_antialiased = True
         
+        # Fullscreen state
+        self.is_fullscreen = False
+        self.windowed_size = (DEFAULT_WINDOW_SIZE, DEFAULT_WINDOW_SIZE)
+        
         # Initialize window
-        self.window_size = (DEFAULT_WINDOW_SIZE, DEFAULT_WINDOW_SIZE)
+        self.window_size = self.windowed_size
         self.screen = pygame.display.set_mode(self.window_size, pygame.RESIZABLE)
         pygame.display.set_caption("Airship Zero")
         
@@ -155,17 +160,43 @@ class AirshipApp:
         
         return (int(logical_x), int(logical_y))
         
+    def _toggle_fullscreen(self):
+        """Toggle between fullscreen and windowed mode"""
+        if self.is_fullscreen:
+            # Switch to windowed mode
+            self.is_fullscreen = False
+            self.window_size = self.windowed_size
+            self.screen = pygame.display.set_mode(self.window_size, pygame.RESIZABLE)
+            print(f"Switched to windowed mode: {self.window_size[0]}x{self.window_size[1]}")
+        else:
+            # Store current windowed size
+            if not self.is_fullscreen:
+                self.windowed_size = self.window_size
+            # Switch to fullscreen mode
+            self.is_fullscreen = True
+            self.window_size = FULLSCREEN_RESOLUTION
+            self.screen = pygame.display.set_mode(self.window_size, pygame.FULLSCREEN)
+            print(f"Switched to fullscreen mode: {self.window_size[0]}x{self.window_size[1]}")
+        
     def handle_event(self, event):
         """Handle pygame events"""
         if event.type == pygame.QUIT:
             self.running = False
             return
             
+        elif event.type == pygame.KEYDOWN:
+            # Handle global key events
+            if event.key == pygame.K_F11:
+                self._toggle_fullscreen()
+                return
+            
         elif event.type == pygame.VIDEORESIZE:
-            # Handle window resize
-            new_width = max(MIN_WINDOW_SIZE, event.w)
-            new_height = max(MIN_WINDOW_SIZE, event.h)
-            self.window_size = (new_width, new_height)
+            # Handle window resize (only in windowed mode)
+            if not self.is_fullscreen:
+                new_width = max(MIN_WINDOW_SIZE, event.w)
+                new_height = max(MIN_WINDOW_SIZE, event.h)
+                self.window_size = (new_width, new_height)
+                self.windowed_size = self.window_size
             # Every AI seems to do this but it's not correct to do so,
             # because it destroys and re-creates the window.
             # self.screen = pygame.display.set_mode(self.window_size, pygame.RESIZABLE)
