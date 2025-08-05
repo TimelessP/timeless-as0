@@ -86,7 +86,7 @@ class EngineRoomScene:
             {
                 "id": "oil_pressure",
                 "type": "label",
-                "position": [8, 56],
+                "position": [8, 80],
                 "size": [100, 16],
                 "text": "OIL PRESS: 65 PSI",
                 "focused": False
@@ -94,7 +94,7 @@ class EngineRoomScene:
             {
                 "id": "fuel_pressure",
                 "type": "label",
-                "position": [120, 56],
+                "position": [120, 80],
                 "size": [100, 16],
                 "text": "FUEL PRESS: 22 PSI",
                 "focused": False
@@ -102,7 +102,7 @@ class EngineRoomScene:
             {
                 "id": "fuel_flow",
                 "type": "label",
-                "position": [230, 56],
+                "position": [230, 80],
                 "size": [80, 16],
                 "text": "FLOW: 12.8 GPH",
                 "focused": False
@@ -112,7 +112,7 @@ class EngineRoomScene:
             {
                 "id": "throttle_control",
                 "type": "slider",
-                "position": [8, 85],
+                "position": [8, 110],
                 "size": [150, 20],
                 "value": 0.75,
                 "focused": True,
@@ -121,7 +121,7 @@ class EngineRoomScene:
             {
                 "id": "mixture_control",
                 "type": "slider",
-                "position": [168, 85],
+                "position": [168, 110],
                 "size": [140, 20],
                 "value": 0.85,
                 "focused": False,
@@ -132,7 +132,7 @@ class EngineRoomScene:
             {
                 "id": "prop_control",
                 "type": "slider",
-                "position": [8, 115],
+                "position": [8, 145],
                 "size": [150, 20],
                 "value": 0.80,
                 "focused": False,
@@ -141,7 +141,7 @@ class EngineRoomScene:
             {
                 "id": "prop_feather",
                 "type": "button",
-                "position": [168, 115],
+                "position": [168, 145],
                 "size": [80, 20],
                 "text": "FEATHER",
                 "focused": False
@@ -149,7 +149,7 @@ class EngineRoomScene:
             {
                 "id": "prop_unfeather",
                 "type": "button",
-                "position": [258, 115],
+                "position": [258, 145],
                 "size": [50, 20],
                 "text": "NORM",
                 "focused": False
@@ -159,7 +159,7 @@ class EngineRoomScene:
             {
                 "id": "engine_start",
                 "type": "button",
-                "position": [8, 145],
+                "position": [8, 180],
                 "size": [80, 24],
                 "text": "START",
                 "focused": False
@@ -167,7 +167,7 @@ class EngineRoomScene:
             {
                 "id": "engine_stop",
                 "type": "button",
-                "position": [98, 145],
+                "position": [98, 180],
                 "size": [80, 24],
                 "text": "STOP",
                 "focused": False
@@ -175,7 +175,7 @@ class EngineRoomScene:
             {
                 "id": "emergency_stop",
                 "type": "button",
-                "position": [188, 145],
+                "position": [188, 180],
                 "size": [120, 24],
                 "text": "EMERGENCY STOP",
                 "focused": False
