@@ -153,8 +153,8 @@ class NavigationScene:
         map_w, map_h = self.world_map.get_size()
         
         # Available space for map (minus UI areas and header)
-        map_area_w = LOGICAL_SIZE - 16
-        map_area_h = LOGICAL_SIZE - 84  # Leave space for header, top info, and bottom controls
+        map_area_w = LOGICAL_SIZE - 16  # 8px margin on each side
+        map_area_h = LOGICAL_SIZE - 92  # Leave space for header (32), top info (24), bottom margin (8), and bottom controls (28)
         
         # Calculate map viewport size based on zoom
         viewport_w = int(map_area_w / self.zoom_level)
@@ -402,7 +402,7 @@ class NavigationScene:
             
         # Scale to fit the display area (adjusted for header)
         display_w = LOGICAL_SIZE - 16
-        display_h = LOGICAL_SIZE - 84
+        display_h = LOGICAL_SIZE - 92  # Same calculation as map_area_h
         
         if map_section.get_width() > 0 and map_section.get_height() > 0:
             scaled_map = pygame.transform.scale(map_section, (display_w, display_h))
@@ -428,7 +428,7 @@ class NavigationScene:
             
             # Convert to screen coordinates (adjusted for header and UI)
             display_w = LOGICAL_SIZE - 16
-            display_h = LOGICAL_SIZE - 84
+            display_h = LOGICAL_SIZE - 92  # Same calculation as map_area_h
             screen_x = 8 + rel_x * display_w
             screen_y = 56 + rel_y * display_h  # 56 = 32 (header) + 24 (info area)
             
