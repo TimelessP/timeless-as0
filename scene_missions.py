@@ -20,14 +20,16 @@ class MissionsScene:
     def __init__(self, simulator):
         self.simulator = simulator
         self.font = None
+        self.is_text_antialiased = False
         self.widgets = []
         self.focused_widget = 0
         
         self._init_widgets()
     
-    def set_font(self, font):
+    def set_font(self, font, is_text_antialiased=False):
         """Set the font for this scene"""
         self.font = font
+        self.is_text_antialiased = is_text_antialiased
     
     def _init_widgets(self):
         """Initialize missions widgets"""
@@ -189,7 +191,7 @@ class MissionsScene:
         pygame.draw.rect(surface, TEXT_COLOR, (0, 0, 320, 24), 1)
         
         # Centered title
-        title = self.font.render("MISSION CONTROL", True, TEXT_COLOR)
+        title = self.font.render("MISSION CONTROL", self.is_text_antialiased, TEXT_COLOR)
         title_x = (320 - title.get_width()) // 2
         surface.blit(title, (title_x, 4))
         
@@ -229,12 +231,12 @@ class MissionsScene:
             
             # Draw button text
             text_color = FOCUS_COLOR if focused else TEXT_COLOR
-            text_surface = self.font.render(text, True, text_color)
+            text_surface = self.font.render(text, self.is_text_antialiased, text_color)
             text_x = x + (w - text_surface.get_width()) // 2
             text_y = y + (h - text_surface.get_height()) // 2
             surface.blit(text_surface, (text_x, text_y))
             
         elif widget_type == "label":
             # Draw label text
-            text_surface = self.font.render(text, True, text_color)
+            text_surface = self.font.render(text, self.is_text_antialiased, text_color)
             surface.blit(text_surface, (x, y))

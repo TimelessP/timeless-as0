@@ -19,6 +19,7 @@ ENGINE_HEADER_COLOR = (100, 40, 40)  # Red for engine room
 class EngineRoomScene:
     def __init__(self, simulator):
         self.font = None
+        self.is_text_antialiased = False
         self.widgets = []
         self.focus_index = 0
         self.simulator = simulator
@@ -199,9 +200,10 @@ class EngineRoomScene:
             }
         ]
         
-    def set_font(self, font):
+    def set_font(self, font, is_text_antialiased=False):
         """Set the font for rendering text"""
         self.font = font
+        self.is_text_antialiased = is_text_antialiased
         
     def handle_event(self, event) -> Optional[str]:
         """Handle pygame events"""
@@ -427,7 +429,7 @@ class EngineRoomScene:
         
         # Centered title
         if self.font:
-            title_text = self.font.render("ENGINE ROOM", True, TEXT_COLOR)
+            title_text = self.font.render("ENGINE ROOM", self.is_text_antialiased, TEXT_COLOR)
             title_x = (320 - title_text.get_width()) // 2
             surface.blit(title_text, (title_x, 4))
             
@@ -505,7 +507,7 @@ class EngineRoomScene:
             if widget.get("focused", False):
                 color = FOCUS_COLOR
                 
-            text_surface = self.font.render(text, True, color)
+            text_surface = self.font.render(text, self.is_text_antialiased, color)
             surface.blit(text_surface, widget["position"])
             
     def _render_button(self, surface, widget):
@@ -530,7 +532,7 @@ class EngineRoomScene:
         
         # Draw text
         if self.font:
-            text_surface = self.font.render(widget["text"], True, text_color)
+            text_surface = self.font.render(widget["text"], self.is_text_antialiased, text_color)
             text_rect = text_surface.get_rect()
             text_x = x + (w - text_rect.width) // 2
             text_y = y + (h - text_rect.height) // 2
@@ -566,12 +568,12 @@ class EngineRoomScene:
             
             # Label
             if label:
-                label_surface = self.font.render(label, True, text_color)
+                label_surface = self.font.render(label, self.is_text_antialiased, text_color)
                 surface.blit(label_surface, (x, y - 14))
                 
             # Value percentage
             value_text = f"{value * 100:.0f}%"
-            value_surface = self.font.render(value_text, True, text_color)
+            value_surface = self.font.render(value_text, self.is_text_antialiased, text_color)
             value_rect = value_surface.get_rect()
             value_x = x + w - value_rect.width
             value_y = y - 14

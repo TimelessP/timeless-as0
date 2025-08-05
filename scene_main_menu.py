@@ -17,6 +17,7 @@ BUTTON_FOCUSED_COLOR = (80, 80, 120)
 class MainMenuScene:
     def __init__(self):
         self.font = None
+        self.is_text_antialiased = False
         self.widgets = []
         self.focus_index = 0
         self.game_exists = False  # Set to True when there's a saved/running game
@@ -62,9 +63,10 @@ class MainMenuScene:
             }
         ]
         
-    def set_font(self, font):
+    def set_font(self, font, is_text_antialiased=False):
         """Set the font for rendering text"""
         self.font = font
+        self.is_text_antialiased = is_text_antialiased
         
     def set_game_exists(self, exists: bool):
         """Enable/disable the Resume Game button"""
@@ -170,17 +172,15 @@ class MainMenuScene:
         # Clear background
         surface.fill(BACKGROUND_COLOR)
         
-        # Draw title
+                # Draw title and subtitle
         if self.font:
-            title_text = self.font.render("AIRSHIP ZERO", True, TEXT_COLOR)
-            title_rect = title_text.get_rect()
-            title_x = (LOGICAL_SIZE - title_rect.width) // 2
-            surface.blit(title_text, (title_x, 60))
+            title_text = self.font.render("AIRSHIP ZERO", self.is_text_antialiased, TEXT_COLOR)
+            title_x = (LOGICAL_SIZE - title_text.get_width()) // 2
+            surface.blit(title_text, (title_x, 80))
             
-            subtitle_text = self.font.render("Steam & Copper Dreams", True, (180, 180, 180))
-            subtitle_rect = subtitle_text.get_rect()
-            subtitle_x = (LOGICAL_SIZE - subtitle_rect.width) // 2
-            surface.blit(subtitle_text, (subtitle_x, 80))
+            subtitle_text = self.font.render("Steam & Copper Dreams", self.is_text_antialiased, (180, 180, 180))
+            subtitle_x = (LOGICAL_SIZE - subtitle_text.get_width()) // 2
+            surface.blit(subtitle_text, (subtitle_x, 100))
         
         # Draw widgets
         for widget in self.widgets:
@@ -218,7 +218,7 @@ class MainMenuScene:
         
         # Draw button text
         if self.font and enabled:
-            text_surface = self.font.render(widget["text"], True, text_color)
+            text_surface = self.font.render(widget["text"], self.is_text_antialiased, text_color)
             text_rect = text_surface.get_rect()
             text_x = x + (w - text_rect.width) // 2
             text_y = y + (h - text_rect.height) // 2

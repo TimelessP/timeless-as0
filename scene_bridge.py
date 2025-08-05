@@ -19,6 +19,7 @@ BRIDGE_HEADER_COLOR = (40, 80, 120)  # Blue for bridge scene
 class BridgeScene:
     def __init__(self, simulator):
         self.font = None
+        self.is_text_antialiased = False
         self.widgets = []
         self.focus_index = 0
         self.simulator = simulator
@@ -165,9 +166,10 @@ class BridgeScene:
             }
         ]
         
-    def set_font(self, font):
+    def set_font(self, font, is_text_antialiased=False):
         """Set the font for rendering text"""
         self.font = font
+        self.is_text_antialiased = is_text_antialiased
         
     def handle_event(self, event) -> Optional[str]:
         """
@@ -440,7 +442,7 @@ class BridgeScene:
         
         # Centered title
         if self.font:
-            title_text = self.font.render("BRIDGE", True, TEXT_COLOR)
+            title_text = self.font.render("BRIDGE", self.is_text_antialiased, TEXT_COLOR)
             title_x = (320 - title_text.get_width()) // 2
             surface.blit(title_text, (title_x, 4))
             
@@ -522,7 +524,7 @@ class BridgeScene:
         """Render a label widget"""
         if self.font:
             color = FOCUS_COLOR if widget.get("focused", False) else TEXT_COLOR
-            text_surface = self.font.render(widget["text"], True, color)
+            text_surface = self.font.render(widget["text"], self.is_text_antialiased, color)
             surface.blit(text_surface, widget["position"])
             
     def _render_button(self, surface, widget):
@@ -542,7 +544,7 @@ class BridgeScene:
         
         # Draw text
         if self.font:
-            text_surface = self.font.render(widget["text"], True, text_color)
+            text_surface = self.font.render(widget["text"], self.is_text_antialiased, text_color)
             text_rect = text_surface.get_rect()
             text_x = x + (w - text_rect.width) // 2
             text_y = y + (h - text_rect.height) // 2
@@ -575,7 +577,7 @@ class BridgeScene:
         
         # Draw text
         if self.font:
-            text_surface = self.font.render(widget["text"], True, text_color)
+            text_surface = self.font.render(widget["text"], self.is_text_antialiased, text_color)
             surface.blit(text_surface, (x + 4, y + (h - text_surface.get_height()) // 2))
             
             # Draw cursor if active

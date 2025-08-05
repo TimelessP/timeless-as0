@@ -24,10 +24,14 @@ from core_simulator import get_simulator
 LOGICAL_SIZE = 320
 MIN_WINDOW_SIZE = 640
 DEFAULT_WINDOW_SIZE = 960
+DEFAULT_FONT_SIZE = 13
 
 class AirshipApp:
     def __init__(self):
         pygame.init()
+        
+        # Text rendering configuration
+        self.is_text_antialiased = True
         
         # Initialize window
         self.window_size = (DEFAULT_WINDOW_SIZE, DEFAULT_WINDOW_SIZE)
@@ -56,27 +60,26 @@ class AirshipApp:
         self.clock = pygame.time.Clock()
         
     def _load_font(self):
-        """Load the Pixelify Sans font or fallback"""
+        """Load the font or fallback"""
         try:
-            # Try to load Pixelify Sans from our assets
-            pixelify_paths = [
-                "assets/fonts/Pixelify_Sans/static/PixelifySans-Regular.ttf",
-                "assets/fonts/Pixelify_Sans/PixelifySans-VariableFont_wght.ttf",
-            ]
+            # Try to load Tiny5 from our assets
+            # tiny5_path = "assets/fonts/Tiny5-Regular.ttf"
+            # font_path = "assets/fonts/Pixelify_Sans/PixelifySans-VariableFont_wght"
+            # font_path = "assets/fonts/Roboto_Mono/RobotoMono-VariableFont_wght.ttf"
+            font_path = "assets/fonts/Roboto_Condensed/RobotoCondensed-VariableFont_wght.ttf"
             
-            for path in pixelify_paths:
-                if os.path.exists(path):
-                    print(f"✅ Loading Pixelify Sans from: {path}")
-                    return pygame.font.Font(path, 10)
+            if os.path.exists(font_path):
+                print(f"✅ Loading font from: {font_path}")
+                return pygame.font.Font(font_path, DEFAULT_FONT_SIZE)
                     
             # Fallback - should not happen if fonts are properly installed
-            print("⚠️  Pixelify Sans not found, using fallback")
-            return pygame.font.Font(None, 12)
+            print("⚠️  Font not found, using fallback")
+            return pygame.font.Font(None, DEFAULT_FONT_SIZE)
                 
         except Exception as e:
             print(f"❌ Font loading error: {e}")
             # Ultimate fallback
-            return pygame.font.Font(None, 12)
+            return pygame.font.Font(None, DEFAULT_FONT_SIZE)
             
     def _init_scenes(self):
         """Initialize all scenes"""
@@ -93,7 +96,7 @@ class AirshipApp:
         
         # Set fonts for all scenes
         for scene in self.scenes.values():
-            scene.set_font(self.font)
+            scene.set_font(self.font, self.is_text_antialiased)
             
         # Set current scene
         self.current_scene = self.scenes[self.scene_name]

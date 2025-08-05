@@ -18,6 +18,7 @@ NAV_HEADER_COLOR = (40, 60, 100)  # Blue for navigation scene
 class NavigationScene:
     def __init__(self, simulator):
         self.font = None
+        self.is_text_antialiased = False
         self.widgets = []
         self.focus_index = 0
         self.simulator = simulator
@@ -106,9 +107,10 @@ class NavigationScene:
             }
         ]
         
-    def set_font(self, font):
+    def set_font(self, font, is_text_antialiased=False):
         """Set the font for rendering text"""
         self.font = font
+        self.is_text_antialiased = is_text_antialiased
         
     def _load_world_map(self):
         """Load the world map image"""
@@ -366,7 +368,7 @@ class NavigationScene:
         
         # Centered title
         if self.font:
-            title_text = self.font.render("NAVIGATION", True, TEXT_COLOR)
+            title_text = self.font.render("NAVIGATION", self.is_text_antialiased, TEXT_COLOR)
             title_x = (320 - title_text.get_width()) // 2
             surface.blit(title_text, (title_x, 4))
         
@@ -452,7 +454,7 @@ class NavigationScene:
         """Render a label widget"""
         if self.font:
             color = FOCUS_COLOR if widget.get("focused", False) else TEXT_COLOR
-            text_surface = self.font.render(widget["text"], True, color)
+            text_surface = self.font.render(widget["text"], self.is_text_antialiased, color)
             surface.blit(text_surface, widget["position"])
             
     def _render_button(self, surface, widget):
@@ -472,7 +474,7 @@ class NavigationScene:
         
         # Draw text
         if self.font:
-            text_surface = self.font.render(widget["text"], True, text_color)
+            text_surface = self.font.render(widget["text"], self.is_text_antialiased, text_color)
             text_rect = text_surface.get_rect()
             text_x = x + (w - text_rect.width) // 2
             text_y = y + (h - text_rect.height) // 2
