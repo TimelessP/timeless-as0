@@ -281,6 +281,7 @@ class CoreSimulator:
         self.game_state["gameInfo"]["totalFlightTime"] += sim_dt
         
         # Update all systems
+        self._update_fuel_system(sim_dt)
         self._update_engine(sim_dt)
         self._update_navigation(sim_dt)
         self._update_fuel_system(sim_dt)
@@ -291,43 +292,99 @@ class CoreSimulator:
     def _update_engine(self, dt: float):
         """Update engine simulation"""
         engine = self.game_state["engine"]
+        fuel = self.game_state["fuel"]
         
         if not engine["running"]:
             # Engine is off - RPM decays
             engine["rpm"] = max(0, engine["rpm"] - 500 * dt)
             engine["manifoldPressure"] = 14.7  # Atmospheric pressure
             engine["fuelFlow"] = 0.0
+            engine["fuelPressure"] = 0.0
             return
             
-        # Engine is running - simulate performance
+        # Check fuel availability and pressure
+        fuel_available = not fuel.get("engineFeedCut", False)
+        total_fuel = fuel.get("currentLevel", 0.0)
+        
+        # Calculate fuel pressure based on fuel availability and tank levels
+        if fuel_available and total_fuel > 0.1:
+            # Normal fuel pressure when tanks are feeding
+            base_fuel_pressure = 22.0
+            # Reduce pressure if fuel is very low
+            if total_fuel < 20.0:
+                pressure_factor = total_fuel / 20.0  # Gradual pressure drop
+                engine["fuelPressure"] = base_fuel_pressure * pressure_factor
+            else:
+                engine["fuelPressure"] = base_fuel_pressure
+        else:
+            # No fuel pressure when tanks not feeding or empty
+            engine["fuelPressure"] = max(0.0, engine["fuelPressure"] - 50.0 * dt)
+        
+        # Engine is running - simulate performance based on fuel availability
         controls = engine["controls"]
         
-        # Calculate target RPM based on throttle and prop settings
+        # Calculate target RPM based on throttle, prop settings, and fuel availability
         max_rpm = 2800.0
-        target_rpm = controls["throttle"] * max_rpm * controls["propeller"]
+        base_target_rpm = controls["throttle"] * max_rpm * controls["propeller"]
         
-        # RPM response (gradual change)
+        # Reduce target RPM if fuel pressure is low or fuel is cut
+        fuel_factor = 1.0
+        if engine["fuelPressure"] < 10.0:
+            fuel_factor = engine["fuelPressure"] / 10.0  # Severe power loss below 10 PSI
+        elif not fuel_available:
+            fuel_factor = 0.0  # Complete power loss when fuel cut
+            
+        target_rpm = base_target_rpm * fuel_factor
+        
+        # RPM response (gradual change, faster decay when fuel-starved)
         rpm_diff = target_rpm - engine["rpm"]
-        engine["rpm"] += rpm_diff * 2.0 * dt  # 2 second time constant
+        if fuel_factor < 1.0:
+            # Faster RPM decay when fuel-starved
+            rpm_rate = 5.0 if rpm_diff < 0 else 2.0
+        else:
+            rpm_rate = 2.0  # Normal response rate
+        engine["rpm"] += rpm_diff * rpm_rate * dt
+        engine["rpm"] = max(0.0, engine["rpm"])  # Ensure non-negative RPM
         
-        # Manifold pressure correlates with throttle
-        engine["manifoldPressure"] = 14.7 + (controls["throttle"] * 15.0)
+        # Automatically shut down engine if RPM drops to zero
+        if engine["rpm"] <= 0.0:
+            engine["running"] = False
         
-        # Fuel flow based on throttle and mixture
-        base_flow = controls["throttle"] * 18.0  # Max ~18 GPH
-        mixture_efficiency = 0.7 + (controls["mixture"] * 0.3)  # 70-100% efficiency
-        engine["fuelFlow"] = base_flow * mixture_efficiency
+        # Manifold pressure correlates with throttle and fuel availability
+        base_manifold = 14.7 + (controls["throttle"] * 15.0)
+        engine["manifoldPressure"] = base_manifold * fuel_factor
         
-        # Temperature simulation (simplified)
+        # Fuel flow based on throttle, mixture, and actual engine performance
+        if fuel_available and engine["fuelPressure"] > 5.0:
+            base_flow = controls["throttle"] * 18.0  # Max ~18 GPH
+            mixture_efficiency = 0.7 + (controls["mixture"] * 0.3)  # 70-100% efficiency
+            # Reduce flow if fuel pressure is low
+            pressure_factor = min(1.0, engine["fuelPressure"] / 22.0)
+            # Also factor in actual RPM vs target (engine under stress uses more fuel)
+            rpm_factor = engine["rpm"] / max(1.0, target_rpm) if target_rpm > 0 else 0.0
+            engine["fuelFlow"] = base_flow * mixture_efficiency * pressure_factor * rpm_factor
+        else:
+            # No fuel flow when fuel cut or very low pressure
+            engine["fuelFlow"] = max(0.0, engine["fuelFlow"] - 25.0 * dt)
+        
+        # Temperature simulation (affected by fuel availability and engine load)
         ambient_temp = self.game_state["environment"]["weather"]["temperature"]
-        load_factor = controls["throttle"]
+        load_factor = controls["throttle"] * fuel_factor
         
-        target_oil_temp = ambient_temp + 100 + (load_factor * 80)  # °F
-        target_cht = ambient_temp + 180 + (load_factor * 140)     # °F
-        target_egt = 800 + (load_factor * 650)                   # °F
+        # Temperatures drop when engine is fuel-starved or not running properly
+        if fuel_factor < 0.5 or engine["rpm"] < 1000:
+            # Engine cooling down due to fuel starvation or low RPM
+            target_oil_temp = ambient_temp + 50 + (load_factor * 40)
+            target_cht = ambient_temp + 100 + (load_factor * 80)
+            target_egt = 400 + (load_factor * 400)
+        else:
+            # Normal operating temperatures
+            target_oil_temp = ambient_temp + 100 + (load_factor * 80)  # °F
+            target_cht = ambient_temp + 180 + (load_factor * 140)     # °F
+            target_egt = 800 + (load_factor * 650)                   # °F
         
-        # Gradual temperature changes
-        temp_rate = 10.0 * dt  # 10 degrees per second max change
+        # Gradual temperature changes (faster cooling when fuel-starved)
+        temp_rate = 15.0 * dt if fuel_factor < 0.5 else 10.0 * dt
         engine["oilTemperature"] += self._approach_value(
             engine["oilTemperature"], target_oil_temp, temp_rate
         )
@@ -338,8 +395,14 @@ class CoreSimulator:
             engine["exhaustGasTemp"], target_egt, temp_rate * 2
         )
         
-        # Oil pressure correlates with RPM
-        engine["oilPressure"] = 20 + (engine["rpm"] / 2800.0) * 55
+        # Oil pressure correlates with RPM and engine health
+        base_oil_pressure = 20 + (engine["rpm"] / 2800.0) * 55
+        # Reduce oil pressure if engine is struggling
+        if fuel_factor < 0.8:
+            oil_pressure_factor = 0.5 + (fuel_factor * 0.5)  # 50-100% oil pressure
+            engine["oilPressure"] = base_oil_pressure * oil_pressure_factor
+        else:
+            engine["oilPressure"] = base_oil_pressure
         
     def _update_navigation(self, dt: float):
         """Update navigation and flight dynamics"""
@@ -364,17 +427,67 @@ class CoreSimulator:
         position["heading"] += motion["rateOfTurn"] * dt
         position["heading"] = position["heading"] % 360
         
-        # Thrust from engine (simplified)
+        # Realistic thrust calculation based on actual engine performance
         if engine["running"]:
-            thrust_factor = engine["controls"]["throttle"]
-            base_airspeed = 85.0
-            target_airspeed = base_airspeed * (0.3 + thrust_factor * 0.7)
-        else:
-            target_airspeed = motion["indicatedAirspeed"] * 0.95  # Gradual decrease
+            # Calculate thrust based on actual engine RPM and propeller efficiency
+            max_rpm = 2800.0
+            current_rpm = engine["rpm"]
+            rpm_factor = current_rpm / max_rpm
             
-        # Airspeed changes
+            # Propeller efficiency based on RPM and feathering
+            if engine.get("propellerFeathered", False):
+                prop_efficiency = 0.1  # Feathered prop provides minimal thrust
+            else:
+                # Propeller efficiency curve (peak around 75% RPM)
+                if rpm_factor < 0.2:
+                    prop_efficiency = rpm_factor * 2.0  # Poor efficiency at very low RPM
+                elif rpm_factor < 0.75:
+                    prop_efficiency = 0.4 + (rpm_factor - 0.2) * 1.1  # Rising efficiency
+                else:
+                    prop_efficiency = 1.0 - (rpm_factor - 0.75) * 0.4  # Declining past peak
+                
+            # Base thrust from throttle setting and RPM
+            throttle_setting = engine["controls"]["throttle"]
+            base_thrust = throttle_setting * rpm_factor * prop_efficiency
+            
+            # Further reduce thrust if fuel flow is insufficient
+            expected_fuel_flow = throttle_setting * 18.0 * 0.85  # Expected flow at mixture
+            actual_fuel_flow = engine["fuelFlow"]
+            fuel_flow_factor = min(1.0, actual_fuel_flow / max(0.1, expected_fuel_flow))
+            
+            # Final thrust factor combining all effects
+            thrust_factor = base_thrust * fuel_flow_factor
+            
+            # Calculate target airspeed based on thrust
+            base_airspeed = 85.0  # Cruise airspeed at full power
+            min_airspeed = 15.0   # Minimum flying speed (stall region)
+            target_airspeed = min_airspeed + (base_airspeed - min_airspeed) * thrust_factor
+            
+        else:
+            # Engine off - aircraft becomes a glider with significant drag
+            # Apply continuous deceleration due to drag until the aircraft stops
+            current_speed = motion["indicatedAirspeed"]
+            if current_speed > 0.5:  # Above minimum threshold
+                # Exponential decay with a lower bound that allows reaching zero
+                target_airspeed = max(0.0, current_speed * 0.92 - 0.1)  # Subtract constant to reach zero
+            else:
+                # Below threshold - stop completely
+                target_airspeed = 0.0
+            
+        # Airspeed changes with realistic acceleration/deceleration rates
         airspeed_diff = target_airspeed - motion["indicatedAirspeed"]
-        motion["indicatedAirspeed"] += airspeed_diff * 1.0 * dt
+        
+        # Different response rates for acceleration vs deceleration
+        if airspeed_diff > 0:
+            # Acceleration - slower, depends on available thrust
+            accel_rate = 0.8 * dt if engine["running"] else 0.1 * dt
+        else:
+            # Deceleration - faster due to drag
+            decel_rate = 1.5 * dt
+            accel_rate = decel_rate
+            
+        motion["indicatedAirspeed"] += airspeed_diff * accel_rate
+        motion["indicatedAirspeed"] = max(0.0, motion["indicatedAirspeed"])  # Prevent negative airspeed
         
         # True airspeed (simplified - just add a bit for altitude/temp)
         motion["trueAirspeed"] = motion["indicatedAirspeed"] * 1.02
