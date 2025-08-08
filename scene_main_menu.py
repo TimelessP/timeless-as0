@@ -34,7 +34,7 @@ class MainMenuScene:
                 "position": [80, 120],
                 "size": [160, 24],
                 "text": "New Game",
-                "focused": True
+                "focused": not self.game_exists  # Focus on new game only if no saved game
             },
             {
                 "id": "resume_game",
@@ -42,7 +42,7 @@ class MainMenuScene:
                 "position": [80, 150],
                 "size": [160, 24],
                 "text": "Resume Game",
-                "focused": False,
+                "focused": self.game_exists,  # Focus on resume if saved game exists
                 "enabled": self.game_exists
             },
             {
@@ -63,17 +63,23 @@ class MainMenuScene:
             }
         ]
         
+        # Set focus index based on which button is focused
+        for i, widget in enumerate(self.widgets):
+            if widget.get("focused", False):
+                self.focus_index = i
+                break
+        
     def set_font(self, font, is_text_antialiased=False):
         """Set the font for rendering text"""
         self.font = font
         self.is_text_antialiased = is_text_antialiased
         
     def set_game_exists(self, exists: bool):
-        """Enable/disable the Resume Game button"""
+        """Enable/disable the Resume Game button and update focus"""
         self.game_exists = exists
-        for widget in self.widgets:
-            if widget["id"] == "resume_game":
-                widget["enabled"] = exists
+        
+        # Re-initialize widgets to update focus based on new game existence status
+        self._init_widgets()
                 
     def handle_event(self, event) -> Optional[str]:
         """
