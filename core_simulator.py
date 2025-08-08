@@ -340,29 +340,38 @@ class CoreSimulator:
             mixture_power_factor = 0.8 - (mixture_deviation - 0.15) * 1.5  # Steeper falloff
         mixture_power_factor = max(0.3, mixture_power_factor)  # Minimum 30% power
         
-        # Calculate target RPM based on throttle, prop settings, mixture, and fuel availability
+
+        # Calculate target RPM based on throttle, mixture, and fuel availability
         max_rpm = 2800.0
-        base_target_rpm = controls["throttle"] * max_rpm * controls["propeller"] * mixture_power_factor
-        
-        # Reduce target RPM if fuel pressure is low or fuel is cut
+        # Prop pitch acts as a load: low pitch = low load, high pitch = high load
+        # At low pitch, engine can reach max RPM; at high pitch, RPM may drop if engine can't overcome load
+        # We'll model load as: load_factor = 0.5 + prop_pitch * 0.5 (0.5 at flat, 1.0 at max pitch)
+        prop_pitch = controls["propeller"]
+        load_factor = 0.5 + prop_pitch * 0.5
+        # Engine can reach max RPM at low load, but at high load, only a fraction
+        base_target_rpm = controls["throttle"] * max_rpm * mixture_power_factor
+        achievable_rpm = base_target_rpm / load_factor
+
+        # Reduce achievable RPM if fuel pressure is low or fuel is cut
         fuel_factor = 1.0
         if engine["fuelPressure"] < 10.0:
             fuel_factor = engine["fuelPressure"] / 10.0  # Severe power loss below 10 PSI
         elif not fuel_available:
             fuel_factor = 0.0  # Complete power loss when fuel cut
-            
-        target_rpm = base_target_rpm * fuel_factor
-        
+
+        target_rpm = achievable_rpm * fuel_factor
+
         # RPM response (gradual change, faster decay when fuel-starved)
         rpm_diff = target_rpm - engine["rpm"]
         if fuel_factor < 1.0:
             # Faster RPM decay when fuel-starved
             rpm_rate = 5.0 if rpm_diff < 0 else 2.0
         else:
-            rpm_rate = 2.0  # Normal response rate
+            # Slightly slower response at high load
+            rpm_rate = 2.0 / load_factor
         engine["rpm"] += rpm_diff * rpm_rate * dt
         engine["rpm"] = max(0.0, engine["rpm"])  # Ensure non-negative RPM
-        
+
         # Automatically shut down engine if RPM drops to zero
         if engine["rpm"] <= 0.0:
             engine["running"] = False
