@@ -24,9 +24,12 @@ class NavigationScene:
         self.simulator = simulator
         self.world_map = None
         self.map_surface = None
-        self.zoom_level = 1.0
-        self.map_offset_x = 0
-        self.map_offset_y = 0
+        
+        # Load persistent zoom and pan settings from simulator
+        nav_view = self.simulator.get_navigation_view()
+        self.zoom_level = nav_view["zoomLevel"]
+        self.map_offset_x = nav_view["offsetX"]
+        self.map_offset_y = nav_view["offsetY"]
         
         # Mouse dragging state
         self.is_dragging = False
@@ -208,12 +211,16 @@ class NavigationScene:
             # Arrow keys for map panning
             elif event.key == pygame.K_LEFT:
                 self.map_offset_x -= 20 / self.zoom_level
+                self._save_view_settings()
             elif event.key == pygame.K_RIGHT:
                 self.map_offset_x += 20 / self.zoom_level
+                self._save_view_settings()
             elif event.key == pygame.K_UP:
                 self.map_offset_y -= 20 / self.zoom_level
+                self._save_view_settings()
             elif event.key == pygame.K_DOWN:
                 self.map_offset_y += 20 / self.zoom_level
+                self._save_view_settings()
                 
         elif event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1:  # Left click
@@ -236,6 +243,9 @@ class NavigationScene:
                         
         elif event.type == pygame.MOUSEBUTTONUP:
             if event.button == 1:  # Left click release
+                if self.is_dragging:
+                    # Save settings after dragging is complete
+                    self._save_view_settings()
                 self.is_dragging = False
                 self.drag_start_pos = None
                 self.drag_start_offset = None
@@ -251,7 +261,7 @@ class NavigationScene:
                 map_dx = dx / self.zoom_level
                 map_dy = dy / self.zoom_level
                 
-                # Update map offset
+                # Update map offset (don't save during drag for performance)
                 self.map_offset_x = self.drag_start_offset[0] - map_dx
                 self.map_offset_y = self.drag_start_offset[1] - map_dy
                     
@@ -260,15 +270,22 @@ class NavigationScene:
     def _zoom_in(self):
         """Zoom in on the map"""
         self.zoom_level = min(4.0, self.zoom_level * 1.5)
+        self._save_view_settings()
         
     def _zoom_out(self):
         """Zoom out on the map"""
         self.zoom_level = max(0.25, self.zoom_level / 1.5)
+        self._save_view_settings()
         
     def _center_on_position(self):
         """Center the map on current position"""
         self.map_offset_x = 0
         self.map_offset_y = 0
+        self._save_view_settings()
+        
+    def _save_view_settings(self):
+        """Save current zoom and pan settings to simulator"""
+        self.simulator.set_navigation_view(self.zoom_level, self.map_offset_x, self.map_offset_y)
         
     def _get_widget_at_pos(self, pos) -> Optional[int]:
         """Get widget index at logical position"""

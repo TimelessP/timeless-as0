@@ -75,6 +75,11 @@ class CoreSimulator:
                     "waypoints": [],
                     "currentWaypoint": 0,
                     "crossTrackError": 0.0
+                },
+                "mapView": {
+                    "zoomLevel": 1.0,
+                    "offsetX": 0.0,
+                    "offsetY": 0.0
                 }
             },
             "engine": {
@@ -1036,6 +1041,39 @@ class CoreSimulator:
             else:
                 # Manual mode - autopilot disengaged
                 autopilot["engaged"] = False
+
+    def set_navigation_view(self, zoom_level: float, offset_x: float, offset_y: float):
+        """Set navigation map view settings (zoom and pan)"""
+        nav = self.game_state["navigation"]
+        
+        # Initialize mapView if it doesn't exist (for backwards compatibility with old saves)
+        if "mapView" not in nav:
+            nav["mapView"] = {
+                "zoomLevel": 1.0,
+                "offsetX": 0.0,
+                "offsetY": 0.0
+            }
+            
+        map_view = nav["mapView"]
+        
+        # Clamp zoom level to reasonable bounds
+        map_view["zoomLevel"] = max(0.25, min(4.0, zoom_level))
+        map_view["offsetX"] = offset_x
+        map_view["offsetY"] = offset_y
+        
+    def get_navigation_view(self) -> Dict[str, float]:
+        """Get current navigation map view settings"""
+        nav = self.game_state["navigation"]
+        
+        # Initialize mapView if it doesn't exist (for backwards compatibility with old saves)
+        if "mapView" not in nav:
+            nav["mapView"] = {
+                "zoomLevel": 1.0,
+                "offsetX": 0.0,
+                "offsetY": 0.0
+            }
+            
+        return nav["mapView"].copy()
 
 
 # Global simulator instance
