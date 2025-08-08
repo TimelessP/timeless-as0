@@ -47,18 +47,18 @@ class FuelScene:
             "nav_next": {"position": [252, 290], "size": [60, 24]},
             
             # Feed toggle buttons
-            "feed_forward": {"position": [20, 32], "size": [80, 16]},
-            "feed_aft": {"position": [220, 32], "size": [80, 16]},
+            "feed_forward": {"position": [20, 32], "size": [80, 24]},
+            "feed_aft": {"position": [220, 32], "size": [80, 24]},
             
             # Fuel tanks (visual elements)
-            "tank_forward": {"position": [55, 56], "size": [50, 80]},
-            "tank_aft": {"position": [215, 56], "size": [50, 80]},
+            "tank_forward": {"position": [55, 72], "size": [50, 80]},
+            "tank_aft": {"position": [215, 72], "size": [50, 80]},
             
             # Control sliders
-            "transfer_forward": {"position": [44, 164], "size": [28, 50]},
-            "dump_forward": {"position": [88, 164], "size": [28, 50]},
-            "transfer_aft": {"position": [248, 164], "size": [28, 50]},
-            "dump_aft": {"position": [204, 164], "size": [28, 50]},
+            "transfer_forward": {"position": [44, 196], "size": [28, 50]},
+            "dump_forward": {"position": [88, 196], "size": [28, 50]},
+            "transfer_aft": {"position": [248, 196], "size": [28, 50]},
+            "dump_aft": {"position": [204, 196], "size": [28, 50]},
         }
         
         # Initialize widgets with hard-coded layout
