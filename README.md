@@ -1,32 +1,68 @@
 # 🎈 Airship Zero - Steam & Copper Dreams
 
-> **A retro-inspired airship simulation game with brutally simple 320x320 pixel UI**
+> **A comprehensive airship simulation with realistic physics, professional documentation, and brutally simple 320x320 pixel UI**
 
 ## Overview
 
-Airship Zero is a steampunk-aesthetic flight simulator built with Python and Pygame. The game features a fixed 320x320 logical resolution that scales beautifully to any window size while maintaining crisp, pixel-perfect rendering.
+Airship Zero is a steampunk-aesthetic flight simulator built with Python and Pygame featuring realistic atmospheric physics, comprehensive systems simulation, and a complete operational manual suite. The game maintains a fixed 320x320 logical resolution that scales beautifully to any window size while delivering pixel-perfect rendering and professional-grade simulation depth.
 
 ## Features
 
-### ✅ **Currently Implemented**
-- 🎮 **Complete Scene System** - Main menu, bridge, engine room, navigation
-- 🗺️ **Interactive Navigation** - Zoomable world map with click/drag panning and mousewheel zoom
-- ⚡ **Real-time Engine Simulation** - Boiler pressure, temperature, fuel management
-- 💾 **Auto-Save System** - Game saves automatically when returning to menu or exiting
-- 🎯 **Tab-based Focus** - Consistent UI navigation across all scenes
-- 🎨 **Retro Aesthetics** - Pixelify Sans font, steampunk color palette, pixel-perfect scaling
+### ✅ **Fully Implemented Systems**
 
-### 🛩️ **Flight Systems**
-- **Navigation Display** - Real-time position, heading, and speed indicators
-- **Engine Monitoring** - Throttle control, boiler management, system diagnostics  
-- **World Map** - Interactive navigation with zoom levels from 0.25x to 4.0x
-- **Centralized Simulator** - Single source of truth for all game state
+#### 🛩️ **Realistic Flight Physics**
+- **Atmospheric Modeling** - Realistic air density effects with altitude
+- **Engine Performance** - Power loss (~3% per 1000 ft), mixture optimization
+- **Propeller Dynamics** - Pitch-dependent efficiency, altitude compensation
+- **True Airspeed** - Proper IAS/TAS calculations with atmospheric correction
+- **Smooth Autopilot** - Multi-phase altitude control with realistic climb/descent rates
 
-### 🎛️ **User Interface**
+#### 🎮 **Complete Scene System**
+- **Bridge** - Primary flight controls with attitude indicator and autopilot
+- **Engine Room** - Comprehensive engine monitoring and control
+- **Navigation** - Interactive world map with position tracking
+- **Fuel Management** - Dual-tank system with transfer and emergency dump
+- **Additional Scenes** - Cargo, Communications, Crew, Camera, Missions
+
+#### ⚙️ **Advanced Engine Simulation**
+- **Realistic Parameters** - RPM, manifold pressure, temperatures, fuel flow
+- **Altitude Effects** - Proper atmospheric pressure and density modeling
+- **Mixture Control** - Altitude-dependent optimal mixture calculation
+- **Propeller Load** - Variable pitch effects on engine performance
+- **Fuel System** - Pressure-sensitive performance, starvation modeling
+
+#### 🗺️ **Professional Navigation**
+- **World Map** - High-resolution 640x320 interactive display
+- **Position Tracking** - Real-time GPS-style coordinate display
+- **Zoom Control** - 0.25x to 4.0x with smooth mouse/keyboard operation
+- **Autopilot Integration** - Heading hold, altitude hold, route following
+- **Manual Controls** - Precise rudder input with visual feedback
+
+#### ⛽ **Comprehensive Fuel Management**
+- **Dual-Tank System** - 180-gallon forward/aft tanks (360 total capacity)
+- **Independent Feed Control** - Per-tank engine feed switches
+- **Inter-Tank Transfer** - Real-time fuel balancing for optimal CG
+- **Emergency Dump** - Overboard fuel jettison with safety controls
+- **Weight & Balance** - Visual pitch effects and CG management
+
+#### 💾 **Advanced Save System**
+- **Auto-Save** - Automatic save on menu return and application exit
+- **Complete State** - Full game state persistence with format validation
+- **Resume Capability** - Seamless game continuation with all systems intact
+- **Single Slot** - Simplified save management in `saved_game.json`
+
+#### 📚 **Professional Documentation**
+- **Complete User Manuals** - Bridge, Engine Room, Navigation, Fuel Management
+- **Operational Procedures** - Step-by-step flight operations guide
+- **Emergency Procedures** - Comprehensive emergency response protocols
+- **Technical Reference** - Detailed system specifications and limits
+
+### 🎛️ **User Interface Excellence**
 - **Fixed Logical Resolution** - Everything designed for 320x320, then scaled
-- **Anti-aliased Fonts** - Crisp text rendering with pixel-perfect final scaling
-- **Mouse & Keyboard Support** - Click, drag, zoom, and keyboard shortcuts
-- **Scene-based Architecture** - Clean separation between game areas
+- **Pixel-Perfect Rendering** - Anti-aliased fonts with nearest-neighbor scaling
+- **Professional HMI** - Aviation-grade interface design and layout
+- **Consistent Navigation** - Tab-based focus system across all scenes
+- **Mouse & Keyboard** - Full input support with keyboard shortcuts
 ## Quick Start
 
 ### Requirements
@@ -60,110 +96,314 @@ uv run python main.py
 
 ## Controls
 
-### Universal
-- **Tab / Shift+Tab** - Cycle through UI widgets
+### Universal Navigation
+- **Tab / Shift+Tab** - Cycle through UI widgets in all scenes
 - **Enter / Space** - Activate focused widget
-- **Escape** - Return to main menu (auto-saves)
+- **Escape** - Return to main menu (auto-saves game state)
+- **[ / ]** - Navigate between scenes (circular order)
 
-### Navigation Scene
-- **Arrow Keys** - Pan the map
-- **+/-** - Zoom in/out
-- **Mouse Wheel** - Zoom in/out
-- **Click & Drag** - Pan the map
-- **C** - Center on current position
+### Bridge Scene (Primary Flight Controls)
+- **← / →** - Manual rudder control (manual mode only)
+- **+ / -** - Adjust target altitude (40-foot increments)
+- **Mouse Click** - Activate widgets, drag altitude slider
+- **Text Input** - Enter target heading in heading textbox
+
+### Navigation Scene (World Map)
+- **Arrow Keys** - Pan the map in 20-pixel increments
+- **+ / -** - Zoom in/out (0.25x to 4.0x range)
+- **Mouse Wheel** - Smooth zoom control
+- **Click & Drag** - Intuitive map panning
+- **C** - Center view on current airship position
+
+### Engine Room Scene
+- **Mouse Click** - Adjust throttle, mixture, propeller sliders
+- **Keyboard** - Fine-tune controls with keyboard shortcuts
+- **Real-time** - All changes immediately affect flight performance
+
+### Fuel Management Scene
+- **Mouse Click** - Toggle feed switches, adjust transfer/dump rates
+- **Vertical Sliders** - Precise fuel transfer and dump control
+- **Real-time** - Live fuel quantity updates and weight/balance effects
 
 ## Game Systems
 
-### Save System
-- **Auto-save** when returning to main menu
-- **Auto-save** on application exit
-- **Resume Game** button appears when save file exists
-- Single save slot in `saved_game.json`
+### Realistic Flight Physics
 
-### Navigation
-- **World Map** - 640x320 pixel world view
-- **Position Tracking** - Real-time lat/lon display
-- **Zoom Levels** - 0.25x to 4.0x magnification
-- **Click & Drag** - Intuitive map exploration
-- **Position Indicator** - Red marker with heading arrow
+#### Atmospheric Modeling
+- **Altitude Effects** - Exponential air density decrease with altitude
+- **Engine Performance** - ~3% power loss per 1000 feet of altitude
+- **Propeller Efficiency** - Altitude-compensated prop performance
+- **True Airspeed** - Proper IAS to TAS conversion based on air density
 
-### Engine Room
-- **Boiler Management** - Pressure and temperature monitoring
-- **Throttle Control** - Engine power adjustment
-- **System Diagnostics** - Real-time status displays
+#### Advanced Engine Simulation
+- **Mixture Optimization** - Altitude-dependent optimal mixture settings
+- **RPM Response** - Realistic engine acceleration/deceleration
+- **Temperature Modeling** - CHT, EGT, oil temperature simulation
+- **Fuel Pressure** - Pressure-sensitive engine performance
+- **Propeller Load** - Variable pitch effects on engine RPM and power
+
+#### Smooth Autopilot System
+- **Multi-Phase Altitude Control** - 150/80/30/10 ft/min rates with easing
+- **Precision Approach** - Smooth approach to target altitude within 1 foot
+- **Heading Hold** - Discrete 2° rudder adjustments every 0.5 seconds
+- **Manual Override** - Instant disengagement for emergency control
+
+### Comprehensive Fuel System
+- **Dual Tanks** - 180-gallon forward and aft tanks (360 total capacity)
+- **Independent Feeds** - Per-tank engine feed control
+- **Real-time Transfer** - Inter-tank fuel movement for weight/balance
+- **Emergency Dump** - Overboard fuel jettison with safety protocols
+- **CG Management** - Visual pitch effects from fuel distribution
+
+### Professional Save System
+- **Complete State Persistence** - All flight parameters, fuel levels, system states
+- **Auto-Save Triggers** - Menu return, application exit, scene transitions
+- **Format Validation** - Automatic checking for save file integrity
+- **Seamless Resume** - Perfect game state restoration with all systems active
+
+## Documentation
+
+### Professional User Manuals
+
+The game includes comprehensive operational manuals for all major systems:
+
+#### 📖 **Bridge Operations Manual** (`assets/books/user-manual-bridge.md`)
+- **Flight Instruments** - Altitude, airspeed, heading displays and interpretation
+- **Engine Monitoring** - RPM, manifold pressure, fuel flow analysis
+- **System Status** - Battery, fuel feed, autopilot operational states
+- **Flight Controls** - Manual rudder control and autopilot integration
+- **Altitude Management** - Smooth altitude control with realistic climb/descent
+- **Emergency Procedures** - Engine failure, fuel starvation, electrical failure
+- **Professional Techniques** - Realistic flight operations and best practices
+
+#### 🔧 **Engine Room Manual** (`assets/books/user-manual-engine-room.md`)
+- **Engine Controls** - Throttle, mixture, propeller pitch optimization
+- **Performance Monitoring** - Temperature, pressure, fuel system analysis
+- **Altitude Effects** - Engine performance degradation and compensation
+- **Mixture Management** - Optimal settings for different flight conditions
+- **Electrical Systems** - Battery, alternator, and load management
+- **Maintenance Procedures** - System checks and troubleshooting
+- **Emergency Operations** - Engine failure response and restart procedures
+
+#### 🗺️ **Navigation Manual** (`assets/books/user-manual-navigation.md`)
+- **World Map Operations** - Interactive map control and position tracking
+- **Navigation Techniques** - Visual navigation, dead reckoning, route planning
+- **Position Information** - GPS-style coordinate display and interpretation
+- **Map Controls** - Zoom, pan, centering operations and shortcuts
+- **Professional Navigation** - Wind effects, course planning, emergency navigation
+- **Interface Reference** - Complete keyboard and mouse control guide
+
+#### ⛽ **Fuel Management Manual** (`assets/books/user-manual-fuel.md`)
+- **Dual-Tank System** - Forward/aft tank configuration and operation
+- **Feed Controls** - Engine feed management and selection strategies
+- **Transfer Operations** - Inter-tank fuel movement for weight and balance
+- **Emergency Procedures** - Fuel dumping, leak response, contamination handling
+- **Weight & Balance** - CG management through fuel distribution
+- **Consumption Planning** - Range calculation and fuel management strategy
+
+### Technical Documentation
+- **Development Guidelines** - Complete development standards in `.github/copilot-instructions.md`
+- **Architecture Overview** - Scene system, simulator integration, widget patterns
+- **API Reference** - Core simulator methods and state management
+- **Code Standards** - Consistent coding patterns and best practices
 
 ## Architecture
 
 ### Design Principles
+- **Realistic Simulation** - Authentic atmospheric physics and flight dynamics
+- **Professional Interface** - Aviation-grade HMI design and operational procedures
 - **Fixed Logical Resolution** - Everything designed for 320x320 pixels, then scaled
-- **Scene-Based Architecture** - Each major area is a separate, self-contained scene
-- **Centralized Simulation** - Single `core_simulator.py` manages all game state
-- **Anti-aliasing on Fonts** - Crisp text rendering, pixel-perfect final scaling
-- **Retro Aesthetics** - Pixelify Sans font, steampunk color palette
+- **Scene-Based Architecture** - Each major area is self-contained with clear responsibilities
+- **Centralized Simulation** - Single `core_simulator.py` manages all physics and state
+- **Comprehensive Documentation** - Professional operational manuals for all systems
+- **Pixel-Perfect Rendering** - Anti-aliased fonts with nearest-neighbor final scaling
 
 ### File Structure
 ```
 /
 ├── main.py                 # Application entry point and scene management
-├── core_simulator.py       # Centralized game state and physics simulation  
-├── scene_main_menu.py      # Main menu and game start
-├── scene_bridge.py         # Primary flight interface
-├── scene_engine_room.py    # Engine controls and monitoring
-├── scene_navigation.py     # World map and navigation
+├── core_simulator.py       # Centralized physics simulation with realistic modeling
+├── scene_bridge.py         # Primary flight interface with autopilot
+├── scene_engine_room.py    # Engine controls and performance monitoring
+├── scene_navigation.py     # Interactive world map with position tracking
+├── scene_fuel.py          # Dual-tank fuel management system
+├── scene_*.py             # Additional operational scenes
 ├── assets/
-│   ├── fonts/              # Pixelify Sans font files
-│   └── png/                # World map and other images
+│   ├── fonts/              # Pixelify Sans and alternative fonts
+│   ├── png/               # World map and graphical assets
+│   └── books/             # Complete user manual library
+│       ├── user-manual-bridge.md
+│       ├── user-manual-engine-room.md
+│       ├── user-manual-navigation.md
+│       └── user-manual-fuel.md
 ├── pyproject.toml         # UV project configuration
 ├── uv.lock               # Locked dependencies
 └── run.sh                # Quick launch script
 ```
 
+### Core Systems
+
+#### Simulation Engine (`core_simulator.py`)
+- **Atmospheric Physics** - Realistic air density modeling with altitude
+- **Engine Performance** - Multi-parameter engine simulation with altitude effects
+- **Flight Dynamics** - True airspeed calculation, autopilot control
+- **Fuel System** - Dual-tank management with transfer and dump capabilities
+- **State Management** - Complete game state persistence and restoration
+
+#### Scene System
+- **Bridge Scene** - Flight control with attitude indicator and smooth autopilot
+- **Engine Room** - Comprehensive engine monitoring and control
+- **Navigation Scene** - Interactive world map with zoom and position tracking
+- **Fuel Scene** - Professional fuel management with weight/balance control
+- **Extensible Design** - Easy addition of new scenes and capabilities
+
 ## Development
 
+### Getting Started
+The project uses modern Python tooling with UV package manager for dependency management and virtual environment handling.
+
 ### Adding New Features
-See `.github/copilot-instructions.md` for detailed development guidelines including:
-- Widget system patterns
-- Scene transition handling
-- Simulator integration
-- Code style standards
+See `.github/copilot-instructions.md` for comprehensive development guidelines including:
+- **Widget System Patterns** - Consistent UI component implementation
+- **Scene Transition Handling** - Proper scene navigation and state management
+- **Simulator Integration** - How to interact with the central physics simulation
+- **Physics Modeling** - Adding realistic atmospheric and flight effects
+- **Documentation Standards** - Professional manual writing and technical documentation
+- **Code Style Standards** - Consistent Python coding patterns
+
+### Key Development Patterns
+
+#### Scene Implementation
+- **Widget Management** - Consistent focus cycling, mouse interaction, rendering
+- **State Synchronization** - Real-time updates from central simulator
+- **Event Handling** - Keyboard, mouse, and focus management patterns
+- **Transition Logic** - Scene navigation and return value handling
+
+#### Simulator Integration
+- **State Access** - `simulator.get_state()` for read operations
+- **Control Methods** - Specific methods for each control system
+- **Physics Updates** - Real-time simulation in `update()` method
+- **State Persistence** - Auto-save integration and game state management
+
+#### Professional Documentation
+- **User Manual Standards** - Comprehensive operational procedures
+- **Technical Accuracy** - Realistic aviation procedures and limits
+- **Safety Emphasis** - Emergency procedures and best practices
+- **Complete Coverage** - All interface elements and operational modes
 
 ### Dependencies
-- **pygame** - Graphics and input handling
-- **Python 3.12+** - Modern Python features
+- **pygame** - Graphics, input handling, and surface management
+- **Python 3.12+** - Modern Python features and type hints
+- **UV** - Fast, reliable Python package management
 
 ### Development Commands
 ```bash
-# Install dependencies
+# Install dependencies and set up environment
 uv sync
 
-# Run the game
+# Run the game in development mode
 uv run python main.py
 
-# Quick launch
+# Quick launch with automatic dependency management
 ./run.sh
+
+# Run tests (if implemented)
+uv run python -m pytest
+
+# Check code formatting
+uv run python -m black .
 ```
+
+### Testing
+- **Manual Testing** - Scene transitions, widget interactions, physics accuracy
+- **Integration Testing** - Save/load functionality, state persistence
+- **Physics Validation** - Atmospheric modeling, engine performance curves
+- **User Experience** - Professional aviation interface standards
 
 ## Future Enhancements
 
-### Planned Features
-- **Weather System** - Wind, storms affecting navigation
-- **Cargo Management** - Loading, delivery missions  
-- **Advanced Navigation** - Waypoint system, autopilot
-- **Sound System** - Engine sounds, ambient audio
-- **Enhanced Graphics** - Improved world map, animations
+### Simulation Improvements
+- **Weather System** - Dynamic wind, turbulence, weather effects on flight
+- **Advanced Physics** - Detailed atmospheric modeling, seasonal variations
+- **Performance Modeling** - More sophisticated engine and propeller curves
+- **Navigation Aids** - VOR, NDB, GPS waypoint navigation systems
 
-### Technical Improvements  
-- **Multiplayer Support** - Network functionality
-- **Save Slots** - Multiple save files
-- **Settings Menu** - Graphics, audio, control options
-- **Performance** - Optimized rendering, larger maps
+### Operational Features
+- **Mission System** - Cargo delivery, passenger transport, search and rescue
+- **Flight Planning** - Route optimization, fuel planning, weather routing
+- **Communication** - Radio procedures, air traffic control simulation
+- **Crew Management** - Multi-crew operations, role specialization
+
+### Technical Enhancements
+- **Sound System** - Engine sounds, ambient audio, radio chatter
+- **Enhanced Graphics** - Higher-resolution maps, weather visualization
+- **Multiplayer Support** - Network functionality for multiple airships
+- **Advanced Autopilot** - VNAV, LNAV, approach coupling
+
+### User Experience
+- **Settings Menu** - Graphics options, control configuration, audio settings
+- **Multiple Save Slots** - Campaign progression, different airship configurations
+- **Tutorial System** - Interactive training for complex procedures
+- **Performance Analytics** - Flight logging, efficiency tracking, skill development
+
+### Platform Support
+- **Cross-Platform** - Windows, macOS, Linux compatibility
+- **Mobile Adaptation** - Touch-friendly interface for tablets
+- **Web Version** - Browser-based deployment for accessibility
+- **VR Integration** - Immersive cockpit experience
+
+## Performance Characteristics
+
+### Realistic Flight Envelope
+
+#### Altitude Performance
+- **Service Ceiling** - 4,000 feet maximum operational altitude
+- **Optimal Cruise** - 1,000-2,500 feet for best efficiency
+- **Engine Power Loss** - ~3% per 1,000 feet of altitude gain
+- **Prop Efficiency** - Automatically compensated for altitude effects
+
+#### Speed Performance
+- **Cruise Speed** - 75-90 knots indicated airspeed
+- **Maximum Speed** - 110 knots (structural/engine limits)
+- **Minimum Speed** - 45 knots (stall characteristics)
+- **True Airspeed** - Increases ~6% per 5,000 feet altitude
+
+#### Fuel Specifications
+- **Total Capacity** - 360 gallons (180 per tank)
+- **Cruise Consumption** - 10-15 GPH depending on power setting
+- **Maximum Range** - ~28 hours no-wind operation
+- **Reserve Requirements** - 30-60 minutes minimum for safe operations
+
+#### Engine Parameters
+- **Maximum RPM** - 2,800 (avoid sustained operation)
+- **Cruise RPM** - 2,200-2,700 typical
+- **Manifold Pressure** - 20-28" Hg cruise, decreases with altitude
+- **Operating Temperatures** - CHT 250-400°F, EGT 1200-1600°F
 
 ## License
 
 MIT License - see [`LICENSE`](LICENSE) file for details.
 
+## Acknowledgments
+
+- **Realistic Physics Modeling** - Based on authentic atmospheric and aviation principles
+- **Professional Documentation** - Inspired by real aviation operational manuals
+- **Steampunk Aesthetics** - Retro-futuristic design with modern simulation accuracy
+- **Python Gaming Community** - Built with pygame and modern Python tooling
+
 ---
 
-**Experience the golden age of airship travel in glorious 320x320 pixels!** 
+**Experience professional airship operations with realistic physics simulation and comprehensive documentation!**
 
-*Steam & Copper Dreams await...*
+*Master the skies with Steam & Copper Dreams...*
+
+**Features Summary:**
+✅ Realistic atmospheric physics and engine modeling  
+✅ Professional-grade autopilot with smooth altitude control  
+✅ Comprehensive fuel management with weight/balance effects  
+✅ Interactive world navigation with precision controls  
+✅ Complete user manual suite for all major systems  
+✅ Auto-save system with full state persistence  
+✅ Pixel-perfect 320x320 retro aesthetic  
+
+**Ready for takeoff, Captain!** 🎈
