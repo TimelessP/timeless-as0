@@ -25,11 +25,13 @@ class NavigationScene:
         self.world_map = None
         self.map_surface = None
         
-        # Load persistent zoom and pan settings from simulator
-        nav_view = self.simulator.get_navigation_view()
-        self.zoom_level = nav_view["zoomLevel"]
-        self.map_offset_x = nav_view["offsetX"]
-        self.map_offset_y = nav_view["offsetY"]
+        # Initialize with default values - will load from simulator on first update
+        self.zoom_level = 1.0
+        self.map_offset_x = 0.0
+        self.map_offset_y = 0.0
+        
+        # Flag to track if we've loaded saved settings yet
+        self.settings_loaded = False
         
         # Mouse dragging state
         self.is_dragging = False
@@ -287,6 +289,15 @@ class NavigationScene:
         """Save current zoom and pan settings to simulator"""
         self.simulator.set_navigation_view(self.zoom_level, self.map_offset_x, self.map_offset_y)
         
+    def _load_view_settings(self):
+        """Load zoom and pan settings from simulator (called on first update)"""
+        if not self.settings_loaded:
+            nav_view = self.simulator.get_navigation_view()
+            self.zoom_level = nav_view["zoomLevel"]
+            self.map_offset_x = nav_view["offsetX"]
+            self.map_offset_y = nav_view["offsetY"]
+            self.settings_loaded = True
+        
     def _get_widget_at_pos(self, pos) -> Optional[int]:
         """Get widget index at logical position"""
         x, y = pos
@@ -349,6 +360,9 @@ class NavigationScene:
         
     def update(self, dt: float):
         """Update the scene with game state"""
+        # Load saved settings on first update (after game state is loaded)
+        self._load_view_settings()
+        
         # Ensure map is loaded
         if self.world_map is None:
             self._load_world_map()
