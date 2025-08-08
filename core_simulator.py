@@ -474,31 +474,22 @@ class CoreSimulator:
             max_rpm = 2800.0
             current_rpm = engine["rpm"]
             rpm_factor = current_rpm / max_rpm
-            
-            # Propeller efficiency based on RPM and feathering
-            if engine.get("propellerFeathered", False):
-                prop_efficiency = 0.1  # Feathered prop provides minimal thrust
+            # Propeller efficiency curve (peak around 75% RPM)
+            if rpm_factor < 0.2:
+                prop_efficiency = rpm_factor * 2.0  # Poor efficiency at very low RPM
+            elif rpm_factor < 0.75:
+                prop_efficiency = 0.4 + (rpm_factor - 0.2) * 1.1  # Rising efficiency
             else:
-                # Propeller efficiency curve (peak around 75% RPM)
-                if rpm_factor < 0.2:
-                    prop_efficiency = rpm_factor * 2.0  # Poor efficiency at very low RPM
-                elif rpm_factor < 0.75:
-                    prop_efficiency = 0.4 + (rpm_factor - 0.2) * 1.1  # Rising efficiency
-                else:
-                    prop_efficiency = 1.0 - (rpm_factor - 0.75) * 0.4  # Declining past peak
-                
+                prop_efficiency = 1.0 - (rpm_factor - 0.75) * 0.4  # Declining past peak
             # Base thrust from throttle setting and RPM
             throttle_setting = engine["controls"]["throttle"]
             base_thrust = throttle_setting * rpm_factor * prop_efficiency
-            
             # Further reduce thrust if fuel flow is insufficient
             expected_fuel_flow = throttle_setting * 18.0 * 0.85  # Expected flow at mixture
             actual_fuel_flow = engine["fuelFlow"]
             fuel_flow_factor = min(1.0, actual_fuel_flow / max(0.1, expected_fuel_flow))
-            
             # Final thrust factor combining all effects
             thrust_factor = base_thrust * fuel_flow_factor
-            
             # Calculate target airspeed based on thrust
             base_airspeed = 85.0  # Cruise airspeed at full power
             min_airspeed = 15.0   # Minimum flying speed (stall region)

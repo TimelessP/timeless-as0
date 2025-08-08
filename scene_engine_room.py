@@ -139,22 +139,6 @@ class EngineRoomScene:
                 "focused": False,
                 "label": "PROP PITCH"
             },
-            {
-                "id": "prop_feather",
-                "type": "button",
-                "position": [168, 145],
-                "size": [80, 20],
-                "text": "FEATHER",
-                "focused": False
-            },
-            {
-                "id": "prop_unfeather",
-                "type": "button",
-                "position": [258, 145],
-                "size": [50, 20],
-                "text": "NORM",
-                "focused": False
-            },
             
             # Engine start/stop
             {
