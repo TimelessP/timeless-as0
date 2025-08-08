@@ -40,29 +40,29 @@ class FuelScene:
         self.slider_step_small = 0.05
         self.slider_step_large = 0.15
         
-        # Centralized layout configuration - all widget positions and sizes
+        # Centralized layout configuration - all widget positions and sizes (hard-coded)
         self.layout = {
-            # Navigation buttons (fixed - don't move these)
+            # Navigation buttons (fixed positions)
             "nav_prev": {"position": [8, 290], "size": [60, 24]},
             "nav_next": {"position": [252, 290], "size": [60, 24]},
             
             # Feed toggle buttons
-            "feed_forward": {"position": [30, 30], "size": [80, 16]},
-            "feed_aft": {"position": [210, 30], "size": [80, 16]},
+            "feed_forward": {"position": [20, 32], "size": [80, 16]},
+            "feed_aft": {"position": [220, 32], "size": [80, 16]},
             
             # Fuel tanks (visual elements)
-            "tank_forward": {"position": [45, 60], "size": [50, 80]},
-            "tank_aft": {"position": [225, 60], "size": [50, 80]},
+            "tank_forward": {"position": [55, 56], "size": [50, 80]},
+            "tank_aft": {"position": [215, 56], "size": [50, 80]},
             
             # Control sliders
-            "transfer_forward": {"position": [20, 160], "size": [35, 60]},
-            "dump_forward": {"position": [65, 160], "size": [35, 60]},
-            "transfer_aft": {"position": [265, 160], "size": [35, 60]},
-            "dump_aft": {"position": [220, 160], "size": [35, 60]},
+            "transfer_forward": {"position": [44, 164], "size": [28, 50]},
+            "dump_forward": {"position": [88, 164], "size": [28, 50]},
+            "transfer_aft": {"position": [248, 164], "size": [28, 50]},
+            "dump_aft": {"position": [204, 164], "size": [28, 50]},
         }
         
-        # Optimize layout on initialization
-        self.optimize_layout()
+        # Initialize widgets with hard-coded layout
+        self._init_widgets()
 
     # ------------------------------------------------------------------
     # Initialization
@@ -214,69 +214,6 @@ class FuelScene:
             "min_y": min_y, "max_y": max_y,
             "width": max_x - min_x, "height": max_y - min_y
         }
-    
-    def optimize_layout(self):
-        """
-        Systematically calculate optimal widget positions to avoid overlaps.
-        Keeps navigation buttons fixed as requested.
-        Accounts for tank fuel labels and proper margins between widgets.
-        """
-        # Define layout zones and spacing
-        margin = 8  # Minimum spacing between elements
-        header_height = 24
-        tank_label_height = 16  # Height needed for fuel amount labels below tanks
-        tank_label_margin = 4   # Space between tank and its label
-        
-        # Zone 1: Feed toggles (top, below header)
-        feed_y = header_height + margin
-        self.layout["feed_forward"]["position"] = [20, feed_y]
-        self.layout["feed_aft"]["position"] = [220, feed_y]
-        
-        # Zone 2: Fuel tanks (middle-top, with space for labels below)
-        tank_y = feed_y + self.layout["feed_forward"]["size"][1] + margin
-        
-        # Center tanks in their respective halves of the screen
-        left_half_center = 80  # Center of left half (0-160)
-        right_half_center = 240  # Center of right half (160-320)
-        
-        tank_w, tank_h = self.layout["tank_forward"]["size"]
-        self.layout["tank_forward"]["position"] = [left_half_center - tank_w//2, tank_y]
-        self.layout["tank_aft"]["position"] = [right_half_center - tank_w//2, tank_y]
-        
-        # Zone 3: Control sliders (middle-bottom, below tank labels)
-        # Tank labels appear at: tank_bottom + tank_label_margin
-        # So sliders must start at: tank_bottom + tank_label_margin + tank_label_height + margin
-        tank_bottom = tank_y + tank_h
-        tank_labels_bottom = tank_bottom + tank_label_margin + tank_label_height
-        slider_y = tank_labels_bottom + margin
-        
-        nav_button_y = self.layout["nav_prev"]["position"][1]  # Fixed nav button position
-        available_height = nav_button_y - slider_y - margin
-        
-        # Optimize slider height to fit available space
-        slider_height = min(50, available_height)  # Reduced height for better fit
-        slider_width = 28  # Slightly narrower for better margins
-        
-        # Position sliders around tanks with proper spacing
-        fwd_tank_center = self.layout["tank_forward"]["position"][0] + tank_w//2
-        aft_tank_center = self.layout["tank_aft"]["position"][0] + tank_w//2
-        
-        # Forward side: transfer and dump sliders with margins
-        self.layout["transfer_forward"]["position"] = [fwd_tank_center - slider_width - margin, slider_y]
-        self.layout["transfer_forward"]["size"] = [slider_width, slider_height]
-        
-        self.layout["dump_forward"]["position"] = [fwd_tank_center + margin, slider_y]
-        self.layout["dump_forward"]["size"] = [slider_width, slider_height]
-        
-        # Aft side: transfer and dump sliders (mirrored) with margins
-        self.layout["transfer_aft"]["position"] = [aft_tank_center + margin, slider_y]
-        self.layout["transfer_aft"]["size"] = [slider_width, slider_height]
-        
-        self.layout["dump_aft"]["position"] = [aft_tank_center - slider_width - margin, slider_y]
-        self.layout["dump_aft"]["size"] = [slider_width, slider_height]
-        
-        # Re-initialize widgets with optimized layout
-        self._init_widgets()
     
     def adjust_layout(self, adjustments: Dict[str, Dict[str, Any]]):
         """
