@@ -341,15 +341,30 @@ class CoreSimulator:
         mixture_power_factor = max(0.3, mixture_power_factor)  # Minimum 30% power
         
 
-        # Calculate target RPM based on throttle, mixture, and fuel availability
+        # Calculate atmospheric density factor for altitude effects
+        # Standard atmosphere: sea level = 1.0, decreases with altitude
+        altitude_density_factor = math.exp(-altitude / 29000.0)  # Roughly 50% at 20k ft
+        
+        # Calculate target RPM based on throttle, mixture, fuel availability, and altitude
         max_rpm = 2800.0
+        
         # Prop pitch acts as a load: low pitch = low load, high pitch = high load
         # At low pitch, engine can reach max RPM; at high pitch, RPM may drop if engine can't overcome load
         # We'll model load as: load_factor = 0.5 + prop_pitch * 0.5 (0.5 at flat, 1.0 at max pitch)
         prop_pitch = controls["propeller"]
-        load_factor = 0.5 + prop_pitch * 0.5
-        # Engine can reach max RPM at low load, but at high load, only a fraction
-        base_target_rpm = controls["throttle"] * max_rpm * mixture_power_factor
+        base_load_factor = 0.5 + prop_pitch * 0.5
+        
+        # Altitude affects propeller load - thinner air reduces prop load
+        # At high altitude, prop encounters less air resistance, so engine can spin faster
+        altitude_load_reduction = 1.0 - (1.0 - altitude_density_factor) * 0.3  # Up to 30% load reduction
+        load_factor = base_load_factor * altitude_load_reduction
+        
+        # Engine power also decreases with altitude due to less air density
+        # Naturally aspirated engines lose about 3% power per 1000 ft
+        engine_power_factor = altitude_density_factor
+        
+        # Base engine performance calculation
+        base_target_rpm = controls["throttle"] * max_rpm * mixture_power_factor * engine_power_factor
         achievable_rpm = base_target_rpm / load_factor
 
         # Reduce achievable RPM if fuel pressure is low or fuel is cut
@@ -468,30 +483,71 @@ class CoreSimulator:
         position["heading"] += motion["rateOfTurn"] * dt
         position["heading"] = position["heading"] % 360
         
-        # Realistic thrust calculation based on actual engine performance
+        # Realistic thrust calculation based on actual engine performance and altitude
         if engine["running"]:
+            # Get current altitude for air density calculations
+            altitude = position["altitude"]
+            altitude_density_factor = math.exp(-altitude / 29000.0)  # Air density decreases with altitude
+            
             # Calculate thrust based on actual engine RPM and propeller efficiency
             max_rpm = 2800.0
             current_rpm = engine["rpm"]
             rpm_factor = current_rpm / max_rpm
+            
             # Propeller efficiency curve (peak around 75% RPM)
             if rpm_factor < 0.2:
-                prop_efficiency = rpm_factor * 2.0  # Poor efficiency at very low RPM
+                base_prop_efficiency = rpm_factor * 2.0  # Poor efficiency at very low RPM
             elif rpm_factor < 0.75:
-                prop_efficiency = 0.4 + (rpm_factor - 0.2) * 1.1  # Rising efficiency
+                base_prop_efficiency = 0.4 + (rpm_factor - 0.2) * 1.1  # Rising efficiency
             else:
-                prop_efficiency = 1.0 - (rpm_factor - 0.75) * 0.4  # Declining past peak
+                base_prop_efficiency = 1.0 - (rpm_factor - 0.75) * 0.4  # Declining past peak
+                
+            # Propeller pitch affects efficiency - optimal pitch varies with airspeed and altitude
+            prop_pitch = engine["controls"]["propeller"]
+            current_airspeed = motion["indicatedAirspeed"]
+            
+            # Optimal prop pitch for current conditions
+            # At low airspeed: want lower pitch (fine pitch) for better acceleration
+            # At high airspeed: want higher pitch (coarse pitch) for efficiency
+            # At high altitude: want slightly lower pitch due to thinner air
+            optimal_pitch_for_speed = 0.3 + (current_airspeed / 100.0) * 0.4  # 0.3-0.7 range
+            optimal_pitch_for_altitude = optimal_pitch_for_speed * (0.9 + altitude_density_factor * 0.1)
+            optimal_pitch_for_altitude = max(0.2, min(0.9, optimal_pitch_for_altitude))
+            
+            # Efficiency penalty for non-optimal pitch
+            pitch_deviation = abs(prop_pitch - optimal_pitch_for_altitude)
+            if pitch_deviation <= 0.1:
+                pitch_efficiency = 1.0
+            elif pitch_deviation <= 0.3:
+                pitch_efficiency = 1.0 - (pitch_deviation - 0.1) * 1.5  # Linear falloff
+            else:
+                pitch_efficiency = 0.7 - (pitch_deviation - 0.3) * 0.5  # Steeper falloff
+            pitch_efficiency = max(0.4, pitch_efficiency)  # Minimum 40% efficiency
+            
+            # Combined propeller efficiency
+            prop_efficiency = base_prop_efficiency * pitch_efficiency
+            
+            # Altitude significantly affects propeller thrust
+            # Propeller thrust is roughly proportional to air density
+            altitude_thrust_factor = altitude_density_factor
+            
             # Base thrust from throttle setting and RPM
             throttle_setting = engine["controls"]["throttle"]
-            base_thrust = throttle_setting * rpm_factor * prop_efficiency
+            base_thrust = throttle_setting * rpm_factor * prop_efficiency * altitude_thrust_factor
+            
             # Further reduce thrust if fuel flow is insufficient
             expected_fuel_flow = throttle_setting * 18.0 * 0.85  # Expected flow at mixture
             actual_fuel_flow = engine["fuelFlow"]
             fuel_flow_factor = min(1.0, actual_fuel_flow / max(0.1, expected_fuel_flow))
+            
             # Final thrust factor combining all effects
             thrust_factor = base_thrust * fuel_flow_factor
+            
             # Calculate target airspeed based on thrust
-            base_airspeed = 85.0  # Cruise airspeed at full power
+            # Base airspeed decreases with altitude due to reduced thrust
+            sea_level_airspeed = 85.0  # Cruise airspeed at full power, sea level
+            altitude_airspeed_factor = 0.7 + altitude_density_factor * 0.3  # 70-100% performance
+            base_airspeed = sea_level_airspeed * altitude_airspeed_factor
             min_airspeed = 15.0   # Minimum flying speed (stall region)
             target_airspeed = min_airspeed + (base_airspeed - min_airspeed) * thrust_factor
             
@@ -521,8 +577,15 @@ class CoreSimulator:
         motion["indicatedAirspeed"] += airspeed_diff * accel_rate
         motion["indicatedAirspeed"] = max(0.0, motion["indicatedAirspeed"])  # Prevent negative airspeed
         
-        # True airspeed (simplified - just add a bit for altitude/temp)
-        motion["trueAirspeed"] = motion["indicatedAirspeed"] * 1.02
+        # True airspeed calculation accounting for altitude and temperature
+        # TAS increases with altitude due to decreasing air density
+        altitude = position["altitude"]
+        altitude_density_factor = math.exp(-altitude / 29000.0)
+        
+        # At higher altitudes, TAS is higher than IAS for the same dynamic pressure
+        # This is a simplified relationship: TAS = IAS / sqrt(density_ratio)
+        tas_factor = 1.0 / math.sqrt(altitude_density_factor)
+        motion["trueAirspeed"] = motion["indicatedAirspeed"] * tas_factor
         
         # Ground speed affected by wind
         wind_component = env["windSpeed"] * math.cos(
