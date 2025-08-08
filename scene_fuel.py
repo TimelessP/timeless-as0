@@ -1,209 +1,342 @@
-"""
-Fuel Management Scene - Tank balancing and transfer controls
-Handles fuel system mini-game and center of gravity management
-"""
-import pygame
-from typing import Optional
+"""Fuel Management Scene (two-tank system)
 
-# Colors
+Two vertical tanks (forward & aft) with:
+ - Feed toggles per tank (engine feed enable)
+ - Transfer sliders (rate 0..100%) transferring OUT to the other tank
+ - Dump sliders (rate 0..100%) dumping fuel overboard
+Actual fuel physics handled by CoreSimulator; scene only invokes setter methods.
+If simulator lacks new methods (e.g., in tests), calls are safely ignored.
+"""
+from typing import Optional, List, Dict, Any
+
+try:
+    import pygame  # type: ignore
+except Exception:  # pragma: no cover
+    pygame = None  # type: ignore
+
 BACKGROUND_COLOR = (20, 20, 30)
-TEXT_COLOR = (255, 255, 255)
+TEXT_COLOR = (230, 230, 240)
 FOCUS_COLOR = (255, 200, 50)
+BAR_BG = (40, 40, 55)
+FUEL_COLOR = (200, 120, 40)
+SLIDER_TRACK = (70, 70, 90)
+SLIDER_FILL = (120, 180, 255)
+DUMP_FILL = (255, 100, 100)
 BUTTON_COLOR = (60, 60, 80)
-BUTTON_FOCUSED_COLOR = (80, 80, 120)
-WARNING_COLOR = (255, 100, 100)
-GOOD_COLOR = (100, 255, 100)
-FUEL_HEADER_COLOR = (80, 40, 20)  # Brown for fuel scene
+BUTTON_FOCUSED = (90, 90, 130)
+
 
 class FuelScene:
     def __init__(self, simulator):
+        self.simulator = simulator
         self.font = None
         self.is_text_antialiased = False
-        self.simulator = simulator
-        self.widgets = []
-        self.focused_widget = 0
-        
+        self.widgets: List[Dict[str, Any]] = []
+        self.focus_index = 0
+        self.dragging_widget: Optional[int] = None
+        # Keyboard adjustment granularities
+        self.slider_step_small = 0.05
+        self.slider_step_large = 0.15
         self._init_widgets()
-    
+
+    # ------------------------------------------------------------------
+    # Initialization
+    # ------------------------------------------------------------------
+    def _init_widgets(self):
+        self.widgets = []
+        # Navigation
+        self.widgets.append({"id": "prev_scene", "type": "button", "position": [8, 290], "size": [60, 24], "text": "< [", "focused": True})
+        self.widgets.append({"id": "next_scene", "type": "button", "position": [252, 290], "size": [60, 24], "text": "] >", "focused": False})
+        # Feed toggles
+        self.widgets.append({"id": "feed_forward", "type": "toggle", "position": [20, 20], "size": [80, 16], "text": "FWD FEED", "value": True, "focused": False})
+        self.widgets.append({"id": "feed_aft", "type": "toggle", "position": [220, 20], "size": [80, 16], "text": "AFT FEED", "value": True, "focused": False})
+        # Transfer sliders
+        self.widgets.append({"id": "transfer_forward", "type": "slider", "position": [40, 200], "size": [40, 80], "value": 0.0, "vertical": True, "label": "XFER"})
+        self.widgets.append({"id": "transfer_aft", "type": "slider", "position": [240, 200], "size": [40, 80], "value": 0.0, "vertical": True, "label": "XFER"})
+        # Dump sliders
+        self.widgets.append({"id": "dump_forward", "type": "slider", "position": [90, 200], "size": [40, 80], "value": 0.0, "vertical": True, "label": "DUMP", "dump": True})
+        self.widgets.append({"id": "dump_aft", "type": "slider", "position": [190, 200], "size": [40, 80], "value": 0.0, "vertical": True, "label": "DUMP", "dump": True})
+
     def set_font(self, font, is_text_antialiased=False):
-        """Set the font for this scene"""
         self.font = font
         self.is_text_antialiased = is_text_antialiased
-    
-    def _init_widgets(self):
-        """Initialize fuel management widgets"""
-        self.widgets = [
-            # Navigation buttons
-            {"id": "prev_scene", "type": "button", "position": [8, 290], "size": [60, 24], "text": "< [", "focused": True},
-            {"id": "next_scene", "type": "button", "position": [252, 290], "size": [60, 24], "text": "] >", "focused": False},
-            
-            # Tank display
-            {"id": "forward_tank", "type": "label", "position": [8, 40], "size": [100, 16], "text": "Forward: 58.3 gal", "focused": False},
-            {"id": "center_tank", "type": "label", "position": [8, 60], "size": [100, 16], "text": "Center: 64.8 gal", "focused": False},
-            {"id": "aft_tank", "type": "label", "position": [8, 80], "size": [100, 16], "text": "Aft: 63.4 gal", "focused": False},
-            
-            # Transfer controls (stub)
-            {"id": "transfer_fwd", "type": "button", "position": [120, 40], "size": [80, 16], "text": "Transfer", "focused": False},
-            {"id": "transfer_aft", "type": "button", "position": [120, 80], "size": [80, 16], "text": "Transfer", "focused": False},
-            
-            # Balance display
-            {"id": "cg_status", "type": "label", "position": [8, 120], "size": [200, 16], "text": "CG: 156.2\" (NORMAL)", "focused": False},
-        ]
-        
-        # Set initial focus
-        if self.widgets:
-            self.widgets[self.focused_widget]["focused"] = True
-    
-    def update(self, dt: float):
-        """Update fuel display with current simulator data"""
-        if not self.simulator:
-            return
-            
-        state = self.simulator.get_state()
-        fuel_data = state.get("engines", {}).get("fuel", {})
-        
-        # Update tank levels
-        tanks = fuel_data.get("tanks", [])
-        if len(tanks) >= 3:
-            self.widgets[2]["text"] = f"Forward: {tanks[0].get('level', 0):.1f} gal"
-            self.widgets[3]["text"] = f"Center: {tanks[1].get('level', 0):.1f} gal" 
-            self.widgets[4]["text"] = f"Aft: {tanks[2].get('level', 0):.1f} gal"
-            
-        # Update CG status
-        balance = fuel_data.get("balance", {})
-        cg_pos = balance.get("centerOfBalance", 0)
-        status = balance.get("balanceStatus", "unknown").upper()
-        self.widgets[7]["text"] = f"CG: {cg_pos:.1f}\" ({status})"
-    
+
+    # ------------------------------------------------------------------
+    # Helpers to call simulator safely
+    # ------------------------------------------------------------------
+    def _sim_call(self, method: str, *args):
+        if hasattr(self.simulator, method):
+            try:
+                getattr(self.simulator, method)(*args)
+            except Exception:
+                pass
+
+    # ------------------------------------------------------------------
+    # Event Handling
+    # ------------------------------------------------------------------
     def handle_event(self, event) -> Optional[str]:
-        """Handle input events"""
+        if not pygame:
+            return None
         if event.type == pygame.KEYDOWN:
+            mods = pygame.key.get_mods()
+            current = self.widgets[self.focus_index] if 0 <= self.focus_index < len(self.widgets) else None
+
+            # Scene navigation & exit
             if event.key == pygame.K_ESCAPE:
                 return "scene_main_menu"
-            elif event.key == pygame.K_LEFTBRACKET:  # [
+            elif event.key == pygame.K_LEFTBRACKET:  # '[' previous scene
                 return self._get_prev_scene()
-            elif event.key == pygame.K_RIGHTBRACKET:  # ]
+            elif event.key == pygame.K_RIGHTBRACKET:  # ']' next scene
                 return self._get_next_scene()
-            elif event.key == pygame.K_TAB:
-                if event.mod & pygame.KMOD_SHIFT:
-                    self._cycle_focus(-1)
+
+            # Focus cycling
+            if event.key == pygame.K_TAB:
+                if mods & pygame.KMOD_SHIFT:
+                    self._focus_prev()
                 else:
-                    self._cycle_focus(1)
-            elif event.key == pygame.K_RETURN:
+                    self._focus_next()
+                return None
+            if event.key in (pygame.K_DOWN, pygame.K_PAGEDOWN):
+                self._focus_next(); return None
+            if event.key in (pygame.K_UP, pygame.K_PAGEUP):
+                self._focus_prev(); return None
+
+            # Activate
+            if event.key in (pygame.K_RETURN, pygame.K_SPACE):
                 return self._activate_focused()
-                
-        elif event.type == pygame.MOUSEBUTTONDOWN:
-            if event.button == 1:  # Left click
-                clicked_widget = self._get_widget_at_pos(event.pos)
-                if clicked_widget is not None:
-                    self._set_focus(clicked_widget)
+
+            # Slider adjustments (arrows / plus / minus)
+            if current and current["type"] == "slider":
+                if event.key in (pygame.K_LEFT, pygame.K_MINUS):
+                    self._adjust_slider(self.focus_index, -self.slider_step_small)
+                elif event.key == pygame.K_RIGHT:
+                    self._adjust_slider(self.focus_index, self.slider_step_small)
+                elif event.key in (pygame.K_EQUALS,):  # '=' (often shift+'+' for US layout)
+                    self._adjust_slider(self.focus_index, self.slider_step_small)
+                elif event.key == pygame.K_PLUS:  # Some layouts have explicit plus
+                    self._adjust_slider(self.focus_index, self.slider_step_large)
+                elif event.key == pygame.K_KP_PLUS:
+                    self._adjust_slider(self.focus_index, self.slider_step_large)
+                elif event.key == pygame.K_KP_MINUS:
+                    self._adjust_slider(self.focus_index, -self.slider_step_large)
+                elif event.key == pygame.K_HOME:
+                    self._set_slider(self.focus_index, 0.0)
+                elif event.key == pygame.K_END:
+                    self._set_slider(self.focus_index, 1.0)
+                return None
+        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            idx = self._get_widget_at_pos(event.pos)
+            if idx is not None:
+                self._set_focus(idx)
+                w = self.widgets[idx]
+                if w["type"] == "button":
                     return self._activate_focused()
-        
+                if w["type"] == "toggle":
+                    w["value"] = not w.get("value", False)
+                    self._apply_toggle(w)
+                if w["type"] == "slider":
+                    self.dragging_widget = idx
+                    self._set_slider_value_from_mouse(idx, event.pos)
+        elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            self.dragging_widget = None
+        elif event.type == pygame.MOUSEMOTION and self.dragging_widget is not None:
+            self._set_slider_value_from_mouse(self.dragging_widget, event.pos)
         return None
-    
-    def _get_prev_scene(self) -> str:
-        """Get the previous scene in circular order"""
-        return "scene_navigation"
-    
-    def _get_next_scene(self) -> str:
-        """Get the next scene in circular order"""
-        return "scene_cargo"
-    
-    def _get_widget_at_pos(self, pos):
-        """Find widget at given position"""
+
+    def _get_widget_at_pos(self, pos) -> Optional[int]:
+        if not pygame:
+            return None
         x, y = pos
-        for i, widget in enumerate(self.widgets):
-            wx, wy = widget["position"]
-            ww, wh = widget["size"]
+        for i, w in enumerate(self.widgets):
+            wx, wy = w["position"]
+            ww, wh = w["size"]
             if wx <= x <= wx + ww and wy <= y <= wy + wh:
                 return i
         return None
-    
-    def _set_focus(self, widget_index):
-        """Set focus to specific widget"""
-        # Clear current focus
-        for widget in self.widgets:
-            widget["focused"] = False
-        
-        # Set new focus
-        if 0 <= widget_index < len(self.widgets):
-            self.focused_widget = widget_index
-            self.widgets[widget_index]["focused"] = True
-    
-    def _cycle_focus(self, direction):
-        """Cycle focus through widgets"""
-        if not self.widgets:
+
+    # ------------------------------------------------------------------
+    # Widget operations
+    # ------------------------------------------------------------------
+    def _set_focus(self, idx: int):
+        if idx < 0 or idx >= len(self.widgets):
             return
-            
-        self.widgets[self.focused_widget]["focused"] = False
-        self.focused_widget = (self.focused_widget + direction) % len(self.widgets)
-        self.widgets[self.focused_widget]["focused"] = True
-    
+        for w in self.widgets:
+            w["focused"] = False
+        self.widgets[idx]["focused"] = True
+        self.focus_index = idx
+
+    def _focus_next(self):
+        self._set_focus((self.focus_index + 1) % len(self.widgets))
+
+    def _focus_prev(self):
+        self._set_focus((self.focus_index - 1) % len(self.widgets))
+
     def _activate_focused(self) -> Optional[str]:
-        """Activate the currently focused widget"""
-        if not self.widgets:
-            return None
-            
-        widget = self.widgets[self.focused_widget]
-        widget_id = widget["id"]
-        
-        if widget_id == "prev_scene":
+        w = self.widgets[self.focus_index]
+        if w["id"] == "prev_scene":
             return self._get_prev_scene()
-        elif widget_id == "next_scene":
+        if w["id"] == "next_scene":
             return self._get_next_scene()
-        elif widget_id in ["transfer_fwd", "transfer_aft"]:
-            # TODO: Implement fuel transfer logic
-            pass
-            
+        if w["type"] == "toggle":
+            w["value"] = not w.get("value", False)
+            self._apply_toggle(w)
         return None
-    
+
+    def _apply_toggle(self, widget):
+        tank = "forward" if widget["id"] == "feed_forward" else "aft"
+        self._sim_call("set_tank_feed", tank, widget["value"])
+
+    def _adjust_slider(self, idx: int, delta: float):
+        w = self.widgets[idx]
+        w["value"] = max(0.0, min(1.0, w.get("value", 0.0) + delta))
+        self._apply_slider(w)
+
+    def _set_slider(self, idx: int, value: float):
+        w = self.widgets[idx]
+        w["value"] = max(0.0, min(1.0, value))
+        self._apply_slider(w)
+
+    def _set_slider_value_from_mouse(self, idx: int, pos):
+        w = self.widgets[idx]
+        x, y = pos
+        wx, wy = w["position"]
+        _, h = w["size"]
+        rel = (wy + h - y) / h
+        w["value"] = max(0.0, min(1.0, rel))
+        self._apply_slider(w)
+
+    def _apply_slider(self, widget):
+        tank = "forward" if "forward" in widget["id"] else "aft"
+        if widget.get("dump"):
+            self._sim_call("set_dump_rate", tank, widget["value"])
+        else:
+            self._sim_call("set_transfer_rate", tank, widget["value"])
+
+    # ------------------------------------------------------------------
+    # Scene navigation helpers
+    # ------------------------------------------------------------------
+    def _get_prev_scene(self) -> str:
+        return "scene_navigation"
+
+    def _get_next_scene(self) -> str:
+        return "scene_cargo"
+
+    # ------------------------------------------------------------------
+    # Update (sync UI with simulator state)
+    # ------------------------------------------------------------------
+    def update(self, dt: float):
+        if not hasattr(self.simulator, "get_state"):
+            return
+        state = self.simulator.get_state()
+        # Accept either new or legacy nested layout
+        fuel = state.get("fuel") or state.get("engines", {}).get("fuel", {})
+        tanks = fuel.get("tanks", {}) if isinstance(fuel, dict) else {}
+        fwd = tanks.get("forward", {})
+        aft = tanks.get("aft", {})
+        # Sync toggles
+        for wid in ("feed_forward", "feed_aft"):
+            widget = next((w for w in self.widgets if w["id"] == wid), None)
+            if widget:
+                tank = fwd if "forward" in wid else aft
+                feed_val = tank.get("feed", widget.get("value", True))
+                widget["value"] = feed_val
+        # Sync sliders (unless dragging)
+        if self.dragging_widget is None:
+            for wid in ("transfer_forward", "dump_forward", "transfer_aft", "dump_aft"):
+                widget = next((w for w in self.widgets if w["id"] == wid), None)
+                if widget:
+                    tank = fwd if "forward" in wid else aft
+                    if widget.get("dump"):
+                        widget["value"] = tank.get("dumpRate", widget.get("value", 0.0))
+                    else:
+                        widget["value"] = tank.get("transferRate", widget.get("value", 0.0))
+
+    # ------------------------------------------------------------------
+    # Rendering
+    # ------------------------------------------------------------------
     def render(self, surface):
-        """Render the fuel management scene"""
-        # Clear background
+        if not pygame:
+            return
         surface.fill(BACKGROUND_COLOR)
-        
-        if not self.font:
-            return
-        
-        # Draw colored title header
-        pygame.draw.rect(surface, FUEL_HEADER_COLOR, (0, 0, 320, 24))
-        pygame.draw.rect(surface, TEXT_COLOR, (0, 0, 320, 24), 1)
-        
-        # Centered title
-        title = self.font.render("FUEL MANAGEMENT", self.is_text_antialiased, TEXT_COLOR)
-        title_x = (320 - title.get_width()) // 2
-        surface.blit(title, (title_x, 4))
-        
-        # Render widgets
-        for widget in self.widgets:
-            self._render_widget(surface, widget)
-    
+        self._draw_text(surface, "FUEL MANAGEMENT", 160, 4, center=True)
+        self._render_tanks(surface)
+        for w in self.widgets:
+            self._render_widget(surface, w)
+
+    def _render_tanks(self, surface):
+        state = self.simulator.get_state() if hasattr(self.simulator, "get_state") else {}
+        fuel = state.get("fuel") or state.get("engines", {}).get("fuel", {})
+        tanks = fuel.get("tanks", {}) if isinstance(fuel, dict) else {}
+        fwd = tanks.get("forward", {})
+        aft = tanks.get("aft", {})
+        tank_w = 60
+        tank_h = 150
+        fwd_rect = pygame.Rect(40, 40, tank_w, tank_h)
+        aft_rect = pygame.Rect(220, 40, tank_w, tank_h)
+        self._draw_tank(surface, fwd_rect, fwd, "FWD")
+        self._draw_tank(surface, aft_rect, aft, "AFT")
+
+    def _draw_tank(self, surface, rect, tank, label):
+        pygame.draw.rect(surface, BAR_BG, rect, border_radius=4)
+        level = tank.get("level", 0.0)
+        capacity = tank.get("capacity", 1.0) or 1.0
+        pct = max(0.0, min(1.0, level / capacity))
+        fuel_height = int((rect.height - 4) * pct)
+        fuel_rect = pygame.Rect(rect.x + 2, rect.y + rect.height - 2 - fuel_height, rect.width - 4, fuel_height)
+        pygame.draw.rect(surface, FUEL_COLOR, fuel_rect, border_radius=4)
+        pygame.draw.rect(surface, (110, 110, 130), rect, 1, border_radius=4)
+        self._draw_text(surface, label, rect.centerx, rect.y - 12, center=True)
+        self._draw_text(surface, f"{level:.1f}/{capacity:.0f}g", rect.centerx, rect.y + rect.height + 4, center=True)
+
     def _render_widget(self, surface, widget):
-        """Render a single widget"""
-        if not self.font:
+        t = widget["type"]
+        if t == "button":
+            self._render_button(surface, widget)
+        elif t == "toggle":
+            self._render_toggle(surface, widget)
+        elif t == "slider":
+            self._render_slider(surface, widget)
+
+    def _render_button(self, surface, widget):
+        x, y = widget["position"]; w, h = widget["size"]
+        color = BUTTON_FOCUSED if widget.get("focused") else BUTTON_COLOR
+        pygame.draw.rect(surface, color, (x, y, w, h), border_radius=4)
+        pygame.draw.rect(surface, (30, 30, 40), (x, y, w, h), 1, border_radius=4)
+        self._draw_text(surface, widget.get("text", ""), x + w / 2, y + h / 2 - 6, center=True)
+
+    def _render_toggle(self, surface, widget):
+        x, y = widget["position"]; w, h = widget["size"]
+        on = widget.get("value", False)
+        base_color = (80, 140, 80) if on else (120, 70, 70)
+        if widget.get("focused"):
+            base_color = tuple(min(c + 40, 255) for c in base_color)
+        pygame.draw.rect(surface, base_color, (x, y, w, h), border_radius=4)
+        pygame.draw.rect(surface, (20, 20, 25), (x, y, w, h), 1, border_radius=4)
+        txt = widget.get("text", "") + (" ON" if on else " OFF")
+        self._draw_text(surface, txt, x + w / 2, y + 2, center=True)
+
+    def _render_slider(self, surface, widget):
+        x, y = widget["position"]; w, h = widget["size"]
+        pygame.draw.rect(surface, SLIDER_TRACK, (x, y, w, h), border_radius=4)
+        val = widget.get("value", 0.0)
+        fill_h = int((h - 4) * val)
+        fill_color = DUMP_FILL if widget.get("dump") else SLIDER_FILL
+        pygame.draw.rect(surface, fill_color, (x + 2, y + h - 2 - fill_h, w - 4, fill_h), border_radius=4)
+        pygame.draw.rect(surface, (30, 30, 40), (x, y, w, h), 1, border_radius=4)
+        self._draw_text(surface, widget.get("label", ""), x + w / 2, y - 12, center=True)
+        self._draw_text(surface, f"{val*100: .0f}%", x + w / 2, y + h + 2, center=True)
+        if widget.get("focused"):
+            pygame.draw.rect(surface, FOCUS_COLOR, (x - 2, y - 2, w + 4, h + 4), 1, border_radius=6)
+
+    def _draw_text(self, surface, text, x, y, center=False):
+        if not self.font or not pygame:
             return
-            
-        x, y = widget["position"]
-        w, h = widget["size"]
-        focused = widget["focused"]
-        widget_type = widget["type"]
-        text = widget["text"]
-        
-        if widget_type == "button":
-            # Draw button background
-            color = BUTTON_FOCUSED_COLOR if focused else BUTTON_COLOR
-            pygame.draw.rect(surface, color, (x, y, w, h))
-            pygame.draw.rect(surface, TEXT_COLOR, (x, y, w, h), 1)
-            
-            # Draw button text
-            text_color = FOCUS_COLOR if focused else TEXT_COLOR
-            text_surface = self.font.render(text, self.is_text_antialiased, text_color)
-            text_x = x + (w - text_surface.get_width()) // 2
-            text_y = y + (h - text_surface.get_height()) // 2
-            surface.blit(text_surface, (text_x, text_y))
-            
-        elif widget_type == "label":
-            # Draw label text
-            text_color = FOCUS_COLOR if focused else TEXT_COLOR
-            text_surface = self.font.render(text, self.is_text_antialiased, text_color)
-            surface.blit(text_surface, (x, y))
+        img = self.font.render(text, self.is_text_antialiased, TEXT_COLOR)
+        rect = img.get_rect()
+        if center:
+            rect.centerx = int(x)
+            rect.y = int(y)
+        else:
+            rect.x = int(x)
+            rect.y = int(y)
+        surface.blit(img, rect)

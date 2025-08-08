@@ -360,8 +360,8 @@ class BridgeScene:
         self.simulator.toggle_battery("A")
         
     def _toggle_fuel_pumps(self):
-        """Toggle fuel pump mode"""
-        self.simulator.toggle_fuel_pump_mode()
+        """Legacy fuel pumps button (no-op after refactor to per-tank feed)."""
+        pass
         
     def _toggle_autopilot(self):
         """Toggle autopilot"""
@@ -400,8 +400,14 @@ class BridgeScene:
         battery_status = "ON" if electrical["batteryBusA"]["switch"] else "OFF"
         self._update_widget_text("battery_status", f"BAT A: {battery_status}")
         
-        pump_mode = fuel["pumpMode"].upper()
-        self._update_widget_text("fuel_pumps", f"PUMPS: {pump_mode}")
+        # Show feed status instead of legacy pump mode
+        fwd_feed = fuel.get("tanks", {}).get("forward", {}).get("feed", True)
+        aft_feed = fuel.get("tanks", {}).get("aft", {}).get("feed", True)
+        if fuel.get("engineFeedCut"):
+            feed_label = "FEED: --"
+        else:
+            feed_label = f"FEED: { 'F' if fwd_feed else '-' }{ 'A' if aft_feed else '-' }"
+        self._update_widget_text("fuel_pumps", feed_label)
         
         ap_status = "ON" if nav["autopilot"]["engaged"] else "OFF"
         self._update_widget_text("autopilot", f"A/P: {ap_status}")
@@ -454,62 +460,63 @@ class BridgeScene:
             self._render_widget(surface, widget)
             
     def _draw_artificial_horizon(self, surface, x, y, w, h):
-        """Draw a simple artificial horizon display"""
-        # Get pitch and roll from game state
+        """Draw attitude indicator: sky/ground, horizon, pitch scale, numeric pitch."""
         game_state = self.simulator.get_state()
-        nav = game_state["navigation"] 
-        motion = nav.get("motion", {})
-        pitch = motion.get("pitch", 0.0)  # degrees
-        roll = motion.get("roll", 0.0)    # degrees
-        
-        # Draw background
-        pygame.draw.rect(surface, (40, 60, 80), (x, y, w, h))
+        motion = game_state.get("navigation", {}).get("motion", {})
+        pitch = float(motion.get("pitch", 0.0))  # degrees nose up +
+        # (Roll placeholder for future; kept at 0 for now)
+        # Clamp pitch to visual range
+        display_pitch = max(-15.0, min(15.0, pitch))
+
+        # Base rectangle
+        pygame.draw.rect(surface, (30, 50, 70), (x, y, w, h))
         pygame.draw.rect(surface, (255, 255, 255), (x, y, w, h), 1)
-        
-        # Draw sky (blue) and ground (brown) 
+
         center_x = x + w // 2
         center_y = y + h // 2
-        
-        # Simple horizon line
-        horizon_y = center_y + int(pitch * 2)  # 2 pixels per degree pitch
-        
-        # Sky (above horizon)
+        pixels_per_deg = 2  # visual scale
+        horizon_y = center_y + int(display_pitch * pixels_per_deg)
+
+        # Sky (upper)
         if horizon_y > y:
-            sky_rect = pygame.Rect(x + 1, y + 1, w - 2, min(horizon_y - y, h - 2))
-            pygame.draw.rect(surface, (100, 150, 255), sky_rect)
-            
-        # Ground (below horizon)
-        if horizon_y < y + h:
-            ground_rect = pygame.Rect(x + 1, max(horizon_y, y + 1), w - 2, (y + h - 1) - max(horizon_y, y + 1))
-            pygame.draw.rect(surface, (139, 69, 19), ground_rect)
-            
-        # Horizon line
-        pygame.draw.line(surface, (255, 255, 255), (x + 1, horizon_y), (x + w - 1, horizon_y), 2)
-        
-        # Aircraft symbol (center reference)
-        pygame.draw.line(surface, (255, 255, 0), (center_x - 15, center_y), (center_x + 15, center_y), 3)
-        pygame.draw.line(surface, (255, 255, 0), (center_x, center_y - 5), (center_x, center_y + 5), 3)
-        if horizon_y > y:
-            sky_rect = (x + 1, y + 1, w - 2, min(horizon_y - y, h - 2))
-            pygame.draw.rect(surface, (50, 100, 150), sky_rect)
-            
-        # Ground (below horizon)
+            sky_h = min(horizon_y - y, h)
+            if sky_h > 0:
+                pygame.draw.rect(surface, (70, 120, 190), (x + 1, y + 1, w - 2, sky_h - 1))
+        # Ground (lower)
         if horizon_y < y + h:
             ground_y = max(horizon_y, y + 1)
-            ground_rect = (x + 1, ground_y, w - 2, y + h - ground_y - 1)
-            pygame.draw.rect(surface, (100, 70, 50), ground_rect)
-            
-        # Draw horizon line
-        pygame.draw.line(surface, (255, 255, 255), (x + 10, horizon_y), (x + w - 10, horizon_y), 2)
-        
-        # Draw aircraft symbol (fixed in center)
-        aircraft_size = 8
-        pygame.draw.line(surface, (255, 200, 50), 
-                        (center_x - aircraft_size, center_y), 
-                        (center_x + aircraft_size, center_y), 3)
-        pygame.draw.line(surface, (255, 200, 50),
-                        (center_x, center_y - aircraft_size//2),
-                        (center_x, center_y + aircraft_size//2), 3)
+            ground_h = (y + h - 1) - ground_y
+            if ground_h > 0:
+                pygame.draw.rect(surface, (110, 80, 50), (x + 1, ground_y, w - 2, ground_h))
+
+        # Horizon line (shortened) with brighter contrast
+        pygame.draw.line(surface, (255, 255, 255), (x + 8, horizon_y), (x + w - 8, horizon_y), 2)
+
+        # Pitch ladder (every 5°)
+        font = self.font
+        if font:
+            for deg in range(-15, 20, 5):
+                if deg == 0:
+                    continue  # horizon already drawn
+                line_y = center_y + int(deg * pixels_per_deg) - int(display_pitch * pixels_per_deg) + (horizon_y - center_y)
+                if y + 4 <= line_y <= y + h - 4:
+                    tick_len = 10 if deg % 10 == 0 else 6
+                    pygame.draw.line(surface, (230, 230, 230), (center_x - tick_len, line_y), (center_x + tick_len, line_y), 1)
+                    if deg % 10 == 0:
+                        label = f"{abs(deg)}"
+                        txt = font.render(label, self.is_text_antialiased, (240, 240, 240))
+                        surface.blit(txt, (center_x - tick_len - txt.get_width() - 2, line_y - txt.get_height() // 2))
+                        surface.blit(txt, (center_x + tick_len + 2, line_y - txt.get_height() // 2))
+
+        # Aircraft reference symbol
+        wing_span = 24
+        pygame.draw.line(surface, (255, 200, 50), (center_x - wing_span//2, center_y), (center_x + wing_span//2, center_y), 3)
+        pygame.draw.line(surface, (255, 200, 50), (center_x, center_y - 6), (center_x, center_y + 6), 3)
+
+        # Numeric pitch indicator bottom-left of instrument
+        if font:
+            pitch_text = font.render(f"P:{pitch:+.1f}°", self.is_text_antialiased, (255, 255, 255))
+            surface.blit(pitch_text, (x + 6, y + h - pitch_text.get_height() - 4))
             
     def _render_widget(self, surface, widget):
         """Render a single widget"""

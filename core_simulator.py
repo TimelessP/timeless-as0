@@ -125,30 +125,26 @@ class CoreSimulator:
                     "radio": 1.8
                 }
             },
+            # Reworked fuel system: two tanks (forward & aft), each with transfer and dump pumps
             "fuel": {
-                "totalCapacity": 550.0,
-                "currentLevel": 425.0,
-                "flowRate": 12.8,  # Current consumption GPH
-                "pumpMode": "auto",  # manual, auto, backup
-                "pumps": {
-                    "primary": {"enabled": True, "pressure": 22.0},
-                    "backup": {"enabled": False, "pressure": 0.0}
-                },
+                "totalCapacity": 360.0,  # 180 + 180
+                "currentLevel": 280.0,
+                "flowRate": 12.8,  # Current engine consumption GPH (informational)
+                "engineFeedCut": False,  # True if no tank is feeding
                 "tanks": {
                     "forward": {
                         "level": 140.0,
                         "capacity": 180.0,
-                        "selected": True
-                    },
-                    "center": {
-                        "level": 145.0,
-                        "capacity": 190.0,
-                        "selected": True
+                        "feed": True,          # Feeding engine
+                        "transferRate": 0.0,   # 0..1 user slider -> transfers OUT to aft
+                        "dumpRate": 0.0        # 0..1 user slider -> dumps overboard
                     },
                     "aft": {
                         "level": 140.0,
                         "capacity": 180.0,
-                        "selected": True
+                        "feed": True,          # Feeding engine
+                        "transferRate": 0.0,   # OUT to forward
+                        "dumpRate": 0.0
                     }
                 }
             },
@@ -213,6 +209,40 @@ class CoreSimulator:
             
             # Validate the loaded state has required structure
             if "gameInfo" in loaded_state and "navigation" in loaded_state:
+                # Migration: if old multi-tank layout present, collapse to forward/aft
+                if "fuel" in loaded_state and "tanks" in loaded_state["fuel"]:
+                    fuel_block = loaded_state["fuel"]
+                    tanks = fuel_block.get("tanks", {})
+                    if not ("forward" in tanks and "aft" in tanks and "feed" in tanks.get("forward", {})):
+                        # Build new structure using forward & aft from available
+                        forward_level = 0.0
+                        aft_level = 0.0
+                        if "forward" in tanks:
+                            forward_level = tanks["forward"].get("level", 0.0)
+                        elif "center" in tanks:
+                            forward_level = tanks["center"].get("level", 0.0)
+                        if "aft" in tanks:
+                            aft_level = tanks["aft"].get("level", 0.0)
+                        fuel_block["tanks"] = {
+                            "forward": {
+                                "level": forward_level,
+                                "capacity": 180.0,
+                                "feed": True,
+                                "transferRate": 0.0,
+                                "dumpRate": 0.0
+                            },
+                            "aft": {
+                                "level": aft_level,
+                                "capacity": 180.0,
+                                "feed": True,
+                                "transferRate": 0.0,
+                                "dumpRate": 0.0
+                            }
+                        }
+                        fuel_block["totalCapacity"] = 360.0
+                        fuel_block["currentLevel"] = forward_level + aft_level
+                        fuel_block.pop("pumpMode", None)
+                        fuel_block.pop("pumps", None)
                 self.game_state = loaded_state
                 self.running = True
                 self.last_update_time = time.time()
@@ -438,37 +468,75 @@ class CoreSimulator:
             motion["verticalSpeed"] = climb_rate * 60  # Convert to fpm
             
     def _update_fuel_system(self, dt: float):
-        """Update fuel consumption and management"""
+        """Update two-tank fuel system: feed, transfer, dump, and effect on attitude/speed"""
         fuel = self.game_state["fuel"]
         engine = self.game_state["engine"]
-        
-        if engine["running"] and engine["fuelFlow"] > 0:
-            # Consume fuel
-            fuel_consumed = engine["fuelFlow"] * dt / 3600.0  # Convert GPH to gallons per second
-            
-            # Consume from selected tanks proportionally
-            selected_tanks = [name for name, tank in fuel["tanks"].items() if tank["selected"]]
-            if selected_tanks:
-                fuel_per_tank = fuel_consumed / len(selected_tanks)
-                for tank_name in selected_tanks:
-                    tank = fuel["tanks"][tank_name]
-                    tank["level"] = max(0, tank["level"] - fuel_per_tank)
-                    
-            # Update total fuel level
-            fuel["currentLevel"] = sum(tank["level"] for tank in fuel["tanks"].values())
-            
-        # Update fuel pressure based on pumps and tank levels
-        if fuel["pumpMode"] == "auto":
-            fuel["pumps"]["primary"]["enabled"] = fuel["currentLevel"] > 10.0
-        elif fuel["pumpMode"] == "manual":
-            # Manual mode - pump states controlled by user
-            pass
-            
-        # Calculate fuel pressure
-        if fuel["pumps"]["primary"]["enabled"]:
-            fuel["pumps"]["primary"]["pressure"] = 22.0
-        else:
-            fuel["pumps"]["primary"]["pressure"] *= 0.95  # Decay without pump
+        nav_motion = self.game_state["navigation"]["motion"]
+
+        forward = fuel["tanks"]["forward"]
+        aft = fuel["tanks"]["aft"]
+
+        # Engine consumption only if at least one tank feeding
+        feed_tanks = [t for t in (forward, aft) if t["feed"] and t["level"] > 0.01]
+        fuel["engineFeedCut"] = len(feed_tanks) == 0
+        if engine["running"] and not fuel["engineFeedCut"]:
+            per_tank = (engine["fuelFlow"] * dt / 3600.0) / len(feed_tanks)
+            for tank in feed_tanks:
+                tank["level"] = max(0.0, tank["level"] - per_tank)
+        elif engine["running"] and fuel["engineFeedCut"]:
+            # Starved engine: rapidly lose RPM & fuelFlow
+            engine["rpm"] = max(0.0, engine["rpm"] - 800.0 * dt)
+            engine["fuelFlow"] = max(0.0, engine["fuelFlow"] - 30.0 * dt)
+
+        # Transfer pumps: rate scale (transferRate 0..1) * maxTransferGPH
+        max_transfer_gph = 60.0  # generous for gameplay, per direction
+        # Forward -> Aft
+        if forward["transferRate"] > 0 and forward["level"] > 0.01 and aft["level"] < aft["capacity"] - 0.01:
+            gal = min(forward["level"], (forward["transferRate"] * max_transfer_gph) * dt / 3600.0)
+            # Don't overfill aft
+            gal = min(gal, aft["capacity"] - aft["level"])
+            forward["level"] -= gal
+            aft["level"] += gal
+        # Aft -> Forward
+        if aft["transferRate"] > 0 and aft["level"] > 0.01 and forward["level"] < forward["capacity"] - 0.01:
+            gal = min(aft["level"], (aft["transferRate"] * max_transfer_gph) * dt / 3600.0)
+            gal = min(gal, forward["capacity"] - forward["level"])
+            aft["level"] -= gal
+            forward["level"] += gal
+
+        # Dump pumps: remove fuel overboard
+        max_dump_gph = 40.0
+        if forward["dumpRate"] > 0 and forward["level"] > 0.01:
+            dump = min(forward["level"], (forward["dumpRate"] * max_dump_gph) * dt / 3600.0)
+            forward["level"] -= dump
+        if aft["dumpRate"] > 0 and aft["level"] > 0.01:
+            dump = min(aft["level"], (aft["dumpRate"] * max_dump_gph) * dt / 3600.0)
+            aft["level"] -= dump
+
+        # Clamp levels
+        forward["level"] = max(0.0, min(forward["capacity"], forward["level"]))
+        aft["level"] = max(0.0, min(aft["capacity"], aft["level"]))
+
+        # Update aggregate fuel value
+        fuel["currentLevel"] = forward["level"] + aft["level"]
+
+        # Balance & attitude effects: pitch based on difference
+        # Difference ratio (-1..+1) (aft heavy positive -> nose up) we want forward heavy nose down maybe.
+        diff = aft["level"] - forward["level"]  # +ve means aft heavier
+        max_diff = forward["capacity"]  # scale reference
+        imbalance_ratio = max(-1.0, min(1.0, diff / max_diff))
+        # Max +/-10 deg pitch
+        target_pitch = imbalance_ratio * 10.0
+        # Smooth pitch change
+        current_pitch = nav_motion.get("pitch", 0.0)
+        pitch_diff = target_pitch - current_pitch
+        nav_motion["pitch"] = current_pitch + pitch_diff * min(1.0, 2.0 * dt)
+
+        # Aerodynamic drag penalty for imbalance: reduce indicated airspeed
+        base_speed = nav_motion.get("indicatedAirspeed", 0.0)
+        penalty_factor = 1.0 - (abs(imbalance_ratio) * 0.15)  # up to 15% loss
+        nav_motion["indicatedAirspeed"] = base_speed * penalty_factor
+        # True airspeed recalculated next nav update; we tweak here only indicated
             
     def _update_electrical_system(self, dt: float):
         """Update electrical system simulation"""
@@ -622,11 +690,21 @@ class CoreSimulator:
             
     def toggle_fuel_pump_mode(self):
         """Toggle fuel pump mode"""
-        fuel = self.game_state["fuel"]
-        current_mode = fuel["pumpMode"]
-        modes = ["manual", "auto", "backup"]
-        current_index = modes.index(current_mode) if current_mode in modes else 0
-        fuel["pumpMode"] = modes[(current_index + 1) % len(modes)]
+        # Legacy - no-op after refactor
+        pass
+
+    # --- New Fuel Control Interface ---
+    def set_tank_feed(self, tank: str, feed: bool):
+        if tank in self.game_state["fuel"]["tanks"]:
+            self.game_state["fuel"]["tanks"][tank]["feed"] = bool(feed)
+
+    def set_transfer_rate(self, tank: str, rate: float):
+        if tank in self.game_state["fuel"]["tanks"]:
+            self.game_state["fuel"]["tanks"][tank]["transferRate"] = max(0.0, min(1.0, rate))
+
+    def set_dump_rate(self, tank: str, rate: float):
+        if tank in self.game_state["fuel"]["tanks"]:
+            self.game_state["fuel"]["tanks"][tank]["dumpRate"] = max(0.0, min(1.0, rate))
         
     def adjust_rudder(self, degrees: float):
         """Adjust rudder position by the specified degrees (manual control)"""
