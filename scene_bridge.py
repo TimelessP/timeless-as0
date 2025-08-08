@@ -24,6 +24,7 @@ class BridgeScene:
         self.focus_index = 0
         self.simulator = simulator
         self.all_widgets_inactive = True
+        self.dragging_slider: Optional[int] = None  # For mouse drag support
         
         # Initialize widgets
         self._init_widgets()
@@ -118,14 +119,15 @@ class BridgeScene:
                 "text": "NAV: MANUAL",
                 "focused": True
             },
+            # Altitude slider (after rudder label, wide)
             {
-                "id": "altitude_set",
-                "type": "textbox",
-                "position": [140, 108],
-                "size": [80, 20],
-                "text": "1250",
+                "id": "altitude_slider",
+                "type": "slider",
+                "position": [8, 160],
+                "size": [304, 20],  # 320 - 2*8px margin
+                "value": 0.3125,  # Default: 1250/4000
                 "focused": False,
-                "active": False
+                "label": "ALTITUDE"
             },
             {
                 "id": "heading_set",
@@ -178,15 +180,13 @@ class BridgeScene:
         """
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
-                # Check if all widgets are inactive
                 if self.all_widgets_inactive:
                     return "scene_main_menu"
                 else:
-                    # Deactivate any active widgets
                     self._deactivate_all_widgets()
-            elif event.key == pygame.K_LEFTBRACKET:  # [
+            elif event.key == pygame.K_LEFTBRACKET:
                 return self._get_prev_scene()
-            elif event.key == pygame.K_RIGHTBRACKET:  # ]
+            elif event.key == pygame.K_RIGHTBRACKET:
                 return self._get_next_scene()
             elif event.key == pygame.K_TAB:
                 if pygame.key.get_pressed()[pygame.K_LSHIFT]:
@@ -194,35 +194,38 @@ class BridgeScene:
                 else:
                     self._focus_next()
             elif event.key in [pygame.K_RETURN, pygame.K_SPACE]:
-                # Check if we have an active textbox first
-                focused_widget = self.widgets[self.focus_index] if 0 <= self.focus_index < len(self.widgets) else None
-                if focused_widget and focused_widget["type"] == "textbox" and focused_widget.get("active", False):
-                    # Deactivate active textbox and apply value
-                    focused_widget["active"] = False
-                    self._update_all_widgets_inactive_status()
-                    self._apply_textbox_value(focused_widget)
-                else:
-                    # Normal widget activation
-                    return self._activate_focused()
+                return self._activate_focused()
             elif event.key == pygame.K_LEFT:
-                # Rudder left (only in manual mode)
                 self._handle_rudder_input("left")
             elif event.key == pygame.K_RIGHT:
-                # Rudder right (only in manual mode)
                 self._handle_rudder_input("right")
+            elif event.key == pygame.K_MINUS:
+                self._adjust_altitude_slider(-0.01)
+            elif event.key == pygame.K_EQUALS:
+                self._adjust_altitude_slider(0.01)
             else:
-                # Handle typing for active textboxes
                 self._handle_text_input(event)
-                
         elif event.type == pygame.MOUSEBUTTONDOWN:
-            if event.button == 1:  # Left click
+            if event.button == 1:
                 logical_pos = self._screen_to_logical(event.pos)
                 if logical_pos:
                     clicked_widget = self._get_widget_at_pos(logical_pos)
                     if clicked_widget is not None:
                         self._set_focus(clicked_widget)
-                        return self._activate_focused()
-                        
+                        widget = self.widgets[clicked_widget]
+                        if widget["id"] == "altitude_slider":
+                            self.dragging_slider = clicked_widget
+                            self._set_altitude_slider_from_mouse(clicked_widget, logical_pos)
+                        else:
+                            return self._activate_focused()
+        elif event.type == pygame.MOUSEBUTTONUP:
+            if event.button == 1:
+                self.dragging_slider = None
+        elif event.type == pygame.MOUSEMOTION:
+            if self.dragging_slider is not None:
+                logical_pos = self._screen_to_logical(event.pos)
+                if logical_pos:
+                    self._set_altitude_slider_from_mouse(self.dragging_slider, logical_pos)
         return None
         
     def _deactivate_all_widgets(self):
@@ -282,6 +285,13 @@ class BridgeScene:
         except ValueError:
             # Invalid input, revert to current value
             pass
+
+    def _adjust_altitude_slider(self, delta: float):
+        """Adjust the altitude slider value with keyboard +/-"""
+        altitude_slider = next((w for w in self.widgets if w["id"] == "altitude_slider"), None)
+        if altitude_slider:
+            altitude_slider["value"] = max(0.0, min(1.0, altitude_slider["value"] + delta))
+            self.simulator.set_autopilot_target("altitude", int(altitude_slider["value"] * 4000))
             
     def _screen_to_logical(self, screen_pos) -> Optional[tuple]:
         """Convert screen coordinates to logical 320x320 coordinates"""
@@ -418,15 +428,15 @@ class BridgeScene:
         # Update rudder indicator
         rudder_angle = nav["controls"].get("rudder", 0.0)
         self._update_widget_text("rudder_indicator", f"RUD: {rudder_angle:+4.1f}°")
-        
-        # Update target values in textboxes (if not currently being edited)
-        altitude_widget = next((w for w in self.widgets if w["id"] == "altitude_set"), None)
-        heading_widget = next((w for w in self.widgets if w["id"] == "heading_set"), None)
-        
-        if altitude_widget and not altitude_widget.get("active", False):
+
+        # Update altitude slider value from target altitude
+        altitude_slider = next((w for w in self.widgets if w["id"] == "altitude_slider"), None)
+        if altitude_slider:
             target_alt = nav["targets"].get("altitude", nav["position"]["altitude"])
-            altitude_widget["text"] = f"{target_alt:.0f}"
-            
+            slider_value = max(0.0, min(1.0, target_alt / 4000.0))
+            altitude_slider["value"] = slider_value
+
+        heading_widget = next((w for w in self.widgets if w["id"] == "heading_set"), None)
         if heading_widget and not heading_widget.get("active", False):
             target_hdg = nav["targets"].get("heading", nav["position"]["heading"])
             heading_widget["text"] = f"{target_hdg:03.0f}"
@@ -526,6 +536,46 @@ class BridgeScene:
             self._render_button(surface, widget)
         elif widget["type"] == "textbox":
             self._render_textbox(surface, widget)
+        elif widget["type"] == "slider":
+            self._render_slider(surface, widget)
+
+    def _render_slider(self, surface, widget):
+        """Render a slider widget (for altitude control)"""
+        x, y = widget["position"]
+        w, h = widget["size"]
+        value = widget["value"]
+        focused = widget.get("focused", False)
+        label = widget.get("label", "")
+
+        # Colors
+        bg_color = (40, 40, 60)
+        fill_color = FOCUS_COLOR if focused else GOOD_COLOR
+        border_color = FOCUS_COLOR if focused else (120, 120, 120)
+
+        # Draw background
+        pygame.draw.rect(surface, bg_color, (x, y, w, h))
+        # Draw filled portion
+        fill_width = int(w * value)
+        if fill_width > 0:
+            pygame.draw.rect(surface, fill_color, (x, y, fill_width, h))
+        # Draw border
+        pygame.draw.rect(surface, border_color, (x, y, w, h), 1)
+
+        # Draw label and value
+        if self.font:
+            text_color = FOCUS_COLOR if focused else TEXT_COLOR
+            # Label
+            if label:
+                label_surface = self.font.render(label, self.is_text_antialiased, text_color)
+                surface.blit(label_surface, (x, y - 14))
+            # Value (altitude)
+            altitude_val = int(value * 4000)
+            value_text = f"{altitude_val} ft"
+            value_surface = self.font.render(value_text, self.is_text_antialiased, text_color)
+            value_rect = value_surface.get_rect()
+            value_x = x + w - value_rect.width
+            value_y = y - 14
+            surface.blit(value_surface, (value_x, value_y))
             
     def _render_label(self, surface, widget):
         """Render a label widget"""
@@ -592,3 +642,15 @@ class BridgeScene:
                 cursor_x = x + 4 + text_surface.get_width() + 2
                 cursor_y = y + 2
                 pygame.draw.line(surface, text_color, (cursor_x, cursor_y), (cursor_x, cursor_y + h - 4), 1)
+                
+    def _set_altitude_slider_from_mouse(self, widget_index: int, pos):
+        """Set altitude slider value from mouse position"""
+        widget = self.widgets[widget_index]
+        if widget["id"] == "altitude_slider":
+            x, y = pos
+            wx, wy = widget["position"]
+            ww, wh = widget["size"]
+            rel_x = (x - wx) / ww
+            rel_x = max(0.0, min(1.0, rel_x))
+            widget["value"] = rel_x
+            self.simulator.set_autopilot_target("altitude", int(rel_x * 4000))

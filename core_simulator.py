@@ -604,13 +604,55 @@ class CoreSimulator:
                 autopilot["targetRudderStep"] = target_rudder_step
                 autopilot["turnRate"] = target_rudder_step / 2.0  # Approximate turn rate
                 
-        # Altitude hold
-        if autopilot["altitudeHold"]:
-            altitude_error = targets["altitude"] - position["altitude"]
-            climb_rate = altitude_error * 0.1  # feet per second
-            climb_rate = max(-500, min(500, climb_rate))  # Limit climb rate
-            position["altitude"] += climb_rate * dt
-            motion["verticalSpeed"] = climb_rate * 60  # Convert to fpm
+        # Altitude hold with smooth easing
+        if autopilot["altitudeHold"] or nav.get("mode") in ["heading_hold", "route_follow"]:
+            current_altitude = position["altitude"]
+            target_altitude = targets["altitude"]
+            altitude_error = target_altitude - current_altitude
+            
+            # Smooth altitude control with easing
+            abs_error = abs(altitude_error)
+            
+            # Define approach phases with different characteristics
+            if abs_error > 200:
+                # Far from target: steady climb/descent rate
+                base_rate = 150.0  # ft/min (reasonable for airship)
+            elif abs_error > 50:
+                # Medium distance: moderate rate
+                base_rate = 80.0   # ft/min
+            elif abs_error > 10:
+                # Close to target: gentle approach
+                base_rate = 30.0   # ft/min
+            else:
+                # Very close: fine adjustment with easing
+                base_rate = 10.0   # ft/min
+                
+            # Apply proportional control with easing near target
+            if abs_error <= 25:
+                # Easing zone: gradual slowdown as we approach target
+                easing_factor = abs_error / 25.0  # 0.0 to 1.0
+                # Use smooth ease-out curve
+                easing_factor = 1.0 - (1.0 - easing_factor) ** 3
+                climb_rate_fpm = base_rate * easing_factor
+            else:
+                # Normal zone: consistent rate
+                climb_rate_fpm = base_rate
+                
+            # Apply direction
+            if altitude_error < 0:
+                climb_rate_fpm = -climb_rate_fpm
+                
+            # Convert to feet per second and apply
+            climb_rate_fps = climb_rate_fpm / 60.0
+            position["altitude"] += climb_rate_fps * dt
+            motion["verticalSpeed"] = climb_rate_fpm
+            
+            # Ensure we don't overshoot significantly
+            new_error = targets["altitude"] - position["altitude"]
+            if abs(new_error) < 1.0:
+                # Snap to target when very close
+                position["altitude"] = targets["altitude"]
+                motion["verticalSpeed"] = 0.0
             
     def _update_fuel_system(self, dt: float):
         """Update two-tank fuel system: feed, transfer, dump, and effect on attitude/speed"""
@@ -808,8 +850,20 @@ class CoreSimulator:
     def set_autopilot_target(self, parameter: str, value: float):
         """Set autopilot target values"""
         targets = self.game_state["navigation"]["targets"]
+        autopilot = self.game_state["navigation"]["autopilot"]
+        
         if parameter in targets:
             targets[parameter] = value
+            
+            # Auto-enable appropriate autopilot modes when targets are set
+            if parameter == "altitude":
+                # Setting altitude target enables altitude hold
+                autopilot["altitudeHold"] = True
+                autopilot["engaged"] = True
+            elif parameter == "heading":
+                # Setting heading target enables heading hold
+                autopilot["headingHold"] = True  
+                autopilot["engaged"] = True
             
     def toggle_autopilot_mode(self, mode: str):
         """Toggle autopilot modes"""
