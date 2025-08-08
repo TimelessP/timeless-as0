@@ -489,7 +489,8 @@ class CoreSimulator:
             engine["fuelFlow"] = max(0.0, engine["fuelFlow"] - 30.0 * dt)
 
         # Transfer pumps: rate scale (transferRate 0..1) * maxTransferGPH
-        max_transfer_gph = 60.0  # generous for gameplay, per direction
+        # Max rate empties 180g tank in 60 seconds: 180g / (60s / 3600s/h) = 10,800 GPH
+        max_transfer_gph = 10800.0  # High flow rate for rapid tank-to-tank transfers
         # Forward -> Aft
         if forward["transferRate"] > 0 and forward["level"] > 0.01 and aft["level"] < aft["capacity"] - 0.01:
             gal = min(forward["level"], (forward["transferRate"] * max_transfer_gph) * dt / 3600.0)
@@ -504,8 +505,8 @@ class CoreSimulator:
             aft["level"] -= gal
             forward["level"] += gal
 
-        # Dump pumps: remove fuel overboard
-        max_dump_gph = 40.0
+        # Dump pumps: remove fuel overboard (same 60-second emptying rate)
+        max_dump_gph = 10800.0  # Match transfer rate for consistent emptying time
         if forward["dumpRate"] > 0 and forward["level"] > 0.01:
             dump = min(forward["level"], (forward["dumpRate"] * max_dump_gph) * dt / 3600.0)
             forward["level"] -= dump

@@ -17,6 +17,8 @@ except Exception:  # pragma: no cover
 BACKGROUND_COLOR = (20, 20, 30)
 TEXT_COLOR = (230, 230, 240)
 FOCUS_COLOR = (255, 200, 50)
+HEADER_COLOR = (40, 80, 120)
+HEADER_HEIGHT = 24
 BAR_BG = (40, 40, 55)
 FUEL_COLOR = (200, 120, 40)
 SLIDER_TRACK = (70, 70, 90)
@@ -44,18 +46,24 @@ class FuelScene:
     # ------------------------------------------------------------------
     def _init_widgets(self):
         self.widgets = []
-        # Navigation
+        # Navigation buttons at bottom
         self.widgets.append({"id": "prev_scene", "type": "button", "position": [8, 290], "size": [60, 24], "text": "< [", "focused": True})
         self.widgets.append({"id": "next_scene", "type": "button", "position": [252, 290], "size": [60, 24], "text": "] >", "focused": False})
-        # Feed toggles
-        self.widgets.append({"id": "feed_forward", "type": "toggle", "position": [20, 20], "size": [80, 16], "text": "FWD FEED", "value": True, "focused": False})
-        self.widgets.append({"id": "feed_aft", "type": "toggle", "position": [220, 20], "size": [80, 16], "text": "AFT FEED", "value": True, "focused": False})
-        # Transfer sliders
-        self.widgets.append({"id": "transfer_forward", "type": "slider", "position": [40, 200], "size": [40, 80], "value": 0.0, "vertical": True, "label": "XFER"})
-        self.widgets.append({"id": "transfer_aft", "type": "slider", "position": [240, 200], "size": [40, 80], "value": 0.0, "vertical": True, "label": "XFER"})
-        # Dump sliders
-        self.widgets.append({"id": "dump_forward", "type": "slider", "position": [90, 200], "size": [40, 80], "value": 0.0, "vertical": True, "label": "DUMP", "dump": True})
-        self.widgets.append({"id": "dump_aft", "type": "slider", "position": [190, 200], "size": [40, 80], "value": 0.0, "vertical": True, "label": "DUMP", "dump": True})
+        
+        # Feed toggles positioned above tanks with better spacing
+        self.widgets.append({"id": "feed_forward", "type": "toggle", "position": [30, HEADER_HEIGHT + 6], "size": [80, 16], "text": "FWD FEED", "value": True, "focused": False})
+        self.widgets.append({"id": "feed_aft", "type": "toggle", "position": [210, HEADER_HEIGHT + 6], "size": [80, 16], "text": "AFT FEED", "value": True, "focused": False})
+        
+        # Control sliders positioned in middle area between tanks and bottom buttons
+        # Forward side: transfer and dump sliders side by side
+        slider_y = 160  # Position between tanks and nav buttons
+        slider_height = 60  # Shorter to fit better
+        self.widgets.append({"id": "transfer_forward", "type": "slider", "position": [20, slider_y], "size": [35, slider_height], "value": 0.0, "vertical": True, "label": "XFER"})
+        self.widgets.append({"id": "dump_forward", "type": "slider", "position": [65, slider_y], "size": [35, slider_height], "value": 0.0, "vertical": True, "label": "DUMP", "dump": True})
+        
+        # Aft side: dump and transfer sliders side by side (mirrored layout)
+        self.widgets.append({"id": "dump_aft", "type": "slider", "position": [220, slider_y], "size": [35, slider_height], "value": 0.0, "vertical": True, "label": "DUMP", "dump": True})
+        self.widgets.append({"id": "transfer_aft", "type": "slider", "position": [265, slider_y], "size": [35, slider_height], "value": 0.0, "vertical": True, "label": "XFER"})
 
     def set_font(self, font, is_text_antialiased=False):
         self.font = font
@@ -258,7 +266,10 @@ class FuelScene:
         if not pygame:
             return
         surface.fill(BACKGROUND_COLOR)
-        self._draw_text(surface, "FUEL MANAGEMENT", 160, 4, center=True)
+        # Header bar (match bridge style)
+        pygame.draw.rect(surface, HEADER_COLOR, (0, 0, 320, HEADER_HEIGHT))
+        pygame.draw.rect(surface, TEXT_COLOR, (0, 0, 320, HEADER_HEIGHT), 1)
+        self._draw_text(surface, "FUEL", 160, 4, center=True)
         self._render_tanks(surface)
         for w in self.widgets:
             self._render_widget(surface, w)
@@ -269,10 +280,16 @@ class FuelScene:
         tanks = fuel.get("tanks", {}) if isinstance(fuel, dict) else {}
         fwd = tanks.get("forward", {})
         aft = tanks.get("aft", {})
-        tank_w = 60
-        tank_h = 150
-        fwd_rect = pygame.Rect(40, 40, tank_w, tank_h)
-        aft_rect = pygame.Rect(220, 40, tank_w, tank_h)
+        
+        # Smaller tanks positioned to avoid widget conflicts
+        tank_w = 50   # Narrower tanks
+        tank_h = 100  # Shorter tanks 
+        top_y = HEADER_HEIGHT + 30  # Below feed toggles
+        
+        # Position tanks with more space between them and controls
+        fwd_rect = pygame.Rect(120, top_y, tank_w, tank_h)  # Centered in left half
+        aft_rect = pygame.Rect(150, top_y, tank_w, tank_h)  # Centered in right half
+        
         self._draw_tank(surface, fwd_rect, fwd, "FWD")
         self._draw_tank(surface, aft_rect, aft, "AFT")
 
@@ -286,7 +303,8 @@ class FuelScene:
         pygame.draw.rect(surface, FUEL_COLOR, fuel_rect, border_radius=4)
         pygame.draw.rect(surface, (110, 110, 130), rect, 1, border_radius=4)
         self._draw_text(surface, label, rect.centerx, rect.y - 12, center=True)
-        self._draw_text(surface, f"{level:.1f}/{capacity:.0f}g", rect.centerx, rect.y + rect.height + 4, center=True)
+        # Show two decimals for better perception of change
+        self._draw_text(surface, f"{level:.2f}/{capacity:.0f}g", rect.centerx, rect.y + rect.height + 4, center=True)
 
     def _render_widget(self, surface, widget):
         t = widget["type"]
@@ -298,11 +316,23 @@ class FuelScene:
             self._render_slider(surface, widget)
 
     def _render_button(self, surface, widget):
+        """Render button with bridge-style visuals for consistency."""
         x, y = widget["position"]; w, h = widget["size"]
-        color = BUTTON_FOCUSED if widget.get("focused") else BUTTON_COLOR
-        pygame.draw.rect(surface, color, (x, y, w, h), border_radius=4)
-        pygame.draw.rect(surface, (30, 30, 40), (x, y, w, h), 1, border_radius=4)
-        self._draw_text(surface, widget.get("text", ""), x + w / 2, y + h / 2 - 6, center=True)
+        focused = widget.get("focused", False)
+        # Match bridge scene palette
+        bg_color = (80, 100, 120) if focused else (60, 80, 100)
+        border_color = FOCUS_COLOR if focused else (120, 120, 120)
+        text_color = FOCUS_COLOR if focused else TEXT_COLOR
+        # Square corners (no rounding) to match bridge style
+        pygame.draw.rect(surface, bg_color, (x, y, w, h))
+        pygame.draw.rect(surface, border_color, (x, y, w, h), 1)
+        if self.font:
+            label = widget.get("text", "")
+            img = self.font.render(label, self.is_text_antialiased, text_color)
+            rect = img.get_rect()
+            rect.x = x + (w - rect.width) // 2
+            rect.y = y + (h - rect.height) // 2
+            surface.blit(img, rect)
 
     def _render_toggle(self, surface, widget):
         x, y = widget["position"]; w, h = widget["size"]
