@@ -157,14 +157,6 @@ class EngineRoomScene:
                 "text": "STOP",
                 "focused": False
             },
-            {
-                "id": "emergency_stop",
-                "type": "button",
-                "position": [188, 180],
-                "size": [120, 24],
-                "text": "EMERGENCY STOP",
-                "focused": False
-            },
             
             # Navigation - circular navigation
             {
@@ -343,13 +335,6 @@ class EngineRoomScene:
                     self._start_engine()
                 elif widget_id == "engine_stop":
                     self._stop_engine()
-                elif widget_id == "emergency_stop":
-                    self._emergency_stop()
-                elif widget_id == "prop_feather":
-                    self._feather_prop()
-                elif widget_id == "prop_unfeather":
-                    self._unfeather_prop()
-                    
         return None
         
     def _get_prev_scene(self) -> str:
@@ -374,14 +359,6 @@ class EngineRoomScene:
         if game_state["engine"]["running"]:
             self.simulator.toggle_engine()
         
-    def _emergency_stop(self):
-        """Emergency engine shutdown"""
-        # Force engine off and set emergency flag
-        game_state = self.simulator.get_state()
-        if game_state["engine"]["running"]:
-            self.simulator.toggle_engine()
-        # Set emergency shutdown flag directly (simulator doesn't have this method yet)
-        self.simulator.game_state["engine"]["emergencyShutdown"] = True
         
     def _feather_prop(self):
         """Feather the propeller"""
