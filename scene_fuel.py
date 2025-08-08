@@ -39,35 +39,282 @@ class FuelScene:
         # Keyboard adjustment granularities
         self.slider_step_small = 0.05
         self.slider_step_large = 0.15
-        self._init_widgets()
+        
+        # Centralized layout configuration - all widget positions and sizes
+        self.layout = {
+            # Navigation buttons (fixed - don't move these)
+            "nav_prev": {"position": [8, 290], "size": [60, 24]},
+            "nav_next": {"position": [252, 290], "size": [60, 24]},
+            
+            # Feed toggle buttons
+            "feed_forward": {"position": [30, 30], "size": [80, 16]},
+            "feed_aft": {"position": [210, 30], "size": [80, 16]},
+            
+            # Fuel tanks (visual elements)
+            "tank_forward": {"position": [45, 60], "size": [50, 80]},
+            "tank_aft": {"position": [225, 60], "size": [50, 80]},
+            
+            # Control sliders
+            "transfer_forward": {"position": [20, 160], "size": [35, 60]},
+            "dump_forward": {"position": [65, 160], "size": [35, 60]},
+            "transfer_aft": {"position": [265, 160], "size": [35, 60]},
+            "dump_aft": {"position": [220, 160], "size": [35, 60]},
+        }
+        
+        # Optimize layout on initialization
+        self.optimize_layout()
 
     # ------------------------------------------------------------------
     # Initialization
     # ------------------------------------------------------------------
     def _init_widgets(self):
+        """Initialize widgets using centralized layout configuration"""
         self.widgets = []
-        # Navigation buttons at bottom
-        self.widgets.append({"id": "prev_scene", "type": "button", "position": [8, 290], "size": [60, 24], "text": "< [", "focused": True})
-        self.widgets.append({"id": "next_scene", "type": "button", "position": [252, 290], "size": [60, 24], "text": "] >", "focused": False})
         
-        # Feed toggles positioned above tanks with better spacing
-        self.widgets.append({"id": "feed_forward", "type": "toggle", "position": [30, HEADER_HEIGHT + 6], "size": [80, 16], "text": "FWD FEED", "value": True, "focused": False})
-        self.widgets.append({"id": "feed_aft", "type": "toggle", "position": [210, HEADER_HEIGHT + 6], "size": [80, 16], "text": "AFT FEED", "value": True, "focused": False})
+        # Navigation buttons (fixed positions)
+        self.widgets.append({
+            "id": "prev_scene", 
+            "type": "button", 
+            "position": self.layout["nav_prev"]["position"], 
+            "size": self.layout["nav_prev"]["size"], 
+            "text": "< [", 
+            "focused": True
+        })
+        self.widgets.append({
+            "id": "next_scene", 
+            "type": "button", 
+            "position": self.layout["nav_next"]["position"], 
+            "size": self.layout["nav_next"]["size"], 
+            "text": "] >", 
+            "focused": False
+        })
         
-        # Control sliders positioned in middle area between tanks and bottom buttons
-        # Forward side: transfer and dump sliders side by side
-        slider_y = 160  # Position between tanks and nav buttons
-        slider_height = 60  # Shorter to fit better
-        self.widgets.append({"id": "transfer_forward", "type": "slider", "position": [20, slider_y], "size": [35, slider_height], "value": 0.0, "vertical": True, "label": "XFER"})
-        self.widgets.append({"id": "dump_forward", "type": "slider", "position": [65, slider_y], "size": [35, slider_height], "value": 0.0, "vertical": True, "label": "DUMP", "dump": True})
+        # Feed toggles
+        self.widgets.append({
+            "id": "feed_forward", 
+            "type": "toggle", 
+            "position": self.layout["feed_forward"]["position"], 
+            "size": self.layout["feed_forward"]["size"], 
+            "text": "FWD FEED", 
+            "value": True, 
+            "focused": False
+        })
+        self.widgets.append({
+            "id": "feed_aft", 
+            "type": "toggle", 
+            "position": self.layout["feed_aft"]["position"], 
+            "size": self.layout["feed_aft"]["size"], 
+            "text": "AFT FEED", 
+            "value": True, 
+            "focused": False
+        })
         
-        # Aft side: dump and transfer sliders side by side (mirrored layout)
-        self.widgets.append({"id": "dump_aft", "type": "slider", "position": [220, slider_y], "size": [35, slider_height], "value": 0.0, "vertical": True, "label": "DUMP", "dump": True})
-        self.widgets.append({"id": "transfer_aft", "type": "slider", "position": [265, slider_y], "size": [35, slider_height], "value": 0.0, "vertical": True, "label": "XFER"})
+        # Control sliders
+        self.widgets.append({
+            "id": "transfer_forward", 
+            "type": "slider", 
+            "position": self.layout["transfer_forward"]["position"], 
+            "size": self.layout["transfer_forward"]["size"], 
+            "value": 0.0, 
+            "vertical": True, 
+            "label": "XFER"
+        })
+        self.widgets.append({
+            "id": "dump_forward", 
+            "type": "slider", 
+            "position": self.layout["dump_forward"]["position"], 
+            "size": self.layout["dump_forward"]["size"], 
+            "value": 0.0, 
+            "vertical": True, 
+            "label": "DUMP", 
+            "dump": True
+        })
+        self.widgets.append({
+            "id": "dump_aft", 
+            "type": "slider", 
+            "position": self.layout["dump_aft"]["position"], 
+            "size": self.layout["dump_aft"]["size"], 
+            "value": 0.0, 
+            "vertical": True, 
+            "label": "DUMP", 
+            "dump": True
+        })
+        self.widgets.append({
+            "id": "transfer_aft", 
+            "type": "slider", 
+            "position": self.layout["transfer_aft"]["position"], 
+            "size": self.layout["transfer_aft"]["size"], 
+            "value": 0.0, 
+            "vertical": True, 
+            "label": "XFER"
+        })
 
     def set_font(self, font, is_text_antialiased=False):
         self.font = font
         self.is_text_antialiased = is_text_antialiased
+
+    def check_layout_overlaps(self) -> List[str]:
+        """
+        Check for overlapping widgets in the current layout.
+        Also checks for overlaps with tank fuel labels.
+        Returns list of overlap descriptions for debugging.
+        """
+        overlaps = []
+        layout_items = list(self.layout.items())
+        
+        # Check widget-to-widget overlaps
+        for i, (name1, rect1) in enumerate(layout_items):
+            x1, y1 = rect1["position"]
+            w1, h1 = rect1["size"]
+            
+            for j, (name2, rect2) in enumerate(layout_items[i+1:], i+1):
+                x2, y2 = rect2["position"]
+                w2, h2 = rect2["size"]
+                
+                # Check if rectangles overlap
+                if (x1 < x2 + w2 and x1 + w1 > x2 and 
+                    y1 < y2 + h2 and y1 + h1 > y2):
+                    overlaps.append(f"{name1} overlaps {name2}")
+        
+        # Check tank label overlaps
+        tank_label_height = 16
+        tank_label_margin = 4
+        
+        for tank_name in ["tank_forward", "tank_aft"]:
+            if tank_name in self.layout:
+                tank = self.layout[tank_name]
+                label_x = tank["position"][0]
+                label_y = tank["position"][1] + tank["size"][1] + tank_label_margin
+                label_w = tank["size"][0]
+                label_h = tank_label_height
+                
+                # Check if tank label overlaps with any widget
+                for widget_name, widget_rect in self.layout.items():
+                    if widget_name == tank_name:
+                        continue
+                        
+                    wx, wy = widget_rect["position"]
+                    ww, wh = widget_rect["size"]
+                    
+                    if (label_x < wx + ww and label_x + label_w > wx and 
+                        label_y < wy + wh and label_y + label_h > wy):
+                        overlaps.append(f"{tank_name}_label overlaps {widget_name}")
+        
+        return overlaps
+    
+    def get_layout_bounds(self) -> Dict[str, int]:
+        """Get overall layout boundaries"""
+        min_x = min(rect["position"][0] for rect in self.layout.values())
+        max_x = max(rect["position"][0] + rect["size"][0] for rect in self.layout.values())
+        min_y = min(rect["position"][1] for rect in self.layout.values())
+        max_y = max(rect["position"][1] + rect["size"][1] for rect in self.layout.values())
+        
+        return {
+            "min_x": min_x, "max_x": max_x, 
+            "min_y": min_y, "max_y": max_y,
+            "width": max_x - min_x, "height": max_y - min_y
+        }
+    
+    def optimize_layout(self):
+        """
+        Systematically calculate optimal widget positions to avoid overlaps.
+        Keeps navigation buttons fixed as requested.
+        Accounts for tank fuel labels and proper margins between widgets.
+        """
+        # Define layout zones and spacing
+        margin = 8  # Minimum spacing between elements
+        header_height = 24
+        tank_label_height = 16  # Height needed for fuel amount labels below tanks
+        tank_label_margin = 4   # Space between tank and its label
+        
+        # Zone 1: Feed toggles (top, below header)
+        feed_y = header_height + margin
+        self.layout["feed_forward"]["position"] = [20, feed_y]
+        self.layout["feed_aft"]["position"] = [220, feed_y]
+        
+        # Zone 2: Fuel tanks (middle-top, with space for labels below)
+        tank_y = feed_y + self.layout["feed_forward"]["size"][1] + margin
+        
+        # Center tanks in their respective halves of the screen
+        left_half_center = 80  # Center of left half (0-160)
+        right_half_center = 240  # Center of right half (160-320)
+        
+        tank_w, tank_h = self.layout["tank_forward"]["size"]
+        self.layout["tank_forward"]["position"] = [left_half_center - tank_w//2, tank_y]
+        self.layout["tank_aft"]["position"] = [right_half_center - tank_w//2, tank_y]
+        
+        # Zone 3: Control sliders (middle-bottom, below tank labels)
+        # Tank labels appear at: tank_bottom + tank_label_margin
+        # So sliders must start at: tank_bottom + tank_label_margin + tank_label_height + margin
+        tank_bottom = tank_y + tank_h
+        tank_labels_bottom = tank_bottom + tank_label_margin + tank_label_height
+        slider_y = tank_labels_bottom + margin
+        
+        nav_button_y = self.layout["nav_prev"]["position"][1]  # Fixed nav button position
+        available_height = nav_button_y - slider_y - margin
+        
+        # Optimize slider height to fit available space
+        slider_height = min(50, available_height)  # Reduced height for better fit
+        slider_width = 28  # Slightly narrower for better margins
+        
+        # Position sliders around tanks with proper spacing
+        fwd_tank_center = self.layout["tank_forward"]["position"][0] + tank_w//2
+        aft_tank_center = self.layout["tank_aft"]["position"][0] + tank_w//2
+        
+        # Forward side: transfer and dump sliders with margins
+        self.layout["transfer_forward"]["position"] = [fwd_tank_center - slider_width - margin, slider_y]
+        self.layout["transfer_forward"]["size"] = [slider_width, slider_height]
+        
+        self.layout["dump_forward"]["position"] = [fwd_tank_center + margin, slider_y]
+        self.layout["dump_forward"]["size"] = [slider_width, slider_height]
+        
+        # Aft side: transfer and dump sliders (mirrored) with margins
+        self.layout["transfer_aft"]["position"] = [aft_tank_center + margin, slider_y]
+        self.layout["transfer_aft"]["size"] = [slider_width, slider_height]
+        
+        self.layout["dump_aft"]["position"] = [aft_tank_center - slider_width - margin, slider_y]
+        self.layout["dump_aft"]["size"] = [slider_width, slider_height]
+        
+        # Re-initialize widgets with optimized layout
+        self._init_widgets()
+    
+    def adjust_layout(self, adjustments: Dict[str, Dict[str, Any]]):
+        """
+        Apply manual adjustments to the layout.
+        Usage: scene.adjust_layout({"feed_forward": {"position": [25, 35]}})
+        """
+        for widget_name, changes in adjustments.items():
+            if widget_name in self.layout:
+                self.layout[widget_name].update(changes)
+        
+        # Re-initialize widgets after adjustments
+        self._init_widgets()
+        
+        # Verify no overlaps after manual adjustments
+        overlaps = self.check_layout_overlaps()
+        if overlaps:
+            print(f"⚠️  Warning: Manual adjustments created overlaps: {overlaps}")
+    
+    def print_layout_debug(self):
+        """Print detailed layout information for debugging"""
+        print("=== Fuel Scene Layout Debug ===")
+        overlaps = self.check_layout_overlaps()
+        if overlaps:
+            print("❌ Overlaps:")
+            for overlap in overlaps:
+                print(f"   - {overlap}")
+        else:
+            print("✅ No overlaps")
+        
+        bounds = self.get_layout_bounds()
+        print(f"Bounds: {bounds['width']}x{bounds['height']} ({bounds['min_x']},{bounds['min_y']} to {bounds['max_x']},{bounds['max_y']})")
+        
+        print("\nWidget details:")
+        for name, rect in self.layout.items():
+            x, y = rect["position"]
+            w, h = rect["size"]
+            print(f"  {name:16} | ({x:3},{y:3}) | {w:2}x{h:2} | to ({x+w:3},{y+h:3})")
+        print("=" * 35)
 
     # ------------------------------------------------------------------
     # Helpers to call simulator safely
@@ -275,20 +522,21 @@ class FuelScene:
             self._render_widget(surface, w)
 
     def _render_tanks(self, surface):
+        """Render fuel tanks using centralized layout configuration"""
         state = self.simulator.get_state() if hasattr(self.simulator, "get_state") else {}
         fuel = state.get("fuel") or state.get("engines", {}).get("fuel", {})
         tanks = fuel.get("tanks", {}) if isinstance(fuel, dict) else {}
         fwd = tanks.get("forward", {})
         aft = tanks.get("aft", {})
         
-        # Smaller tanks positioned to avoid widget conflicts
-        tank_w = 50   # Narrower tanks
-        tank_h = 100  # Shorter tanks 
-        top_y = HEADER_HEIGHT + 30  # Below feed toggles
+        # Use layout configuration for tank positioning
+        fwd_pos = self.layout["tank_forward"]["position"]
+        fwd_size = self.layout["tank_forward"]["size"] 
+        fwd_rect = pygame.Rect(fwd_pos[0], fwd_pos[1], fwd_size[0], fwd_size[1])
         
-        # Position tanks with more space between them and controls
-        fwd_rect = pygame.Rect(120, top_y, tank_w, tank_h)  # Centered in left half
-        aft_rect = pygame.Rect(150, top_y, tank_w, tank_h)  # Centered in right half
+        aft_pos = self.layout["tank_aft"]["position"]
+        aft_size = self.layout["tank_aft"]["size"]
+        aft_rect = pygame.Rect(aft_pos[0], aft_pos[1], aft_size[0], aft_size[1])
         
         self._draw_tank(surface, fwd_rect, fwd, "FWD")
         self._draw_tank(surface, aft_rect, aft, "AFT")
