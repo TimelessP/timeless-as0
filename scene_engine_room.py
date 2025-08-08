@@ -24,6 +24,7 @@ class EngineRoomScene:
         self.focus_index = 0
         self.simulator = simulator
         self.all_widgets_inactive = True
+        self.dragging_widget: Optional[int] = None  # For mouse drag support
         
         self._init_widgets()
         
@@ -236,7 +237,23 @@ class EngineRoomScene:
                     clicked_widget = self._get_widget_at_pos(logical_pos)
                     if clicked_widget is not None:
                         self._set_focus(clicked_widget)
-                        return self._activate_focused()
+                        widget = self.widgets[clicked_widget]
+                        if widget["type"] == "slider":
+                            # Start dragging for sliders
+                            self.dragging_widget = clicked_widget
+                            self._set_slider_value_from_mouse(clicked_widget, logical_pos)
+                        else:
+                            return self._activate_focused()
+        
+        elif event.type == pygame.MOUSEBUTTONUP:
+            if event.button == 1:  # Left click release
+                self.dragging_widget = None
+        
+        elif event.type == pygame.MOUSEMOTION and self.dragging_widget is not None:
+            # Update slider value while dragging
+            logical_pos = self._screen_to_logical(event.pos)
+            if logical_pos:
+                self._set_slider_value_from_mouse(self.dragging_widget, logical_pos)
                         
         return None
         
@@ -250,7 +267,35 @@ class EngineRoomScene:
             widget = self.widgets[self.focus_index]
             if widget["type"] == "slider":
                 widget["value"] = max(0.0, min(1.0, widget["value"] + delta))
-                self._apply_slider_value(widget)
+                self._apply_slider_change(widget)
+    
+    def _set_slider_value_from_mouse(self, widget_index: int, pos):
+        """Set slider value from mouse position"""
+        if 0 <= widget_index < len(self.widgets):
+            widget = self.widgets[widget_index]
+            if widget["type"] == "slider":
+                x, y = pos
+                wx, wy = widget["position"]
+                ww, wh = widget["size"]
+                
+                # Calculate relative position within slider
+                rel_x = (x - wx) / ww
+                rel_x = max(0.0, min(1.0, rel_x))  # Clamp to [0, 1]
+                
+                widget["value"] = rel_x
+                self._apply_slider_change(widget)
+    
+    def _apply_slider_change(self, widget):
+        """Apply slider value change to simulator"""
+        widget_id = widget["id"]
+        value = widget["value"]
+        
+        if widget_id == "throttle_control":
+            self.simulator.set_engine_control("throttle", value)
+        elif widget_id == "mixture_control":
+            self.simulator.set_engine_control("mixture", value)
+        elif widget_id == "prop_control":
+            self.simulator.set_engine_control("propeller", value)
                 
     def _apply_slider_value(self, widget):
         """Apply slider value to game state"""

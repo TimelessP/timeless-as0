@@ -322,10 +322,27 @@ class CoreSimulator:
         
         # Engine is running - simulate performance based on fuel availability
         controls = engine["controls"]
+        navigation = self.game_state["navigation"]
+        altitude = navigation["position"]["altitude"]
         
-        # Calculate target RPM based on throttle, prop settings, and fuel availability
+        # Calculate mixture effectiveness based on altitude and mixture setting
+        # Optimal mixture changes with altitude (leaner needed at higher altitudes)
+        optimal_mixture_for_altitude = 0.85 - (altitude / 10000.0) * 0.15  # 0.85 at sea level, 0.70 at 10k ft
+        optimal_mixture_for_altitude = max(0.50, min(0.95, optimal_mixture_for_altitude))
+        
+        # Calculate mixture power factor (bell curve around optimal)
+        mixture_deviation = abs(controls["mixture"] - optimal_mixture_for_altitude)
+        if mixture_deviation <= 0.05:  # Within 5% of optimal
+            mixture_power_factor = 1.0
+        elif mixture_deviation <= 0.15:  # Within 15% of optimal
+            mixture_power_factor = 1.0 - (mixture_deviation - 0.05) * 2.0  # Linear falloff
+        else:  # More than 15% off optimal
+            mixture_power_factor = 0.8 - (mixture_deviation - 0.15) * 1.5  # Steeper falloff
+        mixture_power_factor = max(0.3, mixture_power_factor)  # Minimum 30% power
+        
+        # Calculate target RPM based on throttle, prop settings, mixture, and fuel availability
         max_rpm = 2800.0
-        base_target_rpm = controls["throttle"] * max_rpm * controls["propeller"]
+        base_target_rpm = controls["throttle"] * max_rpm * controls["propeller"] * mixture_power_factor
         
         # Reduce target RPM if fuel pressure is low or fuel is cut
         fuel_factor = 1.0
@@ -350,26 +367,38 @@ class CoreSimulator:
         if engine["rpm"] <= 0.0:
             engine["running"] = False
         
-        # Manifold pressure correlates with throttle and fuel availability
-        base_manifold = 14.7 + (controls["throttle"] * 15.0)
-        engine["manifoldPressure"] = base_manifold * fuel_factor
+        # Manifold pressure correlates with throttle, altitude, and fuel availability
+        # Atmospheric pressure decreases with altitude
+        atmospheric_pressure = 29.92 * math.exp(-altitude / 29000.0)  # Rough altitude correction
+        base_manifold = atmospheric_pressure + (controls["throttle"] * 15.0)
+        engine["manifoldPressure"] = base_manifold * fuel_factor * mixture_power_factor
         
         # Fuel flow based on throttle, mixture, and actual engine performance
         if fuel_available and engine["fuelPressure"] > 5.0:
-            base_flow = controls["throttle"] * 18.0  # Max ~18 GPH
-            mixture_efficiency = 0.7 + (controls["mixture"] * 0.3)  # 70-100% efficiency
+            # Base fuel flow scales with throttle and actual RPM
+            base_flow = controls["throttle"] * 18.0  # Max ~18 GPH at full throttle
+            
+            # Mixture affects fuel flow directly - higher mixture = more fuel
+            mixture_flow_factor = 0.6 + (controls["mixture"] * 0.8)  # 60-140% flow based on mixture
+            
             # Reduce flow if fuel pressure is low
             pressure_factor = min(1.0, engine["fuelPressure"] / 22.0)
+            
             # Also factor in actual RPM vs target (engine under stress uses more fuel)
             rpm_factor = engine["rpm"] / max(1.0, target_rpm) if target_rpm > 0 else 0.0
-            engine["fuelFlow"] = base_flow * mixture_efficiency * pressure_factor * rpm_factor
+            
+            engine["fuelFlow"] = base_flow * mixture_flow_factor * pressure_factor * rpm_factor
         else:
             # No fuel flow when fuel cut or very low pressure
             engine["fuelFlow"] = max(0.0, engine["fuelFlow"] - 25.0 * dt)
         
-        # Temperature simulation (affected by fuel availability and engine load)
+        # Temperature simulation (affected by fuel availability, engine load, and mixture)
         ambient_temp = self.game_state["environment"]["weather"]["temperature"]
         load_factor = controls["throttle"] * fuel_factor
+        
+        # Mixture significantly affects exhaust gas temperature
+        # Lean mixture (low mixture setting) runs much hotter
+        mixture_temp_factor = 2.0 - controls["mixture"]  # Lean = hot, Rich = cooler
         
         # Temperatures drop when engine is fuel-starved or not running properly
         if fuel_factor < 0.5 or engine["rpm"] < 1000:
@@ -378,10 +407,13 @@ class CoreSimulator:
             target_cht = ambient_temp + 100 + (load_factor * 80)
             target_egt = 400 + (load_factor * 400)
         else:
-            # Normal operating temperatures
+            # Normal operating temperatures with mixture effects
             target_oil_temp = ambient_temp + 100 + (load_factor * 80)  # °F
             target_cht = ambient_temp + 180 + (load_factor * 140)     # °F
-            target_egt = 800 + (load_factor * 650)                   # °F
+            # EGT strongly affected by mixture - lean mixtures run much hotter
+            base_egt = 800 + (load_factor * 650)
+            target_egt = base_egt * mixture_temp_factor
+            target_egt = min(1800, target_egt)  # Cap at realistic maximum
         
         # Gradual temperature changes (faster cooling when fuel-starved)
         temp_rate = 15.0 * dt if fuel_factor < 0.5 else 10.0 * dt
