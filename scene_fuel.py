@@ -542,14 +542,14 @@ class FuelScene:
         self._draw_tank(surface, aft_rect, aft, "AFT")
 
     def _draw_tank(self, surface, rect, tank, label):
-        pygame.draw.rect(surface, BAR_BG, rect, border_radius=4)
+        pygame.draw.rect(surface, BAR_BG, rect)
         level = tank.get("level", 0.0)
         capacity = tank.get("capacity", 1.0) or 1.0
         pct = max(0.0, min(1.0, level / capacity))
         fuel_height = int((rect.height - 4) * pct)
         fuel_rect = pygame.Rect(rect.x + 2, rect.y + rect.height - 2 - fuel_height, rect.width - 4, fuel_height)
-        pygame.draw.rect(surface, FUEL_COLOR, fuel_rect, border_radius=4)
-        pygame.draw.rect(surface, (110, 110, 130), rect, 1, border_radius=4)
+        pygame.draw.rect(surface, FUEL_COLOR, fuel_rect)
+        pygame.draw.rect(surface, (110, 110, 130), rect, 1)
         self._draw_text(surface, label, rect.centerx, rect.y - 12, center=True)
         # Show two decimals for better perception of change
         self._draw_text(surface, f"{level:.2f}/{capacity:.0f}g", rect.centerx, rect.y + rect.height + 4, center=True)
@@ -588,23 +588,23 @@ class FuelScene:
         base_color = (80, 140, 80) if on else (120, 70, 70)
         if widget.get("focused"):
             base_color = tuple(min(c + 40, 255) for c in base_color)
-        pygame.draw.rect(surface, base_color, (x, y, w, h), border_radius=4)
-        pygame.draw.rect(surface, (20, 20, 25), (x, y, w, h), 1, border_radius=4)
+        pygame.draw.rect(surface, base_color, (x, y, w, h))
+        pygame.draw.rect(surface, (20, 20, 25), (x, y, w, h), 1)
         txt = widget.get("text", "") + (" ON" if on else " OFF")
         self._draw_text(surface, txt, x + w / 2, y + 2, center=True)
 
     def _render_slider(self, surface, widget):
         x, y = widget["position"]; w, h = widget["size"]
-        pygame.draw.rect(surface, SLIDER_TRACK, (x, y, w, h), border_radius=4)
+        pygame.draw.rect(surface, SLIDER_TRACK, (x, y, w, h))
         val = widget.get("value", 0.0)
         fill_h = int((h - 4) * val)
         fill_color = DUMP_FILL if widget.get("dump") else SLIDER_FILL
-        pygame.draw.rect(surface, fill_color, (x + 2, y + h - 2 - fill_h, w - 4, fill_h), border_radius=4)
-        pygame.draw.rect(surface, (30, 30, 40), (x, y, w, h), 1, border_radius=4)
+        pygame.draw.rect(surface, fill_color, (x + 2, y + h - 2 - fill_h, w - 4, fill_h))
+        pygame.draw.rect(surface, (30, 30, 40), (x, y, w, h), 1)
         self._draw_text(surface, widget.get("label", ""), x + w / 2, y - 12, center=True)
         self._draw_text(surface, f"{val*100: .0f}%", x + w / 2, y + h + 2, center=True)
         if widget.get("focused"):
-            pygame.draw.rect(surface, FOCUS_COLOR, (x - 2, y - 2, w + 4, h + 4), 1, border_radius=6)
+            pygame.draw.rect(surface, FOCUS_COLOR, (x - 2, y - 2, w + 4, h + 4), 1)
 
     def _draw_text(self, surface, text, x, y, center=False):
         if not self.font or not pygame:
