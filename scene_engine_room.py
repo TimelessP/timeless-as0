@@ -137,7 +137,7 @@ class EngineRoomScene:
                 "size": [150, 20],
                 "value": 0.80,
                 "focused": False,
-                "label": "PROP RPM"
+                "label": "PROP PITCH"
             },
             {
                 "id": "prop_feather",
