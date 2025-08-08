@@ -6,6 +6,12 @@
 
 Airship Zero is a steampunk-aesthetic flight simulator built with Python and Pygame featuring realistic atmospheric physics, comprehensive systems simulation, and a complete operational manual suite. The game maintains a fixed 320x320 logical resolution that scales beautifully to any window size while delivering pixel-perfect rendering and professional-grade simulation depth.
 
+## TL;DR Quickstart
+
+```bash
+uv tool run --from git+https://github.com/TimelessP/timeless-as0 airshipzero
+```
+
 ## Features
 
 ### ✅ **Fully Implemented Systems**
