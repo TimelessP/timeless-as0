@@ -219,6 +219,17 @@ uv tool uninstall airshipzero
 uv tool install git+https://github.com/TimelessP/timeless-as0
 ```
 
+**Missing fonts, maps, or other assets?**
+```bash
+# This was a packaging issue fixed in recent versions
+# Reinstall to get all assets included:
+uv tool uninstall airshipzero
+uv tool install git+https://github.com/TimelessP/timeless-as0
+
+# Verify assets are present
+airshipzero --help  # Should work without font errors
+```
+
 ## Controls
 
 ### Universal Navigation
@@ -440,6 +451,35 @@ See `.github/copilot-instructions.md` for comprehensive development guidelines i
 - **pygame** - Graphics, input handling, and surface management
 - **Python 3.12+** - Modern Python features and type hints
 - **UV** - Fast, reliable Python package management
+
+### Package Contents
+
+The UV tool installation includes all necessary assets:
+
+#### 📁 **Complete Asset Bundle**
+- **🎨 Fonts** - Roboto Condensed, Pixelify Sans, Tiny5 with full character sets
+- **🗺️ Graphics** - High-resolution world map (640x320) and UI assets  
+- **📚 Documentation** - Complete user manual library (10+ operational guides)
+- **⚙️ Python Modules** - All scene files and core simulation engine
+- **📄 Project Files** - LICENSE and README.md for offline reference
+
+#### 🔧 **Asset Verification**
+If you experience missing fonts or graphics after installation:
+
+```bash
+# Check if all assets are included
+python -c "
+import main, os
+assets_dir = os.path.join(os.path.dirname(main.__file__), 'assets')
+print('Assets found:' if os.path.exists(assets_dir) else 'Assets missing!')
+"
+
+# Reinstall if assets are missing
+uv tool uninstall airshipzero
+uv tool install git+https://github.com/TimelessP/timeless-as0
+```
+
+**Note**: All assets are packaged with the tool - no separate downloads required!
 
 ### Development Commands
 ```bash
