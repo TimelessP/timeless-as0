@@ -9,7 +9,12 @@ Airship Zero is a steampunk-aesthetic flight simulator built with Python and Pyg
 ## TL;DR Quickstart
 
 ```bash
+# Run once (no installation)
 uv tool run --from git+https://github.com/TimelessP/timeless-as0 airshipzero
+
+# Or install for repeated use (manual updates required)
+uv tool install git+https://github.com/TimelessP/timeless-as0
+airshipzero
 ```
 
 ## Features
@@ -106,6 +111,9 @@ uv tool install git+https://github.com/TimelessP/timeless-as0
 
 # Run anytime after installation
 airshipzero
+
+# Update when new versions are released (tools don't auto-update)
+uv tool upgrade airshipzero
 ```
 
 #### Option 3: Development (Local Clone)
@@ -137,6 +145,78 @@ airshipzero -s custom_game.json
 # Get help
 airshipzero --help
 python main.py --help
+```
+
+### Tool Management
+
+#### Managing Installed Tools
+
+```bash
+# List all installed UV tools
+uv tool list
+
+# Check if airshipzero is installed (with version info)
+uv tool list --show-version-specifiers
+
+# Update airshipzero to latest version
+uv tool upgrade airshipzero
+
+# Update all installed tools
+uv tool upgrade --all
+
+# Uninstall airshipzero
+uv tool uninstall airshipzero
+
+# Uninstall all tools (if needed)
+uv tool uninstall --all
+```
+
+#### Update Process
+
+UV tools **do not update automatically**. To get the latest features and fixes:
+
+```bash
+# Check current version
+airshipzero --help  # Shows if tool is installed
+
+# Update to latest version from GitHub
+uv tool upgrade airshipzero
+
+# Verify update worked
+uv tool list --show-version-specifiers
+```
+
+#### Fresh Installation
+
+If you encounter issues, you can completely reinstall:
+
+```bash
+# Remove old installation
+uv tool uninstall airshipzero
+
+# Install fresh copy
+uv tool install git+https://github.com/TimelessP/timeless-as0
+
+# Verify installation
+airshipzero --help
+```
+
+#### Troubleshooting
+
+**"airshipzero is not installed" error?**
+```bash
+# Check if it's actually installed
+uv tool list
+
+# If not listed, install it first
+uv tool install git+https://github.com/TimelessP/timeless-as0
+```
+
+**Tool not updating to latest version?**
+```bash
+# Force fresh installation
+uv tool uninstall airshipzero
+uv tool install git+https://github.com/TimelessP/timeless-as0
 ```
 
 ## Controls
