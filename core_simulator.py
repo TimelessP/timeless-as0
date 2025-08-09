@@ -328,6 +328,26 @@ class CoreSimulator:
                     # Refresh availability depends on motion state
                     gs = self.game_state.get("navigation", {}).get("motion", {}).get("groundSpeed", 0.0)
                     self.game_state["cargo"]["refreshAvailable"] = gs <= 0.1
+                    
+                    # Ensure crate types are available (restore if missing from old save)
+                    if not self.game_state["cargo"].get("crateTypes"):
+                        print("🔧 Restoring missing crate types from save file...")
+                        initial_state = self._create_initial_game_state()
+                        self.game_state["cargo"]["crateTypes"] = initial_state["cargo"]["crateTypes"]
+                        
+                    # Ensure other cargo fields exist
+                    cargo = self.game_state["cargo"]
+                    cargo.setdefault("cargoHold", [])
+                    cargo.setdefault("totalWeight", 0.0)
+                    cargo.setdefault("centerOfGravity", {"x": 156.2, "y": 100.0})
+                    cargo.setdefault("maxCapacity", 500.0)
+                    cargo.setdefault("winch", {
+                        "position": {"x": 160, "y": 50},
+                        "cableLength": 0,
+                        "attachedCrate": None,
+                        "movementState": {"left": False, "right": False, "up": False, "down": False}
+                    })
+                    
                 except Exception:
                     pass
                 print(f"✅ Game loaded from {filename}")
@@ -1249,8 +1269,15 @@ class CoreSimulator:
         if "winch" not in cargo:
             cargo["winch"] = {"position": {"x": 160, "y": 50}, "cableLength": 0, "attachedCrate": None, "movementState": {}}
         
-        if "movementState" not in cargo["winch"]:
+        # Ensure movementState has all required keys
+        if "movementState" not in cargo["winch"] or not cargo["winch"]["movementState"]:
             cargo["winch"]["movementState"] = {"left": False, "right": False, "up": False, "down": False}
+        else:
+            # Ensure all direction keys exist
+            required_keys = ["left", "right", "up", "down"]
+            for key in required_keys:
+                if key not in cargo["winch"]["movementState"]:
+                    cargo["winch"]["movementState"][key] = False
         
         if direction in cargo["winch"]["movementState"]:
             cargo["winch"]["movementState"][direction] = active
@@ -1327,14 +1354,27 @@ class CoreSimulator:
         """Use/consume a crate and apply its effects"""
         cargo = self.game_state.get("cargo", {})
         
-        # Find crate in cargo hold only (can't use loading bay items)
+        # Find crate in cargo hold or loading bay
         crate = None
         crate_index = None
+        area = None
+        
+        # Check cargo hold first
         for i, c in enumerate(cargo.get("cargoHold", [])):
             if c.get("id") == crate_id:
                 crate = c
                 crate_index = i
+                area = "cargoHold"
                 break
+        
+        # If not found in cargo hold, check loading bay
+        if not crate:
+            for i, c in enumerate(cargo.get("loadingBay", [])):
+                if c.get("id") == crate_id:
+                    crate = c
+                    crate_index = i
+                    area = "loadingBay"
+                    break
         
         if not crate:
             return False
@@ -1362,8 +1402,8 @@ class CoreSimulator:
             success = True
         
         if success and crate_index is not None:
-            # Remove used crate
-            cargo["cargoHold"].pop(crate_index)
+            # Remove used crate from the appropriate area
+            cargo[area].pop(crate_index)
             self._update_cargo_physics()
         
         return success
@@ -1383,6 +1423,12 @@ class CoreSimulator:
         # Generate 2-4 random crates
         import random
         crate_types = list(cargo.get("crateTypes", {}).keys())
+        
+        # Safety check: ensure we have crate types available
+        if not crate_types:
+            print("⚠️ No crate types available for loading bay refresh")
+            return
+            
         num_crates = random.randint(2, 4)
         
         for i in range(num_crates):
