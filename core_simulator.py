@@ -215,7 +215,7 @@ class CoreSimulator:
                 "crateTypes": {
                     "fuel_canister": {
                         "name": "Fuel Canister",
-                        "dimensions": {"width": 2, "height": 3},
+                        "dimensions": {"width": 4, "height": 6},
                         "contents": {"amount": 1, "unit": "gallon"},
                         "colors": {"outline": "#FFFFFF", "fill": "#FF4444"},
                         "usable": True,
@@ -224,7 +224,7 @@ class CoreSimulator:
                     },
                     "books": {
                         "name": "Books",
-                        "dimensions": {"width": 1, "height": 1},
+                        "dimensions": {"width": 2, "height": 3},
                         "contents": {"amount": 1, "unit": "book"},
                         "colors": {"outline": "#8B4513", "fill": "#DEB887"},
                         "usable": False,
@@ -232,7 +232,7 @@ class CoreSimulator:
                     },
                     "medical_supplies": {
                         "name": "Medical Kit",
-                        "dimensions": {"width": 2, "height": 2},
+                        "dimensions": {"width": 4, "height": 3},
                         "contents": {"amount": 1, "unit": "kit"},
                         "colors": {"outline": "#FF0000", "fill": "#FFE4E1"},
                         "usable": True,
@@ -241,7 +241,7 @@ class CoreSimulator:
                     },
                     "food_rations": {
                         "name": "Food Rations",
-                        "dimensions": {"width": 3, "height": 1},
+                        "dimensions": {"width": 6, "height": 2},
                         "contents": {"amount": 7, "unit": "days"},
                         "colors": {"outline": "#228B22", "fill": "#90EE90"},
                         "usable": True,
@@ -250,7 +250,7 @@ class CoreSimulator:
                     },
                     "spare_parts": {
                         "name": "Engine Parts",
-                        "dimensions": {"width": 2, "height": 2},
+                        "dimensions": {"width": 5, "height": 3},
                         "contents": {"amount": 1, "unit": "set"},
                         "colors": {"outline": "#696969", "fill": "#D3D3D3"},
                         "usable": False,
@@ -258,7 +258,7 @@ class CoreSimulator:
                     },
                     "luxury_goods": {
                         "name": "Luxury Items",
-                        "dimensions": {"width": 1, "height": 2},
+                        "dimensions": {"width": 3, "height": 4},
                         "contents": {"amount": 1, "unit": "crate"},
                         "colors": {"outline": "#FFD700", "fill": "#FFFACD"},
                         "usable": False,
