@@ -411,8 +411,19 @@ class CargoScene:
             except Exception:
                 return True  # fallback
         elif widget_id == "use_crate":
-            # Can use if a usable crate is selected
-            return self.selected_crate is not None and self._is_crate_usable(self.selected_crate)
+            # Can use if a usable crate is selected, it's in cargo hold, and not attached to winch
+            if self.selected_crate is None:
+                return False
+            if not self._is_crate_usable(self.selected_crate):
+                return False
+            # Check if crate is attached to winch (can't use attached crates)
+            attached_crate_id = winch.get("attachedCrate")
+            if attached_crate_id == self.selected_crate.get("id"):
+                return False
+            # Check if crate is in cargo hold (can't use crates in loading bay)
+            cargo_hold = cargo_state.get("cargoHold", [])
+            crate_in_cargo_hold = any(c.get("id") == self.selected_crate.get("id") for c in cargo_hold)
+            return crate_in_cargo_hold
         elif widget_id == "refresh":
             # Can refresh if available and ship is not moving
             return cargo_state.get("refreshAvailable", True)
