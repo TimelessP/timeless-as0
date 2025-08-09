@@ -216,7 +216,7 @@ class CoreSimulator:
                     "fuel_canister": {
                         "name": "Fuel Canister",
                         "dimensions": {"width": 4, "height": 6},
-                        "contents": {"amount": 1, "unit": "gallon"},
+                        "contents": {"amount": 10, "unit": "gallons"},
                         "colors": {"outline": "#FFFFFF", "fill": "#FF4444"},
                         "usable": True,
                         "useAction": "transfer_fuel",
