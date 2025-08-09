@@ -1459,8 +1459,18 @@ class CoreSimulator:
         if indicated_airspeed > 0.1 or not cargo.get("refreshAvailable", True):
             return
         
-        # Clear loading bay
-        cargo["loadingBay"] = []
+        # Clear loading bay but preserve attached crates
+        winch = cargo.get("winch", {})
+        attached_crate_id = winch.get("attachedCrate")
+        
+        if attached_crate_id:
+            # Keep only the attached crate, remove others
+            loading_bay = cargo.get("loadingBay", [])
+            cargo["loadingBay"] = [crate for crate in loading_bay 
+                                 if crate.get("id") == attached_crate_id]
+        else:
+            # No attached crate, clear entire loading bay
+            cargo["loadingBay"] = []
         
         # Generate 2-4 random crates
         import random
