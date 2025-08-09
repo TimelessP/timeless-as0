@@ -83,9 +83,9 @@ class CargoScene:
             {"id": "refresh", "type": "button", "position": [230, 245], "size": [60, 20], "text": "Refresh", "focused": False, "holdable": False},
             
             # Navigation controls
-            # Keep a 4px bottom margin: y=292 for height 24
-            {"id": "prev_scene", "type": "button", "position": [8, 292], "size": [60, 24], "text": "< [", "focused": False, "holdable": False},
-            {"id": "next_scene", "type": "button", "position": [252, 292], "size": [60, 24], "text": "] >", "focused": False, "holdable": False},
+            # Move up to match other scenes: y=290 for height 24
+            {"id": "prev_scene", "type": "button", "position": [8, 290], "size": [60, 24], "text": "< [", "focused": False, "holdable": False},
+            {"id": "next_scene", "type": "button", "position": [252, 290], "size": [60, 24], "text": "] >", "focused": False, "holdable": False},
         ]
 
     def handle_event(self, event) -> Optional[str]:
