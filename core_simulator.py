@@ -1621,16 +1621,27 @@ class CoreSimulator:
         # Loading bay bounds (snap to grid)
         width_px = dimensions.get("width", 1) * CARGO_GRID_PX
         height_px = dimensions.get("height", 1) * CARGO_GRID_PX
-        min_x, max_x = 162, 312 - width_px
-        min_y, max_y = 60, 240 - height_px  # Updated from 260 to 240 (60+180)
+        
+        # Loading bay area: x=162, y=60, width=150, height=180
+        # So area goes from (162,60) to (312,240)
+        # For crate placement, top-left corner constraints:
+        min_x = 162
+        max_x = 312 - width_px  # Ensure crate right edge doesn't exceed 312
+        min_y = 60  # Top of loading bay
+        max_y = 240 - height_px  # Ensure crate bottom doesn't exceed 240 (floor level)
         
         # Try random positions
         for _ in range(50):  # Max attempts
             # choose grid-aligned positions
-            gx_min = (min_x // CARGO_GRID_PX)
+            gx_min = (min_x + CARGO_GRID_PX - 1) // CARGO_GRID_PX  # Round up
             gx_max = (max_x // CARGO_GRID_PX)
-            gy_min = (min_y // CARGO_GRID_PX)
+            gy_min = (min_y + CARGO_GRID_PX - 1) // CARGO_GRID_PX  # Round up  
             gy_max = (max_y // CARGO_GRID_PX)
+            
+            # Ensure we have valid grid ranges
+            if gx_max < gx_min or gy_max < gy_min:
+                continue
+                
             x = random.randint(gx_min, gx_max) * CARGO_GRID_PX
             y = random.randint(gy_min, gy_max) * CARGO_GRID_PX
             position = {"x": x, "y": y}
