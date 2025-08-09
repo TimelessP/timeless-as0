@@ -4,6 +4,7 @@ World map display with position and route planning
 """
 import pygame
 import math
+import os
 from typing import List, Dict, Any, Optional
 
 # Constants
@@ -120,7 +121,12 @@ class NavigationScene:
     def _load_world_map(self):
         """Load the world map image"""
         try:
-            self.world_map = pygame.image.load("assets/png/world-map.png")
+            # Import the global assets directory function
+            from main import get_assets_dir
+            assets_dir = get_assets_dir()
+            map_path = os.path.join(assets_dir, "png", "world-map.png")
+            
+            self.world_map = pygame.image.load(map_path)
             print(f"✅ Loaded world map: {self.world_map.get_size()}")
         except Exception as e:
             print(f"❌ Failed to load world map: {e}")

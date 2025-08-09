@@ -28,12 +28,38 @@ DEFAULT_WINDOW_SIZE = 960
 FULLSCREEN_RESOLUTION = (1920, 1080)
 DEFAULT_FONT_SIZE = 13
 
+# Global assets directory (set by main app)
+_assets_dir = None
+
+def get_assets_dir() -> str:
+    """Get the assets directory path for use by any module"""
+    global _assets_dir
+    if _assets_dir is None:
+        # Fallback detection if not set by main app
+        if os.path.exists("assets"):
+            _assets_dir = "assets"
+        else:
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            _assets_dir = os.path.join(script_dir, "assets")
+    return _assets_dir
+
+def set_assets_dir(path: str):
+    """Set the assets directory path (called by main app)"""
+    global _assets_dir
+    _assets_dir = path
+
 class AirshipApp:
     def __init__(self, save_file_path: Optional[str] = None):
         pygame.init()
         
         # Store custom save file path for the simulator
         self.save_file_path = save_file_path
+        
+        # Determine asset directory location
+        self.assets_dir = self._find_assets_dir()
+        
+        # Set global assets directory for other modules
+        set_assets_dir(self.assets_dir)
         
         # Text rendering configuration
         self.is_text_antialiased = True
@@ -68,21 +94,45 @@ class AirshipApp:
         # Game clock
         self.clock = pygame.time.Clock()
         
+    def _find_assets_dir(self) -> str:
+        """Find the assets directory relative to the package location"""
+        # Try relative path first (development mode)
+        if os.path.exists("assets"):
+            return "assets"
+        
+        # Try relative to this script (package mode)
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        assets_path = os.path.join(script_dir, "assets")
+        if os.path.exists(assets_path):
+            return assets_path
+            
+        # Last resort: try relative to the main module
+        try:
+            import __main__
+            if hasattr(__main__, '__file__'):
+                main_dir = os.path.dirname(os.path.abspath(__main__.__file__))
+                assets_path = os.path.join(main_dir, "assets")
+                if os.path.exists(assets_path):
+                    return assets_path
+        except:
+            pass
+            
+        # If all else fails, return relative path and hope for the best
+        return "assets"
+        
     def _load_font(self):
         """Load the font or fallback"""
         try:
-            # Try to load Tiny5 from our assets
-            # tiny5_path = "assets/fonts/Tiny5-Regular.ttf"
-            # font_path = "assets/fonts/Pixelify_Sans/PixelifySans-VariableFont_wght"
-            # font_path = "assets/fonts/Roboto_Mono/RobotoMono-VariableFont_wght.ttf"
-            font_path = "assets/fonts/Roboto_Condensed/RobotoCondensed-VariableFont_wght.ttf"
+            # Use the dynamically found assets directory
+            font_path = os.path.join(self.assets_dir, "fonts", "Roboto_Condensed", "RobotoCondensed-VariableFont_wght.ttf")
             
             if os.path.exists(font_path):
                 print(f"✅ Loading font from: {font_path}")
                 return pygame.font.Font(font_path, DEFAULT_FONT_SIZE)
                     
             # Fallback - should not happen if fonts are properly installed
-            print("⚠️  Font not found, using fallback")
+            print(f"⚠️  Font not found at {font_path}, using fallback")
+            print(f"    Assets directory: {self.assets_dir}")
             return pygame.font.Font(None, DEFAULT_FONT_SIZE)
                 
         except Exception as e:
