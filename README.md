@@ -55,7 +55,8 @@ uv tool run --from git+https://github.com/TimelessP/timeless-as0 airshipzero
 - **Auto-Save** - Automatic save on menu return and application exit
 - **Complete State** - Full game state persistence with format validation
 - **Resume Capability** - Seamless game continuation with all systems intact
-- **Single Slot** - Simplified save management in `saved_game.json`
+- **Cross-Platform** - OS-appropriate app data directories (Windows/macOS/Linux)
+- **Portable** - Saves persist regardless of where game is run from
 
 #### 📚 **Professional Documentation**
 - **Complete User Manuals** - Bridge, Engine Room, Navigation, Fuel Management
@@ -92,12 +93,50 @@ powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
 
 ### Running the Game
 
+#### Option 1: Direct Run (No Installation)
+```bash
+# Run directly from GitHub
+uv tool run --from git+https://github.com/TimelessP/timeless-as0 airshipzero
+```
+
+#### Option 2: Install as Tool (Recommended for Repeated Use)
+```bash
+# Install once
+uv tool install git+https://github.com/TimelessP/timeless-as0
+
+# Run anytime after installation
+airshipzero
+```
+
+#### Option 3: Development (Local Clone)
 ```bash
 # Quick launch
 ./run.sh
 
 # Or directly
 uv run python main.py
+```
+
+### Command-Line Options
+
+All run methods support custom save file locations:
+
+```bash
+# Default location (OS app data directory)
+airshipzero
+uv tool run --from git+https://github.com/TimelessP/timeless-as0 airshipzero
+python main.py
+
+# Custom save file
+airshipzero --save-file my_campaign.json
+python main.py --save-file /path/to/saves/pilot_training.json
+
+# Short form
+airshipzero -s custom_game.json
+
+# Get help
+airshipzero --help
+python main.py --help
 ```
 
 ## Controls
@@ -165,6 +204,26 @@ uv run python main.py
 - **Complete State Persistence** - All flight parameters, fuel levels, system states
 - **Auto-Save Triggers** - Menu return, application exit, scene transitions
 - **Format Validation** - Automatic checking for save file integrity
+- **Cross-Platform Storage** - OS-appropriate app data directories
+  - **Windows**: `%APPDATA%\AirshipZero\saved_game.json`
+  - **macOS**: `~/Library/Application Support/AirshipZero/saved_game.json`
+  - **Linux**: `~/.local/share/AirshipZero/saved_game.json`
+- **Custom Save Locations** - Override default path via command line
+  ```bash
+  # Use default OS-appropriate location
+  python main.py
+  uv tool run --from git+https://github.com/TimelessP/timeless-as0 airshipzero
+  
+  # Use custom file in current directory
+  python main.py --save-file my_game.json
+  uv tool run --from git+https://github.com/TimelessP/timeless-as0 airshipzero --save-file my_game.json
+  
+  # Use absolute path
+  python main.py --save-file /path/to/saves/campaign.json
+  
+  # Use relative directory (creates if needed)
+  python main.py --save-file saves/pilot_training.json
+  ```
 - **Seamless Resume** - Perfect game state restoration with all systems active
 
 ## Documentation
@@ -304,6 +363,16 @@ See `.github/copilot-instructions.md` for comprehensive development guidelines i
 
 ### Development Commands
 ```bash
+# Install once as a tool for easy access
+uv tool install git+https://github.com/TimelessP/timeless-as0
+
+# Run the installed tool
+airshipzero
+
+# Or run directly without installation
+uv tool run --from git+https://github.com/TimelessP/timeless-as0 airshipzero
+
+# Development mode (local clone)
 # Install dependencies and set up environment
 uv sync
 

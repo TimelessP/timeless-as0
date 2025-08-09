@@ -5,6 +5,9 @@ Centralized game state management and physics simulation
 import json
 import time
 import math
+import os
+import platform
+from pathlib import Path
 from typing import Dict, Any, Optional, Tuple
 
 # Cargo grid pixel size (must match scene_cargo.GRID_SIZE)
@@ -17,11 +20,51 @@ class CoreSimulator:
     All scenes reference this single source of truth.
     """
     
-    def __init__(self):
+    def __init__(self, custom_save_path: Optional[str] = None):
         self.game_state = self._create_initial_game_state()
         self.last_update_time = time.time()
         self.total_sim_time = 0.0
         self.running = False
+        
+        # Store custom save path if provided
+        self.custom_save_path = Path(custom_save_path) if custom_save_path else None
+        
+    def _get_app_data_dir(self) -> Path:
+        """Get the application data directory for the current OS"""
+        app_name = "AirshipZero"
+        
+        system = platform.system()
+        
+        if system == "Windows":
+            # Windows: %APPDATA%\AirshipZero
+            base_dir = os.environ.get("APPDATA", os.path.expanduser("~"))
+            app_dir = Path(base_dir) / app_name
+        elif system == "Darwin":  # macOS
+            # macOS: ~/Library/Application Support/AirshipZero
+            app_dir = Path.home() / "Library" / "Application Support" / app_name
+        else:  # Linux and other Unix-like systems
+            # Linux: ~/.local/share/AirshipZero (XDG Base Directory)
+            xdg_data_home = os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share")
+            app_dir = Path(xdg_data_home) / app_name
+        
+        # Create directory if it doesn't exist
+        app_dir.mkdir(parents=True, exist_ok=True)
+        
+        return app_dir
+    
+    def _get_save_file_path(self, filename: str = "saved_game.json") -> Path:
+        """Get the full path to the save file - custom path takes precedence over app data directory"""
+        if self.custom_save_path:
+            # If custom path provided, use it directly
+            if self.custom_save_path.suffix:
+                # Custom path includes filename
+                return self.custom_save_path
+            else:
+                # Custom path is directory, append filename
+                return self.custom_save_path / filename
+        else:
+            # Use default app data directory
+            return self._get_app_data_dir() / filename
         
     def _create_initial_game_state(self) -> Dict[str, Any]:
         """Create the initial game state with all systems"""
@@ -263,23 +306,36 @@ class CoreSimulator:
         self.last_update_time = time.time()
         
     def save_game(self, filename: str = "saved_game.json") -> bool:
-        """Save current game state to file"""
+        """Save current game state to file - uses custom path if provided, otherwise OS-appropriate app data directory"""
         try:
             # Update save timestamp
             self.game_state["gameInfo"]["lastSaved"] = time.time()
             
-            with open(filename, 'w') as f:
+            save_path = self._get_save_file_path(filename)
+            
+            # Create directory if it doesn't exist (unless using custom path in current dir)
+            if not self.custom_save_path or save_path.parent != Path('.'):
+                save_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            with open(save_path, 'w') as f:
                 json.dump(self.game_state, f, indent=2)
-            print(f"✅ Game saved to {filename}")
+            print(f"✅ Game saved to {save_path}")
             return True
         except Exception as e:
             print(f"❌ Failed to save game: {e}")
             return False
             
     def load_game(self, filename: str = "saved_game.json") -> bool:
-        """Load game state from file"""
+        """Load game state from file in OS-appropriate app data directory"""
         try:
-            with open(filename, 'r') as f:
+            save_path = self._get_save_file_path(filename)
+            
+            # Check if file exists
+            if not save_path.exists():
+                print(f"⚠️ Save file not found: {save_path}")
+                return False
+            
+            with open(save_path, 'r') as f:
                 loaded_state = json.load(f)
             
             # Validate the loaded state has required structure
@@ -369,23 +425,20 @@ class CoreSimulator:
                     
                 except Exception:
                     pass
-                print(f"✅ Game loaded from {filename}")
+                print(f"✅ Game loaded from {save_path}")
                 return True
             else:
-                print(f"❌ Invalid save file format: {filename}")
+                print(f"❌ Invalid save file format: {save_path}")
                 return False
                 
-        except FileNotFoundError:
-            print(f"❌ Save file not found: {filename}")
-            return False
         except Exception as e:
             print(f"❌ Failed to load game: {e}")
             return False
             
     def has_saved_game(self, filename: str = "saved_game.json") -> bool:
-        """Check if a saved game file exists"""
-        import os
-        return os.path.exists(filename)
+        """Check if a saved game file exists in app data directory"""
+        save_path = self._get_save_file_path(filename)
+        return save_path.exists()
         
     def update(self, real_dt: float):
         """
@@ -1764,9 +1817,9 @@ class CoreSimulator:
 # Global simulator instance
 _simulator = None
 
-def get_simulator() -> CoreSimulator:
-    """Get the global simulator instance"""
+def get_simulator(custom_save_path: Optional[str] = None) -> CoreSimulator:
+    """Get the global simulator instance, optionally with custom save path"""
     global _simulator
     if _simulator is None:
-        _simulator = CoreSimulator()
+        _simulator = CoreSimulator(custom_save_path)
     return _simulator

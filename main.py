@@ -5,6 +5,7 @@ Brutally simple scene management with 320x320 rendering
 import pygame
 import sys
 import os
+import argparse
 from typing import Dict, Any, Optional
 
 # Import scenes
@@ -28,8 +29,11 @@ FULLSCREEN_RESOLUTION = (1920, 1080)
 DEFAULT_FONT_SIZE = 13
 
 class AirshipApp:
-    def __init__(self):
+    def __init__(self, save_file_path: Optional[str] = None):
         pygame.init()
+        
+        # Store custom save file path for the simulator
+        self.save_file_path = save_file_path
         
         # Text rendering configuration
         self.is_text_antialiased = True
@@ -49,8 +53,8 @@ class AirshipApp:
         # Load font
         self.font = self._load_font()
         
-        # Get the centralized simulator
-        self.simulator = get_simulator()
+        # Get the centralized simulator with custom save path if provided
+        self.simulator = get_simulator(self.save_file_path)
         
         # Scene management
         self.current_scene = None
@@ -288,8 +292,27 @@ class AirshipApp:
 
 def main():
     """Application entry point"""
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(
+        description="Airship Zero - Retro airship simulation game",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  %(prog)s                                    # Use default save location
+  %(prog)s --save-file custom_game.json      # Use custom file in current directory
+  %(prog)s --save-file /path/to/game.json    # Use absolute path
+        """
+    )
+    parser.add_argument(
+        '--save-file', '--save', '-s',
+        metavar='PATH',
+        help='Custom path for the save file (default: OS-appropriate app data directory)'
+    )
+    
+    args = parser.parse_args()
+    
     try:
-        app = AirshipApp()
+        app = AirshipApp(save_file_path=args.save_file)
         app.run()
     except KeyboardInterrupt:
         print("\nShutdown requested by user")
