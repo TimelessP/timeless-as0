@@ -1526,7 +1526,7 @@ class CoreSimulator:
             best_y = max_y
         # At best_y we are non-overlapping. Ensure support: either floor or crates under both corners
         bottom_y = best_y + h_px
-        if bottom_y >= (60 + 200):  # floor
+        if bottom_y >= (60 + 180):  # floor (updated from 200 to 180)
             return area_name, {"x": x, "y": best_y}
         if self._has_corner_support(x, best_y, w_px, h_px):
             return area_name, {"x": x, "y": best_y}
@@ -1546,9 +1546,9 @@ class CoreSimulator:
         x, y = position.get("x", 0), position.get("y", 0)
         w_px = max(1, dimensions.get("width", 1)) * CARGO_GRID_PX
         h_px = max(1, dimensions.get("height", 1)) * CARGO_GRID_PX
-        # Cargo hold bounds
-        hold_x, hold_y, hold_w, hold_h = 8, 60, 150, 200
-        bay_x, bay_y, bay_w, bay_h = 162, 60, 150, 200
+        # Cargo hold bounds (updated height from 200 to 180)
+        hold_x, hold_y, hold_w, hold_h = 8, 60, 150, 180
+        bay_x, bay_y, bay_w, bay_h = 162, 60, 150, 180
         if (hold_x <= x and x + w_px <= hold_x + hold_w and
             hold_y <= y and y + h_px <= hold_y + hold_h):
             return True
@@ -1591,7 +1591,7 @@ class CoreSimulator:
         width_px = dimensions.get("width", 1) * CARGO_GRID_PX
         height_px = dimensions.get("height", 1) * CARGO_GRID_PX
         min_x, max_x = 162, 312 - width_px
-        min_y, max_y = 60, 260 - height_px
+        min_y, max_y = 60, 240 - height_px  # Updated from 260 to 240 (60+180)
         
         # Try random positions
         for _ in range(50):  # Max attempts
@@ -1613,9 +1613,9 @@ class CoreSimulator:
         """Given a tentative x, determine area ('cargoHold' or 'loadingBay') and allowed top-left bounds.
         Returns (area_name, (min_x, max_x, min_y, max_y)). If x is between areas, choose by center.
         """
-        # Define areas
-        hold_x, hold_y, hold_w, hold_h = 8, 60, 150, 200
-        bay_x, bay_y, bay_w, bay_h = 162, 60, 150, 200
+        # Define areas (updated height from 200 to 180)
+        hold_x, hold_y, hold_w, hold_h = 8, 60, 150, 180
+        bay_x, bay_y, bay_w, bay_h = 162, 60, 150, 180
         # Decide area by x midpoint
         area_name = "cargoHold" if x < 162 else "loadingBay"
         if area_name == "cargoHold":

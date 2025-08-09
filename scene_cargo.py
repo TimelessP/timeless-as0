@@ -25,8 +25,8 @@ INVALID_PLACEMENT_COLOR = (255, 100, 100)  # Red for invalid placement
 # Layout constants
 # Reduced grid size to create vertical space for top title and bottom margins
 GRID_SIZE = 8  # pixels per grid cell
-CARGO_HOLD_AREA = {"x": 8, "y": 60, "width": 150, "height": 200}
-LOADING_BAY_AREA = {"x": 162, "y": 60, "width": 150, "height": 200}
+CARGO_HOLD_AREA = {"x": 8, "y": 60, "width": 150, "height": 180}
+LOADING_BAY_AREA = {"x": 162, "y": 60, "width": 150, "height": 180}
 # Move the rail down a bit so top buttons don't overlap it
 WINCH_RAIL_Y = 52
 WINCH_RAIL_START_X = 8
@@ -71,16 +71,16 @@ class CargoScene:
         """Initialize all interactive widgets"""
         self.widgets = [
             # Winch movement controls (top row)
-            {"id": "winch_left", "type": "button", "position": [16, 28], "size": [54, 18], "text": "◀ Left", "focused": True, "holdable": True},
-            {"id": "winch_right", "type": "button", "position": [76, 28], "size": [62, 18], "text": "Right ▶", "focused": False, "holdable": True},
-            {"id": "winch_up", "type": "button", "position": [144, 28], "size": [48, 18], "text": "▲ Up", "focused": False, "holdable": True},
-            {"id": "winch_down", "type": "button", "position": [198, 28], "size": [68, 18], "text": "Down ▼", "focused": False, "holdable": True},
+            {"id": "winch_left", "type": "button", "position": [16, 28], "size": [54, 18], "text": "< Left", "focused": True, "holdable": True},
+            {"id": "winch_right", "type": "button", "position": [76, 28], "size": [62, 18], "text": "Right >", "focused": False, "holdable": True},
+            {"id": "winch_up", "type": "button", "position": [144, 28], "size": [48, 18], "text": "^ Up", "focused": False, "holdable": True},
+            {"id": "winch_down", "type": "button", "position": [198, 28], "size": [68, 18], "text": "Down v", "focused": False, "holdable": True},
             
-            # Action buttons (bottom area) - raised to ensure 4px+ margin from prev/next
-            {"id": "attach", "type": "button", "position": [20, 262], "size": [60, 20], "text": "Attach", "focused": False, "holdable": False},
-            {"id": "detach", "type": "button", "position": [90, 262], "size": [60, 20], "text": "Detach", "focused": False, "holdable": False},
-            {"id": "use_crate", "type": "button", "position": [160, 262], "size": [60, 20], "text": "Use", "focused": False, "holdable": False},
-            {"id": "refresh", "type": "button", "position": [230, 262], "size": [60, 20], "text": "Refresh", "focused": False, "holdable": False},
+            # Action buttons (bottom area) - adjusted for smaller cargo area
+            {"id": "attach", "type": "button", "position": [20, 245], "size": [60, 20], "text": "Attach", "focused": False, "holdable": False},
+            {"id": "detach", "type": "button", "position": [90, 245], "size": [60, 20], "text": "Detach", "focused": False, "holdable": False},
+            {"id": "use_crate", "type": "button", "position": [160, 245], "size": [60, 20], "text": "Use", "focused": False, "holdable": False},
+            {"id": "refresh", "type": "button", "position": [230, 245], "size": [60, 20], "text": "Refresh", "focused": False, "holdable": False},
             
             # Navigation controls
             # Keep a 4px bottom margin: y=292 for height 24
@@ -336,7 +336,7 @@ class CargoScene:
         if not self.font:
             return
             
-        info_y = 300
+        info_y = 270  # Moved up to avoid overlap with navigation buttons
         cargo_state = self.simulator.get_cargo_state()
         
         # Selected crate info
