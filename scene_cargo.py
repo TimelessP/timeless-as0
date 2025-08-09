@@ -48,11 +48,16 @@ class CargoScene:
         self._init_widgets()
 
         # On scene init, ensure Refresh availability matches ship motion
-        cargo_state = self.simulator.get_cargo_state()
-        # If groundSpeed > 0.1, disable refresh
+        # Force a cargo system update to sync refresh state with current ship speed
         nav_motion = self.simulator.game_state.get("navigation", {}).get("motion", {})
-        if nav_motion.get("groundSpeed", 0.0) > 0.1:
+        ground_speed = nav_motion.get("groundSpeed", 0.0)
+        cargo_state = self.simulator.get_cargo_state()
+        
+        if ground_speed > 0.1:
             cargo_state["refreshAvailable"] = False
+            # Clear loading bay if ship is moving
+            if cargo_state.get("loadingBay"):
+                cargo_state["loadingBay"] = []
         else:
             cargo_state["refreshAvailable"] = True
 

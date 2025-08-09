@@ -326,8 +326,9 @@ class CoreSimulator:
                     self.game_state.setdefault("cargo", {}).setdefault("loadingBay", [])
                     self.game_state["cargo"]["loadingBay"] = []
                     # Refresh availability depends on motion state
-                    gs = self.game_state.get("navigation", {}).get("motion", {}).get("groundSpeed", 0.0)
-                    self.game_state["cargo"]["refreshAvailable"] = gs <= 0.1
+                    # Use indicated airspeed instead of ground speed to avoid wind drift issues
+                    ias = self.game_state.get("navigation", {}).get("motion", {}).get("indicatedAirspeed", 0.0)
+                    self.game_state["cargo"]["refreshAvailable"] = ias <= 0.1
                     
                     # Ensure crate types are available (restore if missing from old save)
                     if not self.game_state["cargo"].get("crateTypes"):
@@ -1026,16 +1027,17 @@ class CoreSimulator:
             new_cable = current_cable + cable_speed * dt
             self.set_cable_length(new_cable)
         
-        # Check if ship is moving and handle loading bay
-        ground_speed = self.game_state.get("navigation", {}).get("motion", {}).get("groundSpeed", 0.0)
+        # Check if ship is moving under power and handle loading bay
+        # Use indicated airspeed instead of ground speed to avoid wind drift triggering clearing
+        indicated_airspeed = self.game_state.get("navigation", {}).get("motion", {}).get("indicatedAirspeed", 0.0)
         
-        if ground_speed > 0.1:
-            # Ship is moving - disable refresh and clear loading bay
+        if indicated_airspeed > 0.1:
+            # Ship is actively moving under power - disable refresh and clear loading bay
             cargo["refreshAvailable"] = False
             if cargo.get("loadingBay"):
                 cargo["loadingBay"] = []
         else:
-            # Ship is stopped - enable refresh
+            # Ship is stopped (not moving under power) - enable refresh
             cargo["refreshAvailable"] = True
 
         # If a crate is attached, move it with the hook position (centered & snapped)
@@ -1049,10 +1051,10 @@ class CoreSimulator:
                 w_px = max(1, dims.get("width", 1)) * CARGO_GRID_PX
                 h_px = max(1, dims.get("height", 1)) * CARGO_GRID_PX
                 hook_x = winch.get("position", {}).get("x", 160)
-                hook_y = 52 + winch.get("cableLength", 0)  # rail y must match scene
-                # Top-left under hook (top-center)
+                hook_y = winch.get("position", {}).get("y", 50) + winch.get("cableLength", 0)
+                # Position crate so hook attaches to top-center of crate
                 x = int(round((hook_x - w_px // 2) / CARGO_GRID_PX) * CARGO_GRID_PX)
-                y = int(round((hook_y - h_px) / CARGO_GRID_PX) * CARGO_GRID_PX)
+                y = int(round(hook_y / CARGO_GRID_PX) * CARGO_GRID_PX)  # Hook at top of crate
                 # Clamp within whichever area the x is in
                 area_name, bounds = self._area_bounds_for(x, w_px, h_px)
                 min_x, max_x, min_y, max_y = bounds
@@ -1412,9 +1414,10 @@ class CoreSimulator:
         """Generate new random cargo in loading bay"""
         cargo = self.game_state.get("cargo", {})
         
-        # Only refresh if ship is not moving and refresh is available
-        ground_speed = self.game_state.get("navigation", {}).get("motion", {}).get("groundSpeed", 0.0)
-        if ground_speed > 0.1 or not cargo.get("refreshAvailable", True):
+        # Only refresh if ship is not moving under power and refresh is available
+        # Use indicated airspeed instead of ground speed to avoid wind drift issues
+        indicated_airspeed = self.game_state.get("navigation", {}).get("motion", {}).get("indicatedAirspeed", 0.0)
+        if indicated_airspeed > 0.1 or not cargo.get("refreshAvailable", True):
             return
         
         # Clear loading bay
@@ -1480,7 +1483,7 @@ class CoreSimulator:
         hook_x = winch_pos.get("x", 160)
         hook_y = 52 + cable_length  # rail y is 52
         x0 = int(round((hook_x - w_px // 2) / CARGO_GRID_PX) * CARGO_GRID_PX)
-        y0 = int(round((hook_y - h_px) / CARGO_GRID_PX) * CARGO_GRID_PX)
+        y0 = int(round(hook_y / CARGO_GRID_PX) * CARGO_GRID_PX)  # Hook at top of crate
 
         # Clamp x,y to area and determine area bounds
         area_name, bounds = self._area_bounds_for(x0, w_px, h_px)
