@@ -299,18 +299,31 @@ class CargoScene:
             hook_size = 4
             pygame.draw.circle(surface, CABLE_COLOR, (winch_x, int(cable_end_y)), hook_size)
             
-            # If crate is attached, show connection
+            # If a crate is attached, preview its placement rectangle in green/red
             attached_crate_id = winch.get("attachedCrate")
             if attached_crate_id:
-                # Find the attached crate and draw connection line
-                all_crates = cargo_state.get("cargoHold", []) + cargo_state.get("loadingBay", [])
-                for crate in all_crates:
-                    if crate["id"] == attached_crate_id:
-                        crate_x = int(crate["position"]["x"])
-                        crate_y = int(crate["position"]["y"])
-                        pygame.draw.line(surface, FOCUS_COLOR, (winch_x, int(cable_end_y)), 
-                                       (crate_x + 5, crate_y), 3)
+                crate = None
+                crate_types = cargo_state.get("crateTypes", {})
+                for c in cargo_state.get("cargoHold", []) + cargo_state.get("loadingBay", []):
+                    if c["id"] == attached_crate_id:
+                        crate = c
                         break
+                if crate:
+                    cinfo = crate_types.get(crate["type"], {})
+                    dims = cinfo.get("dimensions", {"width": 1, "height": 1})
+                    w = dims["width"] * GRID_SIZE
+                    h = dims["height"] * GRID_SIZE
+                    # Top-left under hook
+                    x = int(round((winch_x - w // 2) / GRID_SIZE) * GRID_SIZE)
+                    y = int(round((cable_end_y - h) / GRID_SIZE) * GRID_SIZE)
+                    # Determine validity via simulator
+                    can_place = False
+                    try:
+                        can_place = bool(getattr(self.simulator, "can_place_attached_crate")())
+                    except Exception:
+                        can_place = False
+                    color = VALID_PLACEMENT_COLOR if can_place else INVALID_PLACEMENT_COLOR
+                    pygame.draw.rect(surface, color, (x, y, w, h), 2)
 
     def _render_info_panel(self, surface):
         """Draw information panel at bottom"""
@@ -383,8 +396,14 @@ class CargoScene:
             # Can attach if winch is near a crate and nothing is attached
             return winch.get("attachedCrate") is None and self._can_attach_to_nearby_crate()
         elif widget_id == "detach":
-            # Can detach if something is attached and can be placed
-            return winch.get("attachedCrate") is not None
+            # Can detach if something is attached and placement would be valid
+            if winch.get("attachedCrate") is None:
+                return False
+            # Ask simulator for validity
+            try:
+                return bool(getattr(self.simulator, "can_place_attached_crate")())
+            except Exception:
+                return True  # fallback
         elif widget_id == "use_crate":
             # Can use if a usable crate is selected
             return self.selected_crate is not None and self._is_crate_usable(self.selected_crate)

@@ -321,6 +321,15 @@ class CoreSimulator:
                 self.game_state = loaded_state
                 self.running = True
                 self.last_update_time = time.time()
+                # Loading bay is temporary staging; clear on load
+                try:
+                    self.game_state.setdefault("cargo", {}).setdefault("loadingBay", [])
+                    self.game_state["cargo"]["loadingBay"] = []
+                    # Refresh availability depends on motion state
+                    gs = self.game_state.get("navigation", {}).get("motion", {}).get("groundSpeed", 0.0)
+                    self.game_state["cargo"]["refreshAvailable"] = gs <= 0.1
+                except Exception:
+                    pass
                 print(f"✅ Game loaded from {filename}")
                 return True
             else:
@@ -1008,6 +1017,28 @@ class CoreSimulator:
         else:
             # Ship is stopped - enable refresh
             cargo["refreshAvailable"] = True
+
+        # If a crate is attached, move it with the hook position (centered & snapped)
+        attached_id = winch.get("attachedCrate")
+        if attached_id:
+            crate = self._find_crate_by_id(attached_id)
+            if crate:
+                crate_type = crate.get("type", "")
+                info = cargo.get("crateTypes", {}).get(crate_type, {})
+                dims = info.get("dimensions", {"width": 1, "height": 1})
+                w_px = max(1, dims.get("width", 1)) * CARGO_GRID_PX
+                h_px = max(1, dims.get("height", 1)) * CARGO_GRID_PX
+                hook_x = winch.get("position", {}).get("x", 160)
+                hook_y = 52 + winch.get("cableLength", 0)  # rail y must match scene
+                # Top-left under hook (top-center)
+                x = int(round((hook_x - w_px // 2) / CARGO_GRID_PX) * CARGO_GRID_PX)
+                y = int(round((hook_y - h_px) / CARGO_GRID_PX) * CARGO_GRID_PX)
+                # Clamp within whichever area the x is in
+                area_name, bounds = self._area_bounds_for(x, w_px, h_px)
+                min_x, max_x, min_y, max_y = bounds
+                x = max(min_x, min(max_x, x))
+                y = max(min_y, min(max_y, y))
+                crate["position"] = {"x": x, "y": y}
         
     def get_state(self) -> Dict[str, Any]:
         """Get the current game state (read-only access)"""
@@ -1251,9 +1282,23 @@ class CoreSimulator:
         
         if winch.get("attachedCrate"):
             crate_id = winch["attachedCrate"]
-            
-            # Find the attached crate and check if it can be placed
-            if self._can_place_attached_crate():
+            # Find the attached crate and check settled placement
+            settle = self._compute_settled_position_for_attached_crate()
+            if settle:
+                area_name, position = settle
+                # Remove from any list and add to target area
+                crate = None
+                for area in ["cargoHold", "loadingBay"]:
+                    for i, c in enumerate(cargo.get(area, [])):
+                        if c.get("id") == crate_id:
+                            crate = cargo[area].pop(i)
+                            break
+                    if crate:
+                        break
+                if crate is None:
+                    return False
+                crate["position"] = position
+                cargo.setdefault(area_name, []).append(crate)
                 winch["attachedCrate"] = None
                 self._update_cargo_physics()
                 return True
@@ -1355,19 +1400,27 @@ class CoreSimulator:
                 }
                 cargo["loadingBay"].append(crate)
     
+    def can_place_attached_crate(self) -> bool:
+        """Public: can the currently attached crate be placed (after settling)?"""
+        return self._compute_settled_position_for_attached_crate() is not None
+
     def _can_place_attached_crate(self) -> bool:
-        """Check if attached crate can be placed at current position"""
+        """Deprecated internal: use can_place_attached_crate"""
+        return self.can_place_attached_crate()
+
+    def _compute_settled_position_for_attached_crate(self) -> Optional[Tuple[str, Dict[str, int]]]:
+        """Compute final settled top-left position if we detach now; return (area, pos) or None."""
         cargo = self.game_state.get("cargo", {})
         winch = cargo.get("winch", {})
         
         if not winch.get("attachedCrate"):
-            return False
+            return None
         
         # Get crate info
         crate_id = winch["attachedCrate"]
         crate = self._find_crate_by_id(crate_id)
         if not crate:
-            return False
+            return None
         
         # Calculate crate position based on winch and cable
         winch_pos = winch.get("position", {})
@@ -1376,18 +1429,41 @@ class CoreSimulator:
         crate_type = crate.get("type", "")
         crate_info = cargo.get("crateTypes", {}).get(crate_type, {})
         dimensions = crate_info.get("dimensions", {"width": 1, "height": 1})
-        width_px = dimensions.get("width", 1) * CARGO_GRID_PX
-        crate_pos = {
-            "x": int(winch_pos.get("x", 160) - width_px // 2),
-            "y": int(winch_pos.get("y", 50) + cable_length)
-        }
-        
-        # Check if position is within valid areas
-        if not self._is_position_in_valid_area(crate_pos):
-            return False
-        
-        # Check for collisions with other crates
-        return not self._check_crate_collision(crate_pos, dimensions, exclude_id=crate_id)
+        w_px = max(1, dimensions.get("width", 1)) * CARGO_GRID_PX
+        h_px = max(1, dimensions.get("height", 1)) * CARGO_GRID_PX
+        hook_x = winch_pos.get("x", 160)
+        hook_y = 52 + cable_length  # rail y is 52
+        x0 = int(round((hook_x - w_px // 2) / CARGO_GRID_PX) * CARGO_GRID_PX)
+        y0 = int(round((hook_y - h_px) / CARGO_GRID_PX) * CARGO_GRID_PX)
+
+        # Clamp x,y to area and determine area bounds
+        area_name, bounds = self._area_bounds_for(x0, w_px, h_px)
+        if area_name is None:
+            return None
+        min_x, max_x, min_y, max_y = bounds
+        x = max(min_x, min(max_x, x0))
+        # Drop straight down until collision would occur or floor
+        best_y = None
+        # Clamp initial y into [min_y, max_y] so scan always executes
+        y = max(min_y, min(max_y, y0))
+        # Iterate downwards by grid cells, default to floor when no collision
+        collided = False
+        while y <= max_y:
+            if self._check_crate_collision({"x": x, "y": y}, dimensions, exclude_id=crate_id):
+                collided = True
+                break
+            y += CARGO_GRID_PX
+        if collided:
+            best_y = y - CARGO_GRID_PX
+        else:
+            best_y = max_y
+        # At best_y we are non-overlapping. Ensure support: either floor or crates under both corners
+        bottom_y = best_y + h_px
+        if bottom_y >= (60 + 200):  # floor
+            return area_name, {"x": x, "y": best_y}
+        if self._has_corner_support(x, best_y, w_px, h_px):
+            return area_name, {"x": x, "y": best_y}
+        return None
     
     def _find_crate_by_id(self, crate_id: str):
         """Find crate by ID in any area"""
@@ -1398,18 +1474,20 @@ class CoreSimulator:
                     return crate
         return None
     
-    def _is_position_in_valid_area(self, position: Dict[str, float]) -> bool:
-        """Check if position is within cargo hold or loading bay"""
+    def _is_position_in_valid_area(self, position: Dict[str, float], dimensions: Dict[str, int]) -> bool:
+        """Check if crate rectangle is fully within cargo hold or loading bay"""
         x, y = position.get("x", 0), position.get("y", 0)
-        
-        # Cargo hold: left side
-        if 8 <= x <= 158 and 60 <= y <= 260:
+        w_px = max(1, dimensions.get("width", 1)) * CARGO_GRID_PX
+        h_px = max(1, dimensions.get("height", 1)) * CARGO_GRID_PX
+        # Cargo hold bounds
+        hold_x, hold_y, hold_w, hold_h = 8, 60, 150, 200
+        bay_x, bay_y, bay_w, bay_h = 162, 60, 150, 200
+        if (hold_x <= x and x + w_px <= hold_x + hold_w and
+            hold_y <= y and y + h_px <= hold_y + hold_h):
             return True
-        
-        # Loading bay: right side
-        if 162 <= x <= 312 and 60 <= y <= 260:
+        if (bay_x <= x and x + w_px <= bay_x + bay_w and
+            bay_y <= y and y + h_px <= bay_y + bay_h):
             return True
-        
         return False
     
     def _check_crate_collision(self, position: Dict[str, float], dimensions: Dict[str, int], exclude_id: str = None) -> bool:
@@ -1463,6 +1541,57 @@ class CoreSimulator:
                 return position
         
         return None  # Couldn't find valid position
+
+    def _area_bounds_for(self, x: int, w_px: int, h_px: int) -> Tuple[Optional[str], Tuple[int, int, int, int]]:
+        """Given a tentative x, determine area ('cargoHold' or 'loadingBay') and allowed top-left bounds.
+        Returns (area_name, (min_x, max_x, min_y, max_y)). If x is between areas, choose by center.
+        """
+        # Define areas
+        hold_x, hold_y, hold_w, hold_h = 8, 60, 150, 200
+        bay_x, bay_y, bay_w, bay_h = 162, 60, 150, 200
+        # Decide area by x midpoint
+        area_name = "cargoHold" if x < 162 else "loadingBay"
+        if area_name == "cargoHold":
+            min_x = hold_x
+            max_x = hold_x + hold_w - w_px
+            min_y = hold_y
+            max_y = hold_y + hold_h - h_px
+            return area_name, (min_x, max_x, min_y, max_y)
+        else:
+            min_x = bay_x
+            max_x = bay_x + bay_w - w_px
+            min_y = bay_y
+            max_y = bay_y + bay_h - h_px
+            return area_name, (min_x, max_x, min_y, max_y)
+
+    def _has_corner_support(self, x: int, y: int, w_px: int, h_px: int) -> bool:
+        """Return True if both bottom corners at (x, y+h) and (x+w, y+h) are supported by crate tops."""
+        cargo = self.game_state.get("cargo", {})
+        bottom_y = y + h_px
+        left_corner_x = x
+        right_corner_x = x + w_px
+        supported_left = False
+        supported_right = False
+        for area_name in ["cargoHold", "loadingBay"]:
+            for crate in cargo.get(area_name, []):
+                pos = crate.get("position", {})
+                cx, cy = pos.get("x", 0), pos.get("y", 0)
+                ctype = crate.get("type", "")
+                info = cargo.get("crateTypes", {}).get(ctype, {})
+                dims = info.get("dimensions", {"width": 1, "height": 1})
+                cw = max(1, dims.get("width", 1)) * CARGO_GRID_PX
+                ch = max(1, dims.get("height", 1)) * CARGO_GRID_PX
+                # top edge of this crate
+                top_y = cy
+                # Only support if top is exactly at our bottom
+                if top_y == bottom_y:
+                    if cx <= left_corner_x <= cx + cw:
+                        supported_left = True
+                    if cx <= right_corner_x <= cx + cw:
+                        supported_right = True
+                if supported_left and supported_right:
+                    return True
+        return supported_left and supported_right
     
     def _update_cargo_physics(self):
         """Update cargo weight and center of gravity calculations"""
