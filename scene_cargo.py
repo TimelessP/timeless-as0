@@ -496,9 +496,15 @@ class CargoScene:
         
         # Check all crates for proximity
         all_crates = cargo_state.get("cargoHold", []) + cargo_state.get("loadingBay", [])
+        crate_types = cargo_state.get("crateTypes", {})
+        
         for crate in all_crates:
-            crate_x = crate["position"]["x"]
-            crate_y = crate["position"]["y"]
+            # Calculate crate center position
+            crate_type = crate_types.get(crate["type"], {})
+            dimensions = crate_type.get("dimensions", {"width": 1, "height": 1})
+            
+            crate_x = crate["position"]["x"] + (dimensions["width"] * GRID_SIZE) / 2
+            crate_y = crate["position"]["y"] + (dimensions["height"] * GRID_SIZE) / 2
             
             # Check if hook is within reasonable distance of crate center
             distance = math.sqrt((hook_x - crate_x) ** 2 + (hook_y - crate_y) ** 2)
@@ -684,9 +690,17 @@ class CargoScene:
         hook_y = WINCH_RAIL_Y + cable_length
         best = None
         best_d2 = 1e9
+        
+        crate_types = cargo_state.get("crateTypes", {})
+        
         for crate in cargo_state.get("loadingBay", []) + cargo_state.get("cargoHold", []):
-            cx = crate["position"]["x"]
-            cy = crate["position"]["y"]
+            # Calculate crate center position
+            crate_type = crate_types.get(crate["type"], {})
+            dimensions = crate_type.get("dimensions", {"width": 1, "height": 1})
+            
+            cx = crate["position"]["x"] + (dimensions["width"] * GRID_SIZE) / 2
+            cy = crate["position"]["y"] + (dimensions["height"] * GRID_SIZE) / 2
+            
             d2 = (cx - hook_x) ** 2 + (cy - hook_y) ** 2
             if d2 < best_d2:
                 best_d2 = d2
