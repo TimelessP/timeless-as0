@@ -153,6 +153,73 @@ class CoreSimulator:
                     }
                 }
             },
+            "cargo": {
+                "winch": {
+                    "position": {"x": 160, "y": 50},
+                    "cableLength": 0,
+                    "attachedCrate": None,
+                    "movementState": {"left": False, "right": False, "up": False, "down": False}
+                },
+                "cargoHold": [],
+                "loadingBay": [],
+                "totalWeight": 0.0,
+                "centerOfGravity": {"x": 156.2, "y": 100.0},
+                "maxCapacity": 500.0,
+                "refreshAvailable": True,
+                "crateTypes": {
+                    "fuel_canister": {
+                        "name": "Fuel Canister",
+                        "dimensions": {"width": 2, "height": 3},
+                        "contents": {"amount": 1, "unit": "gallon"},
+                        "colors": {"outline": "#FFFFFF", "fill": "#FF4444"},
+                        "usable": True,
+                        "useAction": "transfer_fuel",
+                        "weight": 8.0
+                    },
+                    "books": {
+                        "name": "Books",
+                        "dimensions": {"width": 1, "height": 1},
+                        "contents": {"amount": 1, "unit": "book"},
+                        "colors": {"outline": "#8B4513", "fill": "#DEB887"},
+                        "usable": False,
+                        "weight": 2.0
+                    },
+                    "medical_supplies": {
+                        "name": "Medical Kit",
+                        "dimensions": {"width": 2, "height": 2},
+                        "contents": {"amount": 1, "unit": "kit"},
+                        "colors": {"outline": "#FF0000", "fill": "#FFE4E1"},
+                        "usable": True,
+                        "useAction": "add_medical_supplies",
+                        "weight": 5.0
+                    },
+                    "food_rations": {
+                        "name": "Food Rations",
+                        "dimensions": {"width": 3, "height": 1},
+                        "contents": {"amount": 7, "unit": "days"},
+                        "colors": {"outline": "#228B22", "fill": "#90EE90"},
+                        "usable": True,
+                        "useAction": "add_food",
+                        "weight": 12.0
+                    },
+                    "spare_parts": {
+                        "name": "Engine Parts",
+                        "dimensions": {"width": 2, "height": 2},
+                        "contents": {"amount": 1, "unit": "set"},
+                        "colors": {"outline": "#696969", "fill": "#D3D3D3"},
+                        "usable": False,
+                        "weight": 15.0
+                    },
+                    "luxury_goods": {
+                        "name": "Luxury Items",
+                        "dimensions": {"width": 1, "height": 2},
+                        "contents": {"amount": 1, "unit": "crate"},
+                        "colors": {"outline": "#FFD700", "fill": "#FFFACD"},
+                        "usable": False,
+                        "weight": 3.0
+                    }
+                }
+            },
             "environment": {
                 "weather": {
                     "temperature": 15.0,  # Celsius
@@ -293,6 +360,7 @@ class CoreSimulator:
         self._update_electrical_system(sim_dt)
         self._update_environment(sim_dt)
         self._update_systems_monitoring(sim_dt)
+        self._update_cargo_system(sim_dt)
         
     def _update_engine(self, dt: float):
         """Update engine simulation"""
@@ -896,6 +964,47 @@ class CoreSimulator:
         if abs(diff) <= rate:
             return diff
         return rate if diff > 0 else -rate
+    
+    def _update_cargo_system(self, dt: float):
+        """Update cargo system - winch movement and loading bay availability"""
+        cargo = self.game_state.get("cargo", {})
+        winch = cargo.get("winch", {})
+        movement = winch.get("movementState", {})
+        
+        # Update winch position based on movement state
+        winch_speed = 50.0  # pixels per second
+        cable_speed = 80.0  # pixels per second
+        
+        current_pos = winch.get("position", {"x": 160, "y": 50})
+        current_cable = winch.get("cableLength", 0)
+        
+        # Horizontal movement
+        if movement.get("left", False):
+            new_x = current_pos["x"] - winch_speed * dt
+            self.set_winch_position(new_x, current_pos["y"])
+        elif movement.get("right", False):
+            new_x = current_pos["x"] + winch_speed * dt
+            self.set_winch_position(new_x, current_pos["y"])
+        
+        # Vertical cable movement
+        if movement.get("up", False):
+            new_cable = current_cable - cable_speed * dt
+            self.set_cable_length(new_cable)
+        elif movement.get("down", False):
+            new_cable = current_cable + cable_speed * dt
+            self.set_cable_length(new_cable)
+        
+        # Check if ship is moving and handle loading bay
+        ground_speed = self.game_state.get("navigation", {}).get("motion", {}).get("groundSpeed", 0.0)
+        
+        if ground_speed > 0.1:
+            # Ship is moving - disable refresh and clear loading bay
+            cargo["refreshAvailable"] = False
+            if cargo.get("loadingBay"):
+                cargo["loadingBay"] = []
+        else:
+            # Ship is stopped - enable refresh
+            cargo["refreshAvailable"] = True
         
     def get_state(self) -> Dict[str, Any]:
         """Get the current game state (read-only access)"""
@@ -1074,6 +1183,336 @@ class CoreSimulator:
             }
             
         return nav["mapView"].copy()
+
+    # === CARGO SYSTEM METHODS ===
+    
+    def get_cargo_state(self) -> Dict[str, Any]:
+        """Get current cargo system state"""
+        return self.game_state.get("cargo", {})
+    
+    def set_winch_position(self, x: float, y: float):
+        """Set winch position along the rail"""
+        cargo = self.game_state.get("cargo", {})
+        if "winch" not in cargo:
+            cargo["winch"] = {"position": {"x": 160, "y": 50}, "cableLength": 0, "attachedCrate": None, "movementState": {}}
+        
+        # Clamp to rail limits (8 to 312 for 320 width screen)
+        cargo["winch"]["position"]["x"] = max(8, min(312, x))
+        cargo["winch"]["position"]["y"] = y
+    
+    def set_cable_length(self, length: float):
+        """Set winch cable length"""
+        cargo = self.game_state.get("cargo", {})
+        if "winch" not in cargo:
+            cargo["winch"] = {"position": {"x": 160, "y": 50}, "cableLength": 0, "attachedCrate": None, "movementState": {}}
+        
+        # Clamp to reasonable limits (0 to 200 pixels)
+        cargo["winch"]["cableLength"] = max(0, min(200, length))
+    
+    def set_winch_movement_state(self, direction: str, active: bool):
+        """Set winch movement state for continuous movement"""
+        cargo = self.game_state.get("cargo", {})
+        if "winch" not in cargo:
+            cargo["winch"] = {"position": {"x": 160, "y": 50}, "cableLength": 0, "attachedCrate": None, "movementState": {}}
+        
+        if "movementState" not in cargo["winch"]:
+            cargo["winch"]["movementState"] = {"left": False, "right": False, "up": False, "down": False}
+        
+        if direction in cargo["winch"]["movementState"]:
+            cargo["winch"]["movementState"][direction] = active
+    
+    def attach_crate(self, crate_id: str) -> bool:
+        """Attach crate to winch cable"""
+        cargo = self.game_state.get("cargo", {})
+        winch = cargo.get("winch", {})
+        
+        # Find crate in either area
+        crate = None
+        for area_name in ["cargoHold", "loadingBay"]:
+            for c in cargo.get(area_name, []):
+                if c.get("id") == crate_id:
+                    crate = c
+                    break
+            if crate:
+                break
+        
+        if crate and not winch.get("attachedCrate"):
+            winch["attachedCrate"] = crate_id
+            return True
+        return False
+    
+    def detach_crate(self) -> bool:
+        """Detach crate from winch cable"""
+        cargo = self.game_state.get("cargo", {})
+        winch = cargo.get("winch", {})
+        
+        if winch.get("attachedCrate"):
+            crate_id = winch["attachedCrate"]
+            
+            # Find the attached crate and check if it can be placed
+            if self._can_place_attached_crate():
+                winch["attachedCrate"] = None
+                self._update_cargo_physics()
+                return True
+        return False
+    
+    def move_crate(self, crate_id: str, area: str, position: Dict[str, float]):
+        """Move crate to new area and position"""
+        cargo = self.game_state.get("cargo", {})
+        
+        # Remove crate from current area
+        crate = None
+        for area_name in ["cargoHold", "loadingBay"]:
+            for i, c in enumerate(cargo.get(area_name, [])):
+                if c.get("id") == crate_id:
+                    crate = cargo[area_name].pop(i)
+                    break
+            if crate:
+                break
+        
+        if crate and area in ["cargoHold", "loadingBay"]:
+            crate["position"] = position
+            cargo[area].append(crate)
+            self._update_cargo_physics()
+    
+    def use_crate(self, crate_id: str) -> bool:
+        """Use/consume a crate and apply its effects"""
+        cargo = self.game_state.get("cargo", {})
+        
+        # Find crate in cargo hold only (can't use loading bay items)
+        crate = None
+        crate_index = None
+        for i, c in enumerate(cargo.get("cargoHold", [])):
+            if c.get("id") == crate_id:
+                crate = c
+                crate_index = i
+                break
+        
+        if not crate:
+            return False
+        
+        crate_type = crate.get("type", "")
+        crate_info = cargo.get("crateTypes", {}).get(crate_type, {})
+        
+        if not crate_info.get("usable"):
+            return False
+        
+        # Apply use action
+        use_action = crate_info.get("useAction", "")
+        success = False
+        
+        if use_action == "transfer_fuel":
+            # Transfer fuel to tanks
+            gallons = crate.get("contents", {}).get("amount", 0)
+            self.add_fuel_to_tanks(gallons)
+            success = True
+        elif use_action == "add_medical_supplies":
+            # Add medical supplies (placeholder)
+            success = True
+        elif use_action == "add_food":
+            # Add food rations (placeholder)
+            success = True
+        
+        if success and crate_index is not None:
+            # Remove used crate
+            cargo["cargoHold"].pop(crate_index)
+            self._update_cargo_physics()
+        
+        return success
+    
+    def refresh_loading_bay(self):
+        """Generate new random cargo in loading bay"""
+        cargo = self.game_state.get("cargo", {})
+        
+        # Only refresh if ship is not moving and refresh is available
+        ground_speed = self.game_state.get("navigation", {}).get("motion", {}).get("groundSpeed", 0.0)
+        if ground_speed > 0.1 or not cargo.get("refreshAvailable", True):
+            return
+        
+        # Clear loading bay
+        cargo["loadingBay"] = []
+        
+        # Generate 2-4 random crates
+        import random
+        crate_types = list(cargo.get("crateTypes", {}).keys())
+        num_crates = random.randint(2, 4)
+        
+        for i in range(num_crates):
+            crate_type = random.choice(crate_types)
+            crate_info = cargo["crateTypes"][crate_type]
+            
+            # Try to find a valid position
+            position = self._find_valid_loading_bay_position(crate_info["dimensions"])
+            if position:
+                crate = {
+                    "id": f"crate_{int(time.time() * 1000)}_{i}",
+                    "type": crate_type,
+                    "position": position,
+                    "contents": crate_info["contents"].copy()
+                }
+                cargo["loadingBay"].append(crate)
+    
+    def _can_place_attached_crate(self) -> bool:
+        """Check if attached crate can be placed at current position"""
+        cargo = self.game_state.get("cargo", {})
+        winch = cargo.get("winch", {})
+        
+        if not winch.get("attachedCrate"):
+            return False
+        
+        # Get crate info
+        crate_id = winch["attachedCrate"]
+        crate = self._find_crate_by_id(crate_id)
+        if not crate:
+            return False
+        
+        # Calculate crate position based on winch and cable
+        winch_pos = winch.get("position", {})
+        cable_length = winch.get("cableLength", 0)
+        crate_pos = {
+            "x": winch_pos.get("x", 160) - 10,  # Center crate under winch
+            "y": winch_pos.get("y", 50) + cable_length
+        }
+        
+        # Check if position is within valid areas
+        if not self._is_position_in_valid_area(crate_pos):
+            return False
+        
+        # Check for collisions with other crates
+        crate_type = crate.get("type", "")
+        crate_info = cargo.get("crateTypes", {}).get(crate_type, {})
+        dimensions = crate_info.get("dimensions", {"width": 1, "height": 1})
+        
+        return not self._check_crate_collision(crate_pos, dimensions, exclude_id=crate_id)
+    
+    def _find_crate_by_id(self, crate_id: str):
+        """Find crate by ID in any area"""
+        cargo = self.game_state.get("cargo", {})
+        for area_name in ["cargoHold", "loadingBay"]:
+            for crate in cargo.get(area_name, []):
+                if crate.get("id") == crate_id:
+                    return crate
+        return None
+    
+    def _is_position_in_valid_area(self, position: Dict[str, float]) -> bool:
+        """Check if position is within cargo hold or loading bay"""
+        x, y = position.get("x", 0), position.get("y", 0)
+        
+        # Cargo hold: left side
+        if 8 <= x <= 158 and 60 <= y <= 260:
+            return True
+        
+        # Loading bay: right side
+        if 162 <= x <= 312 and 60 <= y <= 260:
+            return True
+        
+        return False
+    
+    def _check_crate_collision(self, position: Dict[str, float], dimensions: Dict[str, int], exclude_id: str = None) -> bool:
+        """Check if crate would collide with existing crates"""
+        cargo = self.game_state.get("cargo", {})
+        
+        x1, y1 = position.get("x", 0), position.get("y", 0)
+        w1, h1 = dimensions.get("width", 1) * 10, dimensions.get("height", 1) * 10  # Convert to pixels
+        
+        for area_name in ["cargoHold", "loadingBay"]:
+            for crate in cargo.get(area_name, []):
+                if exclude_id and crate.get("id") == exclude_id:
+                    continue
+                
+                crate_pos = crate.get("position", {})
+                x2, y2 = crate_pos.get("x", 0), crate_pos.get("y", 0)
+                
+                crate_type = crate.get("type", "")
+                crate_info = cargo.get("crateTypes", {}).get(crate_type, {})
+                crate_dims = crate_info.get("dimensions", {"width": 1, "height": 1})
+                w2, h2 = crate_dims.get("width", 1) * 10, crate_dims.get("height", 1) * 10
+                
+                # AABB collision detection
+                if not (x1 + w1 <= x2 or x2 + w2 <= x1 or y1 + h1 <= y2 or y2 + h2 <= y1):
+                    return True
+        
+        return False
+    
+    def _find_valid_loading_bay_position(self, dimensions: Dict[str, int]) -> Dict[str, float]:
+        """Find a valid position in loading bay for new crate"""
+        import random
+        
+        # Loading bay bounds
+        min_x, max_x = 162, 312 - (dimensions.get("width", 1) * 10)
+        min_y, max_y = 60, 260 - (dimensions.get("height", 1) * 10)
+        
+        # Try random positions
+        for _ in range(50):  # Max attempts
+            x = random.randint(min_x, max_x)
+            y = random.randint(min_y, max_y)
+            position = {"x": x, "y": y}
+            
+            if not self._check_crate_collision(position, dimensions):
+                return position
+        
+        return None  # Couldn't find valid position
+    
+    def _update_cargo_physics(self):
+        """Update cargo weight and center of gravity calculations"""
+        cargo = self.game_state.get("cargo", {})
+        
+        total_weight = 0.0
+        weighted_x = 0.0
+        weighted_y = 0.0
+        
+        # Only cargo hold items affect ship performance
+        for crate in cargo.get("cargoHold", []):
+            crate_type = crate.get("type", "")
+            crate_info = cargo.get("crateTypes", {}).get(crate_type, {})
+            weight = crate_info.get("weight", 0.0)
+            
+            position = crate.get("position", {})
+            x, y = position.get("x", 0), position.get("y", 0)
+            
+            total_weight += weight
+            weighted_x += x * weight
+            weighted_y += y * weight
+        
+        if total_weight > 0:
+            cargo["centerOfGravity"] = {
+                "x": weighted_x / total_weight,
+                "y": weighted_y / total_weight
+            }
+        else:
+            cargo["centerOfGravity"] = {"x": 156.2, "y": 100.0}
+        
+        cargo["totalWeight"] = total_weight
+    
+    def add_fuel_to_tanks(self, gallons: float):
+        """Add fuel to tanks (aft first, then forward)"""
+        fuel = self.game_state.get("fuel", {})
+        tanks = fuel.get("tanks", {})
+        
+        # Fill aft tank first
+        aft_tank = tanks.get("aft", {})
+        aft_capacity = aft_tank.get("capacity", 180.0)
+        aft_current = aft_tank.get("level", 0.0)
+        aft_space = aft_capacity - aft_current
+        
+        if gallons <= aft_space:
+            # All fuel goes to aft tank
+            aft_tank["level"] = aft_current + gallons
+        else:
+            # Fill aft tank, remainder to forward
+            aft_tank["level"] = aft_capacity
+            remainder = gallons - aft_space
+            
+            # Fill forward tank
+            fwd_tank = tanks.get("forward", {})
+            fwd_capacity = fwd_tank.get("capacity", 180.0)
+            fwd_current = fwd_tank.get("level", 0.0)
+            fwd_space = fwd_capacity - fwd_current
+            
+            fwd_tank["level"] = min(fwd_capacity, fwd_current + remainder)
+        
+        # Update total fuel level
+        fuel["currentLevel"] = tanks["forward"]["level"] + tanks["aft"]["level"]
 
 
 # Global simulator instance
