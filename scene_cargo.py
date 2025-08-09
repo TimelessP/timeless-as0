@@ -113,54 +113,50 @@ class CargoScene:
         
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
-                # Deselect crate if one is selected, otherwise go to main menu
-                if self.selected_crate:
+                # If a crate is selected, deselect it first, otherwise go to main menu
+                if self.selected_crate is not None:
                     self.selected_crate = None
-                    return None
-                return "scene_main_menu"
-            elif event.key == pygame.K_LEFTBRACKET:  # [
+                else:
+                    return "scene_main_menu"
+            elif event.key == pygame.K_LEFTBRACKET:
                 return "scene_fuel"
-            elif event.key == pygame.K_RIGHTBRACKET:  # ]
+            elif event.key == pygame.K_RIGHTBRACKET:
                 return "scene_communications"
             elif event.key == pygame.K_TAB:
-                if pygame.key.get_pressed()[pygame.K_LSHIFT]:
+                if pygame.key.get_pressed()[pygame.K_LSHIFT] or pygame.key.get_pressed()[pygame.K_RSHIFT]:
                     self._cycle_focus(-1)
                 else:
                     self._cycle_focus(1)
             elif event.key in [pygame.K_RETURN, pygame.K_SPACE]:
-                # If crate is selected, deselect it
-                if self.selected_crate:
-                    self.selected_crate = None
-                    return None
                 return self._activate_focused()
             
-            # Special shortcuts when winch controls are focused or crate is selected
-            elif self._is_winch_control_focused() or self.selected_crate:
-                if event.key == pygame.K_r:  # Refresh
-                    if self._is_widget_enabled("refresh"):
-                        self.simulator.refresh_loading_bay()
-                elif event.key == pygame.K_a:  # Attach
-                    if self._is_widget_enabled("attach"):
-                        nearest = self._find_nearest_crate_to_hook()
-                        if nearest:
-                            self.simulator.attach_crate(nearest["id"])
-                elif event.key == pygame.K_d:  # Detach
-                    if self._is_widget_enabled("detach"):
-                        self.simulator.detach_crate()
+            # Arrow keys for winch movement (always available, not just when focused)
+            elif event.key == pygame.K_LEFT:
+                self._handle_winch_movement("left", True)
+            elif event.key == pygame.K_RIGHT:
+                self._handle_winch_movement("right", True)
+            elif event.key == pygame.K_UP:
+                self._handle_winch_movement("up", True)
+            elif event.key == pygame.K_DOWN:
+                self._handle_winch_movement("down", True)
             
-            # Arrow keys for winch movement when focused on winch controls
-            if self._is_winch_control_focused():
-                if event.key == pygame.K_LEFT:
-                    self._handle_winch_movement("left", True)
-                elif event.key == pygame.K_RIGHT:
-                    self._handle_winch_movement("right", True)
-                elif event.key == pygame.K_UP:
-                    self._handle_winch_movement("up", True)
-                elif event.key == pygame.K_DOWN:
-                    self._handle_winch_movement("down", True)
+            # Hotkeys for cargo actions (check if buttons are enabled first)
+            elif event.key == pygame.K_a and self._is_widget_enabled("attach"):
+                nearest = self._find_nearest_crate_to_hook()
+                if nearest:
+                    self.simulator.attach_crate(nearest["id"])
+            elif event.key == pygame.K_d and self._is_widget_enabled("detach"):
+                self.simulator.detach_crate()
+            elif event.key == pygame.K_r and self._is_widget_enabled("refresh"):
+                self.simulator.refresh_loading_bay()
+            elif event.key == pygame.K_u and self._is_widget_enabled("use_crate"):
+                if self.selected_crate:
+                    success = self.simulator.use_crate(self.selected_crate["id"])
+                    if success:
+                        self.selected_crate = None
                 
         elif event.type == pygame.KEYUP:
-            # Stop winch movement on key release
+            # Stop winch movement on key release (always available)
             if event.key == pygame.K_LEFT:
                 self._handle_winch_movement("left", False)
             elif event.key == pygame.K_RIGHT:
@@ -169,6 +165,13 @@ class CargoScene:
                 self._handle_winch_movement("up", False)
             elif event.key == pygame.K_DOWN:
                 self._handle_winch_movement("down", False)
+            elif event.key in [pygame.K_RETURN, pygame.K_SPACE]:
+                # Stop winch movement when Enter/Space is released from holdable buttons
+                if 0 <= self.focused_widget < len(self.widgets):
+                    widget = self.widgets[self.focused_widget]
+                    if widget.get("holdable", False) and widget["id"].startswith("winch_"):
+                        direction = widget["id"].replace("winch_", "")
+                        self._handle_winch_movement(direction, False)
                 
         elif event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1:  # Left click
@@ -193,6 +196,15 @@ class CargoScene:
                         self.selected_crate = None  # Deselect if same crate
                     else:
                         self.selected_crate = clicked_crate  # Select new crate
+                        
+                    # Also set focus to this crate for keyboard navigation consistency
+                    for i, crate_widget in enumerate(self.crate_widgets):
+                        if crate_widget["crate_data"]["id"] == clicked_crate["id"]:
+                            self._set_focus(len(self.widgets) + i)
+                            break
+                else:
+                    # Clicked empty space - clear crate selection
+                    self.selected_crate = None
                     
         elif event.type == pygame.MOUSEBUTTONUP:
             if event.button == 1:  # Left click release
@@ -641,11 +653,11 @@ class CargoScene:
             crate_index = self.focused_widget - len(self.widgets)
             if 0 <= crate_index < len(self.crate_widgets):
                 crate_data = self.crate_widgets[crate_index]["crate_data"]
-                # Toggle crate selection
+                # Toggle crate selection - but sync with focus
                 if self.selected_crate and self.selected_crate["id"] == crate_data["id"]:
                     self.selected_crate = None  # Deselect if same crate
                 else:
-                    self.selected_crate = crate_data  # Select new crate
+                    self.selected_crate = crate_data  # Select the focused crate
             return None
             
         # Handle widget activation
