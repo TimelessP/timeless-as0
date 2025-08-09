@@ -1,4 +1,3 @@
-````markdown
 # Airship Zero - Cargo Management User Manual
 
 **Steam & Copper Dreams Edition**  
@@ -690,4 +689,3 @@ The cargo management system is a powerful tool for airship operations when used 
 *End of Manual*
 
 **Remember:** Proper cargo management is essential for safe and efficient airship operations. When in doubt, prioritize safety over cargo capacity.
-````
