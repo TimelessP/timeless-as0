@@ -1333,6 +1333,27 @@ class CoreSimulator:
             settle = self._compute_settled_position_for_attached_crate()
             if settle:
                 area_name, position = settle
+                
+                # Force placement into cargo hold if ship is moving (indicated airspeed > 0.1)
+                # This prevents crates from being placed in loading bay when ship is in motion
+                indicated_airspeed = self.game_state.get("navigation", {}).get("motion", {}).get("indicatedAirspeed", 0.0)
+                if indicated_airspeed > 0.1 and area_name == "loadingBay":
+                    # Ship is moving, redirect to cargo hold
+                    # Recalculate position for cargo hold area
+                    area_name = "cargoHold"
+                    # Keep the same x position but ensure it's within cargo hold bounds
+                    cargo_hold_min_x = 8
+                    cargo_hold_max_x = 8 + 150 - (position["x"] - cargo_hold_min_x)
+                    if position["x"] > cargo_hold_min_x + 150:
+                        # Position is too far right for cargo hold, clamp to cargo hold
+                        crate = self._find_crate_by_id(crate_id)
+                        if crate:
+                            crate_type = crate.get("type", "")
+                            crate_info = cargo.get("crateTypes", {}).get(crate_type, {})
+                            dimensions = crate_info.get("dimensions", {"width": 1, "height": 1})
+                            w_px = dimensions.get("width", 1) * CARGO_GRID_PX
+                            position["x"] = cargo_hold_min_x + 150 - w_px
+                
                 # Remove from any list and add to target area
                 crate = None
                 for area in ["cargoHold", "loadingBay"]:
