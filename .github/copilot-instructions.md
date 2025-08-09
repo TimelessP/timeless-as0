@@ -301,6 +301,13 @@ assets/
 - **Constants**: Define colors and sizes as module-level constants
 - **Error Handling**: Graceful fallbacks for missing assets
 
+### Version Management
+
+- **CRITICAL**: After ANY code changes, always bump the version in `pyproject.toml`
+- **Multiple Bumps**: If making consecutive changes, bump the version each time
+- **Release Readiness**: The product might be pushed/released at any time, so every change should have a new version
+- **Semantic Versioning**: Use patch increments (0.2.1 → 0.2.2) for fixes, minor increments (0.2.0 → 0.3.0) for features
+
 ### Focus Management
 
 - **Consistent Controls**: Only `Tab` and `Shift+Tab` cycle widget focus across all scenes
