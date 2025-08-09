@@ -7,6 +7,9 @@ import time
 import math
 from typing import Dict, Any, Optional, Tuple
 
+# Cargo grid pixel size (must match scene_cargo.GRID_SIZE)
+CARGO_GRID_PX = 8
+
 
 class CoreSimulator:
     """
@@ -1369,9 +1372,14 @@ class CoreSimulator:
         # Calculate crate position based on winch and cable
         winch_pos = winch.get("position", {})
         cable_length = winch.get("cableLength", 0)
+        # Center the crate horizontally under the hook based on its width
+        crate_type = crate.get("type", "")
+        crate_info = cargo.get("crateTypes", {}).get(crate_type, {})
+        dimensions = crate_info.get("dimensions", {"width": 1, "height": 1})
+        width_px = dimensions.get("width", 1) * CARGO_GRID_PX
         crate_pos = {
-            "x": winch_pos.get("x", 160) - 10,  # Center crate under winch
-            "y": winch_pos.get("y", 50) + cable_length
+            "x": int(winch_pos.get("x", 160) - width_px // 2),
+            "y": int(winch_pos.get("y", 50) + cable_length)
         }
         
         # Check if position is within valid areas
@@ -1379,10 +1387,6 @@ class CoreSimulator:
             return False
         
         # Check for collisions with other crates
-        crate_type = crate.get("type", "")
-        crate_info = cargo.get("crateTypes", {}).get(crate_type, {})
-        dimensions = crate_info.get("dimensions", {"width": 1, "height": 1})
-        
         return not self._check_crate_collision(crate_pos, dimensions, exclude_id=crate_id)
     
     def _find_crate_by_id(self, crate_id: str):
@@ -1413,7 +1417,7 @@ class CoreSimulator:
         cargo = self.game_state.get("cargo", {})
         
         x1, y1 = position.get("x", 0), position.get("y", 0)
-        w1, h1 = dimensions.get("width", 1) * 10, dimensions.get("height", 1) * 10  # Convert to pixels
+        w1, h1 = dimensions.get("width", 1) * CARGO_GRID_PX, dimensions.get("height", 1) * CARGO_GRID_PX
         
         for area_name in ["cargoHold", "loadingBay"]:
             for crate in cargo.get(area_name, []):
@@ -1426,7 +1430,7 @@ class CoreSimulator:
                 crate_type = crate.get("type", "")
                 crate_info = cargo.get("crateTypes", {}).get(crate_type, {})
                 crate_dims = crate_info.get("dimensions", {"width": 1, "height": 1})
-                w2, h2 = crate_dims.get("width", 1) * 10, crate_dims.get("height", 1) * 10
+                w2, h2 = crate_dims.get("width", 1) * CARGO_GRID_PX, crate_dims.get("height", 1) * CARGO_GRID_PX
                 
                 # AABB collision detection
                 if not (x1 + w1 <= x2 or x2 + w2 <= x1 or y1 + h1 <= y2 or y2 + h2 <= y1):
@@ -1438,14 +1442,21 @@ class CoreSimulator:
         """Find a valid position in loading bay for new crate"""
         import random
         
-        # Loading bay bounds
-        min_x, max_x = 162, 312 - (dimensions.get("width", 1) * 10)
-        min_y, max_y = 60, 260 - (dimensions.get("height", 1) * 10)
+        # Loading bay bounds (snap to grid)
+        width_px = dimensions.get("width", 1) * CARGO_GRID_PX
+        height_px = dimensions.get("height", 1) * CARGO_GRID_PX
+        min_x, max_x = 162, 312 - width_px
+        min_y, max_y = 60, 260 - height_px
         
         # Try random positions
         for _ in range(50):  # Max attempts
-            x = random.randint(min_x, max_x)
-            y = random.randint(min_y, max_y)
+            # choose grid-aligned positions
+            gx_min = (min_x // CARGO_GRID_PX)
+            gx_max = (max_x // CARGO_GRID_PX)
+            gy_min = (min_y // CARGO_GRID_PX)
+            gy_max = (max_y // CARGO_GRID_PX)
+            x = random.randint(gx_min, gx_max) * CARGO_GRID_PX
+            y = random.randint(gy_min, gy_max) * CARGO_GRID_PX
             position = {"x": x, "y": y}
             
             if not self._check_crate_collision(position, dimensions):

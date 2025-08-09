@@ -4,6 +4,7 @@ Cargo Management Scene - Physics-based winch and crate management mini-game
 import pygame
 import random
 import math
+import time
 from typing import Optional, Dict, List, Tuple
 
 # Colors
@@ -22,10 +23,12 @@ VALID_PLACEMENT_COLOR = (100, 255, 100)  # Green for valid placement
 INVALID_PLACEMENT_COLOR = (255, 100, 100)  # Red for invalid placement
 
 # Layout constants
-GRID_SIZE = 10  # pixels per grid cell
+# Reduced grid size to create vertical space for top title and bottom margins
+GRID_SIZE = 8  # pixels per grid cell
 CARGO_HOLD_AREA = {"x": 8, "y": 60, "width": 150, "height": 200}
 LOADING_BAY_AREA = {"x": 162, "y": 60, "width": 150, "height": 200}
-WINCH_RAIL_Y = 40
+# Move the rail down a bit so top buttons don't overlap it
+WINCH_RAIL_Y = 52
 WINCH_RAIL_START_X = 8
 WINCH_RAIL_END_X = 312
 
@@ -44,6 +47,15 @@ class CargoScene:
 
         self._init_widgets()
 
+        # On scene init, ensure Refresh availability matches ship motion
+        cargo_state = self.simulator.get_cargo_state()
+        # If groundSpeed > 0.1, disable refresh
+        nav_motion = self.simulator.game_state.get("navigation", {}).get("motion", {})
+        if nav_motion.get("groundSpeed", 0.0) > 0.1:
+            cargo_state["refreshAvailable"] = False
+        else:
+            cargo_state["refreshAvailable"] = True
+
     def set_font(self, font, is_text_antialiased=False):
         """Set the font for this scene"""
         self.font = font
@@ -53,20 +65,21 @@ class CargoScene:
         """Initialize all interactive widgets"""
         self.widgets = [
             # Winch movement controls (top row)
-            {"id": "winch_left", "type": "button", "position": [20, 8], "size": [50, 24], "text": "◀ Left", "focused": True, "holdable": True},
-            {"id": "winch_right", "type": "button", "position": [80, 8], "size": [50, 24], "text": "Right ▶", "focused": False, "holdable": True},
-            {"id": "winch_up", "type": "button", "position": [140, 8], "size": [40, 24], "text": "▲ Up", "focused": False, "holdable": True},
-            {"id": "winch_down", "type": "button", "position": [190, 8], "size": [50, 24], "text": "Down ▼", "focused": False, "holdable": True},
+            {"id": "winch_left", "type": "button", "position": [16, 28], "size": [54, 18], "text": "◀ Left", "focused": True, "holdable": True},
+            {"id": "winch_right", "type": "button", "position": [76, 28], "size": [62, 18], "text": "Right ▶", "focused": False, "holdable": True},
+            {"id": "winch_up", "type": "button", "position": [144, 28], "size": [48, 18], "text": "▲ Up", "focused": False, "holdable": True},
+            {"id": "winch_down", "type": "button", "position": [198, 28], "size": [68, 18], "text": "Down ▼", "focused": False, "holdable": True},
             
-            # Action buttons (bottom area)
-            {"id": "attach", "type": "button", "position": [20, 270], "size": [60, 20], "text": "Attach", "focused": False, "holdable": False},
-            {"id": "detach", "type": "button", "position": [90, 270], "size": [60, 20], "text": "Detach", "focused": False, "holdable": False},
-            {"id": "use_crate", "type": "button", "position": [160, 270], "size": [60, 20], "text": "Use", "focused": False, "holdable": False},
-            {"id": "refresh", "type": "button", "position": [230, 270], "size": [60, 20], "text": "Refresh", "focused": False, "holdable": False},
+            # Action buttons (bottom area) - raised to ensure 4px+ margin from prev/next
+            {"id": "attach", "type": "button", "position": [20, 262], "size": [60, 20], "text": "Attach", "focused": False, "holdable": False},
+            {"id": "detach", "type": "button", "position": [90, 262], "size": [60, 20], "text": "Detach", "focused": False, "holdable": False},
+            {"id": "use_crate", "type": "button", "position": [160, 262], "size": [60, 20], "text": "Use", "focused": False, "holdable": False},
+            {"id": "refresh", "type": "button", "position": [230, 262], "size": [60, 20], "text": "Refresh", "focused": False, "holdable": False},
             
             # Navigation controls
-            {"id": "prev_scene", "type": "button", "position": [8, 290], "size": [60, 24], "text": "< [", "focused": False, "holdable": False},
-            {"id": "next_scene", "type": "button", "position": [252, 290], "size": [60, 24], "text": "] >", "focused": False, "holdable": False},
+            # Keep a 4px bottom margin: y=292 for height 24
+            {"id": "prev_scene", "type": "button", "position": [8, 292], "size": [60, 24], "text": "< [", "focused": False, "holdable": False},
+            {"id": "next_scene", "type": "button", "position": [252, 292], "size": [60, 24], "text": "] >", "focused": False, "holdable": False},
         ]
 
     def handle_event(self, event) -> Optional[str]:
@@ -322,7 +335,8 @@ class CargoScene:
             # General cargo info
             total_weight = cargo_state.get("totalWeight", 0.0)
             max_capacity = cargo_state.get("maxCapacity", 500.0)
-            info_text = f"Total Weight: {total_weight:.1f} / {max_capacity:.0f} lbs"
+            refresh_avail = cargo_state.get("refreshAvailable", True)
+            info_text = f"Total Weight: {total_weight:.1f} / {max_capacity:.0f} lbs | Refresh: {'Yes' if refresh_avail else 'No'}"
             info_surface = self.font.render(info_text, self.is_text_antialiased, TEXT_COLOR)
             surface.blit(info_surface, (8, info_y))
 
@@ -505,7 +519,10 @@ class CargoScene:
             elif widget_id == "next_scene":
                 return "scene_communications"
             elif widget_id == "attach":
-                self.simulator.attach_crate("")  # Attach to nearest crate
+                # Attach to nearest crate (no ID means find nearest)
+                nearest = self._find_nearest_crate_to_hook()
+                if nearest:
+                    self.simulator.attach_crate(nearest["id"]) 
             elif widget_id == "detach":
                 self.simulator.detach_crate()
             elif widget_id == "use_crate":
@@ -520,6 +537,27 @@ class CargoScene:
                 direction = widget_id.replace("winch_", "")
                 self._handle_winch_movement(direction, True)
                 
+        return None
+
+    def _find_nearest_crate_to_hook(self) -> Optional[Dict]:
+        cargo_state = self.simulator.get_cargo_state()
+        winch = cargo_state.get("winch", {})
+        winch_pos = winch.get("position", {"x": 160, "y": 50})
+        cable_length = winch.get("cableLength", 0)
+        hook_x = winch_pos["x"]
+        hook_y = WINCH_RAIL_Y + cable_length
+        best = None
+        best_d2 = 1e9
+        for crate in cargo_state.get("loadingBay", []) + cargo_state.get("cargoHold", []):
+            cx = crate["position"]["x"]
+            cy = crate["position"]["y"]
+            d2 = (cx - hook_x) ** 2 + (cy - hook_y) ** 2
+            if d2 < best_d2:
+                best_d2 = d2
+                best = crate
+        # Within reasonable proximity (<= 20 px)
+        if best is not None and best_d2 <= 20 * 20:
+            return best
         return None
 
     def _hex_to_rgb(self, hex_color: str) -> Tuple[int, int, int]:
