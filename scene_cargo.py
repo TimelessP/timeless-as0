@@ -274,9 +274,9 @@ class CargoScene:
         pygame.draw.rect(surface, fill_color, (x, y, width, height))
         pygame.draw.rect(surface, outline_color, (x, y, width, height), 2)
         
-        # Draw X pattern for structural detail
-        pygame.draw.line(surface, outline_color, (x, y), (x + width, y + height), 1)
-        pygame.draw.line(surface, outline_color, (x + width, y), (x, y + height), 1)
+        # Draw X pattern for structural detail (keep lines within crate bounds)
+        pygame.draw.line(surface, outline_color, (x, y), (x + width - 1, y + height - 1), 1)
+        pygame.draw.line(surface, outline_color, (x + width - 1, y), (x, y + height - 1), 1)
 
     def _render_winch_system(self, surface):
         """Draw winch trolley and cable"""
@@ -319,9 +319,9 @@ class CargoScene:
                     dims = cinfo.get("dimensions", {"width": 1, "height": 1})
                     w = dims["width"] * GRID_SIZE
                     h = dims["height"] * GRID_SIZE
-                    # Top-left under hook
+                    # Position crate with top edge at hook level (not above it)
                     x = int(round((winch_x - w // 2) / GRID_SIZE) * GRID_SIZE)
-                    y = int(round((cable_end_y - h) / GRID_SIZE) * GRID_SIZE)
+                    y = int(round(cable_end_y / GRID_SIZE) * GRID_SIZE)
                     # Determine validity via simulator
                     can_place = False
                     try:
