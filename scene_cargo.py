@@ -40,6 +40,7 @@ class CargoScene:
         self.widgets = []
         self.focused_widget = 0
         self.selected_crate = None  # Currently selected crate for interaction
+        self.crate_widgets = []  # Virtual widgets for crates (for Tab cycling)
         self.mouse_held = False  # Track mouse button state
         self.mouse_hold_start_time = 0.0  # For continuous movement
         self.button_hold_times = {}  # Track button hold times
@@ -61,6 +62,9 @@ class CargoScene:
                 cargo_state["loadingBay"] = []
         else:
             cargo_state["refreshAvailable"] = True
+            
+        # Initialize crate widgets for tab cycling
+        self._update_crate_widgets()
 
     def set_font(self, font, is_text_antialiased=False):
         """Set the font for this scene"""
@@ -88,6 +92,20 @@ class CargoScene:
             {"id": "next_scene", "type": "button", "position": [252, 290], "size": [60, 24], "text": "] >", "focused": False, "holdable": False},
         ]
 
+    def _update_crate_widgets(self):
+        """Update virtual crate widgets for Tab cycling"""
+        self.crate_widgets = []
+        cargo_state = self.simulator.get_cargo_state()
+        
+        # Add all crates as virtual widgets for tab cycling
+        for crate in cargo_state.get("cargoHold", []) + cargo_state.get("loadingBay", []):
+            self.crate_widgets.append({
+                "id": f"crate_{crate['id']}",
+                "type": "crate",
+                "crate_data": crate,
+                "focused": False
+            })
+
     def handle_event(self, event) -> Optional[str]:
         """Handle input events"""
         import time
@@ -95,6 +113,10 @@ class CargoScene:
         
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
+                # Deselect crate if one is selected, otherwise go to main menu
+                if self.selected_crate:
+                    self.selected_crate = None
+                    return None
                 return "scene_main_menu"
             elif event.key == pygame.K_LEFTBRACKET:  # [
                 return "scene_fuel"
@@ -106,16 +128,36 @@ class CargoScene:
                 else:
                     self._cycle_focus(1)
             elif event.key in [pygame.K_RETURN, pygame.K_SPACE]:
+                # If crate is selected, deselect it
+                if self.selected_crate:
+                    self.selected_crate = None
+                    return None
                 return self._activate_focused()
+            
+            # Special shortcuts when winch controls are focused or crate is selected
+            elif self._is_winch_control_focused() or self.selected_crate:
+                if event.key == pygame.K_r:  # Refresh
+                    if self._is_widget_enabled("refresh"):
+                        self.simulator.refresh_loading_bay()
+                elif event.key == pygame.K_a:  # Attach
+                    if self._is_widget_enabled("attach"):
+                        nearest = self._find_nearest_crate_to_hook()
+                        if nearest:
+                            self.simulator.attach_crate(nearest["id"])
+                elif event.key == pygame.K_d:  # Detach
+                    if self._is_widget_enabled("detach"):
+                        self.simulator.detach_crate()
+            
             # Arrow keys for winch movement when focused on winch controls
-            elif event.key == pygame.K_LEFT and self._is_winch_control_focused():
-                self._handle_winch_movement("left", True)
-            elif event.key == pygame.K_RIGHT and self._is_winch_control_focused():
-                self._handle_winch_movement("right", True)
-            elif event.key == pygame.K_UP and self._is_winch_control_focused():
-                self._handle_winch_movement("up", True)
-            elif event.key == pygame.K_DOWN and self._is_winch_control_focused():
-                self._handle_winch_movement("down", True)
+            if self._is_winch_control_focused():
+                if event.key == pygame.K_LEFT:
+                    self._handle_winch_movement("left", True)
+                elif event.key == pygame.K_RIGHT:
+                    self._handle_winch_movement("right", True)
+                elif event.key == pygame.K_UP:
+                    self._handle_winch_movement("up", True)
+                elif event.key == pygame.K_DOWN:
+                    self._handle_winch_movement("down", True)
                 
         elif event.type == pygame.KEYUP:
             # Stop winch movement on key release
@@ -146,7 +188,11 @@ class CargoScene:
                     else:
                         return self._activate_focused()
                 elif clicked_crate is not None:
-                    self.selected_crate = clicked_crate
+                    # Toggle crate selection
+                    if self.selected_crate and self.selected_crate["id"] == clicked_crate["id"]:
+                        self.selected_crate = None  # Deselect if same crate
+                    else:
+                        self.selected_crate = clicked_crate  # Select new crate
                     
         elif event.type == pygame.MOUSEBUTTONUP:
             if event.button == 1:  # Left click release
@@ -265,10 +311,16 @@ class CargoScene:
         width = dimensions["width"] * GRID_SIZE
         height = dimensions["height"] * GRID_SIZE
         
+        # Check if this crate is focused via Tab cycling
+        crate_focused = self._is_crate_focused(crate["id"])
+        
         # Highlight selected crate
         if self.selected_crate and self.selected_crate["id"] == crate["id"]:
             # Draw selection highlight
             pygame.draw.rect(surface, SELECTED_CRATE_COLOR, (x - 2, y - 2, width + 4, height + 4), 2)
+        elif crate_focused:
+            # Draw focus highlight (different from selection)
+            pygame.draw.rect(surface, FOCUS_COLOR, (x - 1, y - 1, width + 2, height + 2), 1)
         
         # Draw crate body
         pygame.draw.rect(surface, fill_color, (x, y, width, height))
@@ -499,23 +551,55 @@ class CargoScene:
 
     def _set_focus(self, widget_index):
         """Set focus to specific widget"""
-        # Clear current focus
+        # Clear current focus from all widgets and crates
         for widget in self.widgets:
             widget["focused"] = False
+        for crate_widget in self.crate_widgets:
+            crate_widget["focused"] = False
 
         # Set new focus
         if 0 <= widget_index < len(self.widgets):
             self.focused_widget = widget_index
             self.widgets[widget_index]["focused"] = True
+        elif len(self.widgets) <= widget_index < len(self.widgets) + len(self.crate_widgets):
+            # Focus is on a crate
+            crate_index = widget_index - len(self.widgets)
+            self.focused_widget = widget_index
+            self.crate_widgets[crate_index]["focused"] = True
 
     def _cycle_focus(self, direction):
-        """Cycle focus through widgets"""
-        if not self.widgets:
+        """Cycle focus through widgets and crates"""
+        total_items = len(self.widgets) + len(self.crate_widgets)
+        if total_items == 0:
             return
             
-        self.widgets[self.focused_widget]["focused"] = False
-        self.focused_widget = (self.focused_widget + direction) % len(self.widgets)
-        self.widgets[self.focused_widget]["focused"] = True
+        # Clear current focus
+        if self.focused_widget < len(self.widgets):
+            self.widgets[self.focused_widget]["focused"] = False
+        else:
+            crate_index = self.focused_widget - len(self.widgets)
+            if 0 <= crate_index < len(self.crate_widgets):
+                self.crate_widgets[crate_index]["focused"] = False
+        
+        # Move to next/previous item
+        self.focused_widget = (self.focused_widget + direction) % total_items
+        
+        # Set new focus
+        if self.focused_widget < len(self.widgets):
+            self.widgets[self.focused_widget]["focused"] = True
+        else:
+            crate_index = self.focused_widget - len(self.widgets)
+            if 0 <= crate_index < len(self.crate_widgets):
+                self.crate_widgets[crate_index]["focused"] = True
+
+    def _is_crate_focused(self, crate_id: str) -> bool:
+        """Check if a specific crate is currently focused via Tab cycling"""
+        if self.focused_widget >= len(self.widgets):
+            crate_index = self.focused_widget - len(self.widgets)
+            if 0 <= crate_index < len(self.crate_widgets):
+                focused_crate = self.crate_widgets[crate_index]
+                return focused_crate["crate_data"]["id"] == crate_id
+        return False
 
     def _is_winch_control_focused(self) -> bool:
         """Check if a winch control widget is currently focused"""
@@ -541,38 +625,54 @@ class CargoScene:
         return None
 
     def _activate_focused(self) -> Optional[str]:
-        """Activate the currently focused widget"""
-        if 0 <= self.focused_widget < len(self.widgets):
-            widget = self.widgets[self.focused_widget]
-            widget_id = widget["id"]
+        """Activate the currently focused widget or crate"""
+        total_items = len(self.widgets) + len(self.crate_widgets)
+        if not (0 <= self.focused_widget < total_items):
+            return None
             
-            # Check if widget is enabled
-            if not self._is_widget_enabled(widget_id):
-                return None
+        # Handle crate activation (selection)
+        if self.focused_widget >= len(self.widgets):
+            crate_index = self.focused_widget - len(self.widgets)
+            if 0 <= crate_index < len(self.crate_widgets):
+                crate_data = self.crate_widgets[crate_index]["crate_data"]
+                # Toggle crate selection
+                if self.selected_crate and self.selected_crate["id"] == crate_data["id"]:
+                    self.selected_crate = None  # Deselect if same crate
+                else:
+                    self.selected_crate = crate_data  # Select new crate
+            return None
             
-            if widget_id == "prev_scene":
-                return "scene_fuel"
-            elif widget_id == "next_scene":
-                return "scene_communications"
-            elif widget_id == "attach":
-                # Attach to nearest crate (no ID means find nearest)
-                nearest = self._find_nearest_crate_to_hook()
-                if nearest:
-                    self.simulator.attach_crate(nearest["id"]) 
-            elif widget_id == "detach":
-                self.simulator.detach_crate()
-            elif widget_id == "use_crate":
-                if self.selected_crate:
-                    success = self.simulator.use_crate(self.selected_crate["id"])
-                    if success:
-                        self.selected_crate = None  # Clear selection after use
-            elif widget_id == "refresh":
-                self.simulator.refresh_loading_bay()
-            elif widget_id in ["winch_left", "winch_right", "winch_up", "winch_down"]:
-                # For holdable buttons, start movement
-                direction = widget_id.replace("winch_", "")
-                self._handle_winch_movement(direction, True)
-                
+        # Handle widget activation
+        widget = self.widgets[self.focused_widget]
+        widget_id = widget["id"]
+        
+        # Check if widget is enabled
+        if not self._is_widget_enabled(widget_id):
+            return None
+        
+        if widget_id == "prev_scene":
+            return "scene_fuel"
+        elif widget_id == "next_scene":
+            return "scene_communications"
+        elif widget_id == "attach":
+            # Attach to nearest crate (no ID means find nearest)
+            nearest = self._find_nearest_crate_to_hook()
+            if nearest:
+                self.simulator.attach_crate(nearest["id"]) 
+        elif widget_id == "detach":
+            self.simulator.detach_crate()
+        elif widget_id == "use_crate":
+            if self.selected_crate:
+                success = self.simulator.use_crate(self.selected_crate["id"])
+                if success:
+                    self.selected_crate = None  # Clear selection after use
+        elif widget_id == "refresh":
+            self.simulator.refresh_loading_bay()
+        elif widget_id in ["winch_left", "winch_right", "winch_up", "winch_down"]:
+            # For holdable buttons, start movement
+            direction = widget_id.replace("winch_", "")
+            self._handle_winch_movement(direction, True)
+            
         return None
 
     def _find_nearest_crate_to_hook(self) -> Optional[Dict]:
@@ -609,6 +709,9 @@ class CargoScene:
         import time
         current_time = time.time()
         self.last_update_time = current_time
+        
+        # Update crate widgets for tab cycling (in case cargo state changed)
+        self._update_crate_widgets()
         
         # Handle continuous button holds
         if self.mouse_held:
