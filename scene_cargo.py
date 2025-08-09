@@ -49,11 +49,12 @@ class CargoScene:
 
         # On scene init, ensure Refresh availability matches ship motion
         # Force a cargo system update to sync refresh state with current ship speed
+        # Use indicated airspeed instead of ground speed to avoid wind drift issues
         nav_motion = self.simulator.game_state.get("navigation", {}).get("motion", {})
-        ground_speed = nav_motion.get("groundSpeed", 0.0)
+        indicated_airspeed = nav_motion.get("indicatedAirspeed", 0.0)
         cargo_state = self.simulator.get_cargo_state()
         
-        if ground_speed > 0.1:
+        if indicated_airspeed > 0.1:
             cargo_state["refreshAvailable"] = False
             # Clear loading bay if ship is moving
             if cargo_state.get("loadingBay"):

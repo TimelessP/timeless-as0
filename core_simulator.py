@@ -349,6 +349,24 @@ class CoreSimulator:
                         "movementState": {"left": False, "right": False, "up": False, "down": False}
                     })
                     
+                    # Clean up invalid winch attachments
+                    winch = cargo.get("winch", {})
+                    attached_id = winch.get("attachedCrate")
+                    if attached_id:
+                        # Check if the attached crate actually exists
+                        crate_found = False
+                        for area_name in ["cargoHold", "loadingBay"]:
+                            for crate in cargo.get(area_name, []):
+                                if crate.get("id") == attached_id:
+                                    crate_found = True
+                                    break
+                            if crate_found:
+                                break
+                        
+                        if not crate_found:
+                            print(f"🔧 Clearing invalid winch attachment: {attached_id}")
+                            winch["attachedCrate"] = None
+                    
                 except Exception:
                     pass
                 print(f"✅ Game loaded from {filename}")
