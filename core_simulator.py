@@ -77,6 +77,11 @@ class CoreSimulator:
                 "sessionTime": 0.0,
                 "paused": False
             },
+            "settings": {
+                "checkForUpdates": True,
+                "lastUpdateCheck": 0.0,
+                "updateCheckInterval": 86400.0  # 24 hours in seconds
+            },
             "navigation": {
                 "position": {
                     "latitude": 40.7128,  # NYC area
@@ -1812,6 +1817,41 @@ class CoreSimulator:
         
         # Update total fuel level
         fuel["currentLevel"] = tanks["forward"]["level"] + tanks["aft"]["level"]
+
+    # Settings management
+    def get_settings(self) -> Dict[str, Any]:
+        """Get current settings"""
+        return self.game_state.get("settings", {
+            "checkForUpdates": True,
+            "lastUpdateCheck": 0.0,
+            "updateCheckInterval": 86400.0
+        })
+    
+    def set_setting(self, key: str, value: Any):
+        """Set a specific setting value"""
+        if "settings" not in self.game_state:
+            self.game_state["settings"] = {
+                "checkForUpdates": True,
+                "lastUpdateCheck": 0.0,
+                "updateCheckInterval": 86400.0
+            }
+        self.game_state["settings"][key] = value
+    
+    def should_check_for_updates(self) -> bool:
+        """Check if we should check for updates based on settings and time"""
+        settings = self.get_settings()
+        if not settings.get("checkForUpdates", True):
+            return False
+        
+        current_time = time.time()
+        last_check = settings.get("lastUpdateCheck", 0.0)
+        interval = settings.get("updateCheckInterval", 86400.0)
+        
+        return (current_time - last_check) >= interval
+    
+    def mark_update_check_completed(self):
+        """Mark that an update check was just completed"""
+        self.set_setting("lastUpdateCheck", time.time())
 
 
 # Global simulator instance

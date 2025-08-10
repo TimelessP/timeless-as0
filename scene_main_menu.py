@@ -21,6 +21,8 @@ class MainMenuScene:
         self.widgets = []
         self.focus_index = 0
         self.game_exists = False  # Set to True when there's a saved/running game
+        self.update_available = False  # Set to True when update is available
+        self.latest_version = None  # Store the latest available version
         
         # Initialize widgets
         self._init_widgets()
@@ -46,11 +48,11 @@ class MainMenuScene:
                 "enabled": self.game_exists
             },
             {
-                "id": "settings",
+                "id": "updates",
                 "type": "button",
                 "position": [80, 180],
                 "size": [160, 24],
-                "text": "Settings",
+                "text": "Updates",
                 "focused": False
             },
             {
@@ -80,6 +82,20 @@ class MainMenuScene:
         
         # Re-initialize widgets to update focus based on new game existence status
         self._init_widgets()
+    
+    def set_update_available(self, available: bool, latest_version: str = None):
+        """Set whether an update is available"""
+        self.update_available = available
+        self.latest_version = latest_version
+        
+        # Update the Updates button text if there's an update
+        for widget in self.widgets:
+            if widget["id"] == "updates":
+                if available and latest_version:
+                    widget["text"] = f"Updates (v{latest_version})"
+                else:
+                    widget["text"] = "Updates"
+                break
                 
     def handle_event(self, event) -> Optional[str]:
         """
@@ -166,8 +182,8 @@ class MainMenuScene:
                 return "new_game"  # Start new game
             elif widget_id == "resume_game":
                 return "resume_game"  # Resume saved game
-            elif widget_id == "settings":
-                return "scene_settings"  # Go to settings
+            elif widget_id == "updates":
+                return "scene_update"  # Go to updates
             elif widget_id == "quit":
                 return "quit"
                 
@@ -187,6 +203,13 @@ class MainMenuScene:
             subtitle_text = self.font.render("Steam & Copper Dreams", self.is_text_antialiased, (180, 180, 180))
             subtitle_x = (LOGICAL_SIZE - subtitle_text.get_width()) // 2
             surface.blit(subtitle_text, (subtitle_x, 100))
+            
+            # Draw update notification if available
+            if self.update_available and self.latest_version:
+                update_text = f"Update v{self.latest_version} available!"
+                update_surface = self.font.render(update_text, self.is_text_antialiased, (255, 200, 100))
+                update_x = (LOGICAL_SIZE - update_surface.get_width()) // 2
+                surface.blit(update_surface, (update_x, 260))
         
         # Draw widgets
         for widget in self.widgets:

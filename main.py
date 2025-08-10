@@ -20,6 +20,7 @@ from scene_communications import CommunicationsScene
 from scene_camera import CameraScene
 from scene_crew import CrewScene
 from scene_missions import MissionsScene
+from scene_update import SceneUpdate
 from core_simulator import get_simulator
 
 # Constants
@@ -105,6 +106,9 @@ class AirshipApp:
         # Initialize scenes
         self._init_scenes()
         
+        # Check for updates if enabled
+        self._check_for_updates_if_needed()
+        
         # Game clock
         self.clock = pygame.time.Clock()
         
@@ -166,6 +170,10 @@ class AirshipApp:
         self.scenes["scene_camera"] = CameraScene(self.simulator)
         self.scenes["scene_crew"] = CrewScene(self.simulator)
         self.scenes["scene_missions"] = MissionsScene(self.simulator)
+        self.scenes["scene_update"] = SceneUpdate(self.font)
+        
+        # Set up cross-references
+        self.scenes["scene_update"].set_main_menu_scene(self.scenes["scene_main_menu"])
         
         # Set fonts for all scenes
         for scene in self.scenes.values():
@@ -177,6 +185,18 @@ class AirshipApp:
         # Check for existing saved game and enable resume button
         if self.simulator.has_saved_game():
             self.scenes["scene_main_menu"].set_game_exists(True)
+    
+    def _check_for_updates_if_needed(self):
+        """Check for updates if settings allow and enough time has passed"""
+        try:
+            if self.simulator.should_check_for_updates():
+                # Delegate to the update scene to perform the check
+                update_scene = self.scenes.get("scene_update")
+                if update_scene:
+                    # Trigger automatic check
+                    update_scene._check_latest_version()
+        except Exception as e:
+            print(f"Error during automatic update check: {e}")
         
     def _transition_to_scene(self, scene_name: str):
         """Transition to a new scene"""
