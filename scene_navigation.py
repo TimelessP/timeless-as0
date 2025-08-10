@@ -292,16 +292,16 @@ class NavigationScene:
                 self._center_on_position()
             # Arrow keys for map panning
             elif event.key == pygame.K_LEFT:
-                self.map_offset_x -= 20 / self.zoom_level
+                self.map_offset_x = self._clamp_offset_x(self.map_offset_x - 20 / self.zoom_level)
                 self._save_view_settings()
             elif event.key == pygame.K_RIGHT:
-                self.map_offset_x += 20 / self.zoom_level
+                self.map_offset_x = self._clamp_offset_x(self.map_offset_x + 20 / self.zoom_level)
                 self._save_view_settings()
             elif event.key == pygame.K_UP:
-                self.map_offset_y -= 20 / self.zoom_level
+                self.map_offset_y = self._clamp_offset_y(self.map_offset_y - 20 / self.zoom_level)
                 self._save_view_settings()
             elif event.key == pygame.K_DOWN:
-                self.map_offset_y += 20 / self.zoom_level
+                self.map_offset_y = self._clamp_offset_y(self.map_offset_y + 20 / self.zoom_level)
                 self._save_view_settings()
                 
         elif event.type == pygame.MOUSEBUTTONDOWN:
@@ -368,9 +368,13 @@ class NavigationScene:
                     map_dx = step_dx / self.zoom_level
                     map_dy = step_dy / self.zoom_level
 
-                    # Update map offset incrementally
-                    self.map_offset_x -= map_dx
-                    self.map_offset_y -= map_dy  # Restore original sign for vertical panning
+                    # Update map offset incrementally with bounds checking
+                    new_offset_x = self.map_offset_x - map_dx
+                    new_offset_y = self.map_offset_y - map_dy
+                    
+                    # Apply bounds checking to prevent invalid offsets
+                    self.map_offset_x = self._clamp_offset_x(new_offset_x)
+                    self.map_offset_y = self._clamp_offset_y(new_offset_y)
 
                     # Update last position
                     self.last_drag_pos = current_pos
@@ -408,9 +412,36 @@ class NavigationScene:
         if not self.settings_loaded:
             nav_view = self.simulator.get_navigation_view()
             self.zoom_level = nav_view["zoomLevel"]
-            self.map_offset_x = nav_view["offsetX"]
-            self.map_offset_y = nav_view["offsetY"]
+            # Apply bounds checking to loaded offsets in case saved data is invalid
+            self.map_offset_x = self._clamp_offset_x(nav_view["offsetX"])
+            self.map_offset_y = self._clamp_offset_y(nav_view["offsetY"])
             self.settings_loaded = True
+    
+    def _clamp_offset_x(self, offset_x: float) -> float:
+        """Clamp horizontal offset to valid bounds"""
+        if not self.world_map:
+            return 0.0
+            
+        map_w, map_h = self.world_map.get_size()
+        viewport_w = int((LOGICAL_SIZE - 16) / self.zoom_level)
+        viewport_w = max(1, min(map_w, viewport_w))
+        
+        # Calculate max offset that keeps viewport within map bounds
+        max_offset = (map_w - viewport_w) / 2
+        return max(-max_offset, min(max_offset, offset_x))
+    
+    def _clamp_offset_y(self, offset_y: float) -> float:
+        """Clamp vertical offset to valid bounds"""
+        if not self.world_map:
+            return 0.0
+            
+        map_w, map_h = self.world_map.get_size()
+        viewport_h = int((290 - 56) / self.zoom_level)
+        viewport_h = max(1, min(map_h, viewport_h))
+        
+        # Calculate max offset that keeps viewport within map bounds
+        max_offset = (map_h - viewport_h) / 2
+        return max(-max_offset, min(max_offset, offset_y))
         
     def _get_widget_at_pos(self, pos) -> Optional[int]:
         """Get widget index at logical position"""
