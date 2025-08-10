@@ -511,14 +511,14 @@ class CargoScene:
         crate_types = cargo_state.get("crateTypes", {})
         
         for crate in all_crates:
-            # Calculate crate center position
+            # Calculate crate top middle edge position (attachment point)
             crate_type = crate_types.get(crate["type"], {})
             dimensions = crate_type.get("dimensions", {"width": 1, "height": 1})
             
-            crate_x = crate["position"]["x"] + (dimensions["width"] * GRID_SIZE) / 2
-            crate_y = crate["position"]["y"] + (dimensions["height"] * GRID_SIZE) / 2
+            crate_x = crate["position"]["x"] + (dimensions["width"] * GRID_SIZE) / 2  # Middle of top edge
+            crate_y = crate["position"]["y"]  # Top edge of crate
             
-            # Check if hook is within reasonable distance of crate center
+            # Check if hook is within reasonable distance of crate top middle edge
             distance = math.sqrt((hook_x - crate_x) ** 2 + (hook_y - crate_y) ** 2)
             if distance < 15:  # Within 15 pixels
                 return True
@@ -706,12 +706,12 @@ class CargoScene:
         crate_types = cargo_state.get("crateTypes", {})
         
         for crate in cargo_state.get("loadingBay", []) + cargo_state.get("cargoHold", []):
-            # Calculate crate center position
+            # Calculate crate top middle edge position (attachment point)
             crate_type = crate_types.get(crate["type"], {})
             dimensions = crate_type.get("dimensions", {"width": 1, "height": 1})
             
-            cx = crate["position"]["x"] + (dimensions["width"] * GRID_SIZE) / 2
-            cy = crate["position"]["y"] + (dimensions["height"] * GRID_SIZE) / 2
+            cx = crate["position"]["x"] + (dimensions["width"] * GRID_SIZE) / 2  # Middle of top edge
+            cy = crate["position"]["y"]  # Top edge of crate
             
             d2 = (cx - hook_x) ** 2 + (cy - hook_y) ** 2
             if d2 < best_d2:
