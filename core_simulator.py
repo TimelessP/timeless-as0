@@ -379,6 +379,16 @@ class CoreSimulator:
                         fuel_block["currentLevel"] = forward_level + aft_level
                         fuel_block.pop("pumpMode", None)
                         fuel_block.pop("pumps", None)
+                
+                # Migration: ensure settings section exists with defaults
+                if "settings" not in loaded_state:
+                    print("🔧 Adding missing settings section to save file...")
+                    loaded_state["settings"] = {
+                        "checkForUpdates": True,
+                        "lastUpdateCheck": 0.0,
+                        "updateCheckInterval": 86400.0
+                    }
+                
                 self.game_state = loaded_state
                 self.running = True
                 self.last_update_time = time.time()
