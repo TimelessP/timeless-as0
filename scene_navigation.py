@@ -611,22 +611,28 @@ class NavigationScene:
         # Calculate line dimensions
         dx = end_pos[0] - start_pos[0]
         dy = end_pos[1] - start_pos[1]
-        length = max(abs(dx), abs(dy), 1)
         
-        # Create a temporary surface large enough for the line
-        temp_surface = pygame.Surface((length + width * 2, length + width * 2), pygame.SRCALPHA)
+        # Calculate bounding box for the line (accounting for negative deltas)
+        min_x = min(0, dx) - width
+        max_x = max(0, dx) + width
+        min_y = min(0, dy) - width
+        max_y = max(0, dy) + width
         
-        # Offset coordinates for the temporary surface
-        offset_x = width
-        offset_y = width
-        start_temp = (start_pos[0] - start_pos[0] + offset_x, start_pos[1] - start_pos[1] + offset_y)
-        end_temp = (end_pos[0] - start_pos[0] + offset_x, end_pos[1] - start_pos[1] + offset_y)
+        temp_width = int(max_x - min_x) + 1
+        temp_height = int(max_y - min_y) + 1
+        
+        # Create a temporary surface large enough for the line in any direction
+        temp_surface = pygame.Surface((temp_width, temp_height), pygame.SRCALPHA)
+        
+        # Calculate positions in the temporary surface
+        start_temp = (-min_x, -min_y)
+        end_temp = (dx - min_x, dy - min_y)
         
         # Draw the line on the temporary surface
         pygame.draw.line(temp_surface, (*color, alpha), start_temp, end_temp, width)
         
-        # Blit to the main surface
-        surface.blit(temp_surface, (start_pos[0] - offset_x, start_pos[1] - offset_y))
+        # Blit to the main surface at the correct position
+        surface.blit(temp_surface, (start_pos[0] + min_x, start_pos[1] + min_y))
     
     def _draw_transparent_circle_outline(self, surface, color, center, radius, alpha):
         """Draw a circle outline with transparency"""
@@ -697,10 +703,16 @@ class NavigationScene:
         position = game_state["navigation"]["position"]
         motion = game_state["navigation"]["motion"]
         
-        # Create transparent overlay subsurface for navigation elements
+        # Create larger overlay subsurface to accommodate lines extending in all directions
         display_w = LOGICAL_SIZE - 16   # 304 pixels
         display_h = 290 - 56            # 234 pixels
-        overlay = pygame.Surface((display_w, display_h), pygame.SRCALPHA)
+        
+        # Make overlay larger to accommodate range lines extending beyond visible area
+        max_range = 500  # Maximum possible range pixels we might need
+        overlay_w = display_w + max_range * 2  # Extra space on both sides
+        overlay_h = display_h + max_range * 2  # Extra space top and bottom
+        
+        overlay = pygame.Surface((overlay_w, overlay_h), pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 0))  # Fully transparent background
         
         # Get ship's absolute position in map coordinates
@@ -713,9 +725,9 @@ class NavigationScene:
         rel_x = (ship_map_x - map_rect.x) / map_rect.width
         rel_y = (ship_map_y - map_rect.y) / map_rect.height
         
-        # Convert to overlay coordinates (can be negative or > display size)
-        overlay_ship_x = rel_x * display_w
-        overlay_ship_y = rel_y * display_h
+        # Convert to overlay coordinates (offset by the extra margin)
+        overlay_ship_x = rel_x * display_w + max_range
+        overlay_ship_y = rel_y * display_h + max_range
         
         # Draw 12-hour travel range using proper great circle navigation
         current_speed = motion.get("groundSpeed", 0)  # knots
@@ -737,9 +749,9 @@ class NavigationScene:
             end_rel_x = (end_map_x - map_rect.x) / map_rect.width
             end_rel_y = (end_map_y - map_rect.y) / map_rect.height
             
-            # Convert to overlay coordinates
-            overlay_end_x = end_rel_x * display_w
-            overlay_end_y = end_rel_y * display_h
+            # Convert to overlay coordinates (offset by the extra margin)
+            overlay_end_x = end_rel_x * display_w + max_range
+            overlay_end_y = end_rel_y * display_h + max_range
             
             # Calculate actual distance in overlay pixels for range circle
             dx = overlay_end_x - overlay_ship_x
@@ -754,12 +766,12 @@ class NavigationScene:
                 
                 # Draw heading line to range circle edge (not to end position)
                 heading_rad = math.radians(bearing)
-                line_end_x = overlay_ship_x + math.sin(heading_rad) * range_pixels
-                line_end_y = overlay_ship_y - math.cos(heading_rad) * range_pixels
+                line_end_x = overlay_ship_x + math.sin(heading_rad) * (range_pixels - 1)
+                line_end_y = overlay_ship_y - math.cos(heading_rad) * (range_pixels - 1)
                 
                 self._draw_transparent_line(overlay, AIRSHIP_RANGE_COLOR,
-                                          (int(overlay_ship_x) - 1, int(overlay_ship_y) - 1), 
-                                          (int(line_end_x) - 1, int(line_end_y) - 1), 1, 128)  # 50% opacity, 1px width
+                                          (int(overlay_ship_x), int(overlay_ship_y)), 
+                                          (int(line_end_x), int(line_end_y)), 1, 64)  # 25% opacity, 1px width
         
         # Draw position marker (centered on ship position)
         marker_radius = 3  # 7 pixel diameter (odd number)
@@ -767,8 +779,11 @@ class NavigationScene:
                                     (int(overlay_ship_x), int(overlay_ship_y)), 
                                     marker_radius, 191)  # 75% opacity (191/255)
         
-        # Blit the overlay onto the main surface
-        surface.blit(overlay, (8, 56))
+        # Blit only the visible portion of the overlay onto the main surface
+        # Extract the display-sized portion from the center of the larger overlay
+        visible_rect = pygame.Rect(max_range, max_range, display_w, display_h)
+        visible_portion = overlay.subsurface(visible_rect)
+        surface.blit(visible_portion, (8, 56))
                            
     def _draw_waypoint_indicator(self, surface):
         """Draw waypoint on the map using overlay subsurface"""
@@ -776,10 +791,16 @@ class NavigationScene:
         if not waypoint:
             return
         
-        # Create transparent overlay subsurface for waypoint elements
+        # Create larger overlay subsurface for waypoint elements (matching position indicator)
         display_w = LOGICAL_SIZE - 16   # 304 pixels
         display_h = 290 - 56            # 234 pixels
-        overlay = pygame.Surface((display_w, display_h), pygame.SRCALPHA)
+        
+        # Make overlay larger to accommodate dashed lines extending beyond visible area
+        max_range = 500  # Maximum possible range pixels we might need
+        overlay_w = display_w + max_range * 2  # Extra space on both sides
+        overlay_h = display_h + max_range * 2  # Extra space top and bottom
+        
+        overlay = pygame.Surface((overlay_w, overlay_h), pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 0))  # Fully transparent background
             
         # Get waypoint position in map coordinates
@@ -794,20 +815,20 @@ class NavigationScene:
         rel_x = (waypoint_map_x - map_rect.x) / map_rect.width
         rel_y = (waypoint_map_y - map_rect.y) / map_rect.height
         
-        # Convert to overlay coordinates
-        overlay_waypoint_x = rel_x * display_w
-        overlay_waypoint_y = rel_y * display_h
+        # Convert to overlay coordinates (offset by the extra margin)
+        overlay_waypoint_x = rel_x * display_w + max_range
+        overlay_waypoint_y = rel_y * display_h + max_range
         
         # Get ship position for dashed line
         game_state = self.simulator.get_state()
         position = game_state["navigation"]["position"]
         ship_map_x, ship_map_y = self._lat_lon_to_map_coords(position["latitude"], position["longitude"])
         
-        # Calculate ship position in overlay coordinates
+        # Calculate ship position in overlay coordinates (offset by the extra margin)
         ship_rel_x = (ship_map_x - map_rect.x) / map_rect.width
         ship_rel_y = (ship_map_y - map_rect.y) / map_rect.height
-        overlay_ship_x = ship_rel_x * display_w
-        overlay_ship_y = ship_rel_y * display_h
+        overlay_ship_x = ship_rel_x * display_w + max_range
+        overlay_ship_y = ship_rel_y * display_h + max_range
         
         # Draw dashed line from ship to waypoint (bottom layer, 25% opacity)
         self._draw_dashed_line(overlay, AIRSHIP_RANGE_COLOR,
@@ -846,8 +867,11 @@ class NavigationScene:
                                         (int(overlay_waypoint_x), int(overlay_waypoint_y + 8)), 
                                         WAYPOINT_TEXT_COLOR, 128, centered=True)
         
-        # Blit the overlay onto the main surface
-        surface.blit(overlay, (8, 56))
+        # Blit only the visible portion of the overlay onto the main surface
+        # Extract the display-sized portion from the center of the larger overlay
+        visible_rect = pygame.Rect(max_range, max_range, display_w, display_h)
+        visible_portion = overlay.subsurface(visible_rect)
+        surface.blit(visible_portion, (8, 56))
     
     def _render_transparent_text(self, surface, text, position, color, alpha, centered=False):
         """Render transparent text on a surface"""
