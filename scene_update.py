@@ -135,6 +135,7 @@ class SceneUpdate:
         if self.checking_version:
             return
         
+        print("🔍 Checking for updates from GitHub...")
         self.checking_version = True
         self.update_status = "Checking for updates..."
         
@@ -197,6 +198,7 @@ class SceneUpdate:
             self.checking_version = False
             # Mark that we completed an update check
             self.simulator.mark_update_check_completed()
+            print(f"✅ Update check completed. Status: {self.update_status}")
     
     def _version_compare(self, version1: str, version2: str) -> int:
         """Compare two version strings. Returns 1 if v1 > v2, -1 if v1 < v2, 0 if equal"""
@@ -279,6 +281,10 @@ class SceneUpdate:
             widget_id = widget["id"]
             
             if widget_id == "check_now":
+                # Clear previous status and start fresh check
+                self.update_status = ""
+                self.update_available = False
+                self.latest_version = None
                 self._check_latest_version()
             elif widget_id == "update_now":
                 if self.update_available:
