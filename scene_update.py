@@ -327,7 +327,7 @@ class SceneUpdate:
         
         return None
     
-    def update(self):
+    def update(self, dt: float):
         """Update scene state"""
         pass
     
