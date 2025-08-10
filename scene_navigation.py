@@ -156,6 +156,74 @@ class NavigationScene:
         
         return (map_x, map_y)
         
+    def _map_coords_to_lat_lon(self, map_x: int, map_y: int) -> tuple:
+        """Convert map pixel coordinates to latitude/longitude"""
+        if not self.world_map:
+            return (0.0, 0.0)
+            
+        map_w, map_h = self.world_map.get_size()
+        
+        # Normalize coordinates (0-1)
+        x_norm = map_x / map_w
+        y_norm = map_y / map_h
+        
+        # Convert to lat/lon
+        lon = (x_norm * 360.0) - 180.0  # -180 to +180
+        lat = 90.0 - (y_norm * 180.0)   # +90 to -90
+        
+        return (lat, lon)
+        
+    def _screen_to_map_coords(self, screen_x: int, screen_y: int) -> Optional[tuple]:
+        """Convert screen coordinates to map coordinates"""
+        # Check if click is in map area (56 to 290 for Y, 8 to 312 for X)
+        if not (8 <= screen_x <= LOGICAL_SIZE - 8 and 56 <= screen_y <= 290):
+            return None
+            
+        # Convert screen coords to map area relative coords
+        map_area_w = LOGICAL_SIZE - 16  # 304 pixels wide
+        map_area_h = 290 - 56           # 234 pixels high
+        
+        rel_x = (screen_x - 8) / map_area_w
+        rel_y = (screen_y - 56) / map_area_h
+        
+        # Get current viewport
+        map_rect = self._get_visible_map_rect()
+        
+        # Convert relative position to actual map coordinates
+        map_x = map_rect.x + (rel_x * map_rect.width)
+        map_y = map_rect.y + (rel_y * map_rect.height)
+        
+        return (int(map_x), int(map_y))
+        
+    def _is_near_waypoint(self, screen_x: int, screen_y: int, threshold: int = 10) -> bool:
+        """Check if screen coordinates are near the current waypoint"""
+        waypoint = self.simulator.get_waypoint()
+        if not waypoint:
+            return False
+            
+        # Convert waypoint to screen coordinates
+        waypoint_map_x, waypoint_map_y = self._lat_lon_to_map_coords(
+            waypoint["latitude"], waypoint["longitude"]
+        )
+        
+        # Get current viewport
+        map_rect = self._get_visible_map_rect()
+        
+        # Check if waypoint is visible
+        if not map_rect.collidepoint(waypoint_map_x, waypoint_map_y):
+            return False
+            
+        # Convert waypoint to screen coordinates
+        rel_x = (waypoint_map_x - map_rect.x) / map_rect.width
+        rel_y = (waypoint_map_y - map_rect.y) / map_rect.height
+        
+        waypoint_screen_x = 8 + rel_x * (LOGICAL_SIZE - 16)
+        waypoint_screen_y = 56 + rel_y * (290 - 56)
+        
+        # Check distance
+        distance = math.sqrt((screen_x - waypoint_screen_x)**2 + (screen_y - waypoint_screen_y)**2)
+        return distance <= threshold
+        
     def _get_visible_map_rect(self) -> pygame.Rect:
         """Get the rectangle of the map that should be visible"""
         if not self.world_map:
@@ -163,9 +231,9 @@ class NavigationScene:
             
         map_w, map_h = self.world_map.get_size()
         
-        # Available space for map (minus UI areas and header)
-        map_area_w = LOGICAL_SIZE - 16  # 8px margin on each side
-        map_area_h = LOGICAL_SIZE - 92  # Leave space for header (32), top info (24), bottom margin (8), and bottom controls (28)
+        # Available space for map (from info area to controls)
+        map_area_w = LOGICAL_SIZE - 16  # 8px margin on each side (304 pixels)
+        map_area_h = 290 - 56           # From end of info area to start of controls (234 pixels)
         
         # Calculate map viewport size based on zoom
         viewport_w = int(map_area_w / self.zoom_level)
@@ -238,12 +306,19 @@ class NavigationScene:
                     self._set_focus(clicked_widget)
                     return self._activate_focused()
                 else:
-                    # Check if clicking on map area for dragging
+                    # Check if clicking on map area
                     x, y = logical_pos
-                    if 8 <= x <= LOGICAL_SIZE - 8 and 32 <= y <= LOGICAL_SIZE - 28:
+                    if 8 <= x <= LOGICAL_SIZE - 8 and 56 <= y <= 290:
+                        # Start drag mode (don't set waypoint yet - wait for mouse up)
                         self.is_dragging = True
                         self.drag_start_pos = logical_pos
                         self.drag_start_offset = (self.map_offset_x, self.map_offset_y)
+            elif event.button == 3:  # Right click
+                logical_pos = event.pos
+                x, y = logical_pos
+                # Check if right-clicking near waypoint to remove it
+                if self._is_near_waypoint(x, y):
+                    self.simulator.clear_waypoint()
             elif event.button == 4:  # Mouse wheel up - zoom in
                 self._zoom_in()
             elif event.button == 5:  # Mouse wheel down - zoom out
@@ -251,9 +326,26 @@ class NavigationScene:
                         
         elif event.type == pygame.MOUSEBUTTONUP:
             if event.button == 1:  # Left click release
-                if self.is_dragging:
-                    # Save settings after dragging is complete
-                    self._save_view_settings()
+                # Check if this was a drag or a click
+                if self.is_dragging and self.drag_start_pos:
+                    current_pos = event.pos
+                    # Calculate distance moved
+                    dx = abs(current_pos[0] - self.drag_start_pos[0])
+                    dy = abs(current_pos[1] - self.drag_start_pos[1])
+                    
+                    if dx <= 3 and dy <= 3:
+                        # This was a click, not a drag - set waypoint now
+                        x, y = self.drag_start_pos
+                        if 8 <= x <= LOGICAL_SIZE - 8 and 56 <= y <= 290:
+                            map_coords = self._screen_to_map_coords(x, y)
+                            if map_coords:
+                                # Convert map coordinates to lat/lon and set waypoint
+                                lat, lon = self._map_coords_to_lat_lon(map_coords[0], map_coords[1])
+                                self.simulator.set_waypoint(lat, lon)
+                    else:
+                        # This was a drag - save settings after dragging is complete
+                        self._save_view_settings()
+                
                 self.is_dragging = False
                 self.drag_start_pos = None
                 self.drag_start_offset = None
@@ -265,13 +357,15 @@ class NavigationScene:
                 dx = current_pos[0] - self.drag_start_pos[0]
                 dy = current_pos[1] - self.drag_start_pos[1]
                 
-                # Convert screen delta to map delta (accounting for zoom)
-                map_dx = dx / self.zoom_level
-                map_dy = dy / self.zoom_level
-                
-                # Update map offset (don't save during drag for performance)
-                self.map_offset_x = self.drag_start_offset[0] - map_dx
-                self.map_offset_y = self.drag_start_offset[1] - map_dy
+                # Only update if significant movement (to distinguish from clicks)
+                if abs(dx) > 3 or abs(dy) > 3:
+                    # Convert screen delta to map delta (accounting for zoom)
+                    map_dx = dx / self.zoom_level
+                    map_dy = dy / self.zoom_level
+                    
+                    # Update map offset (don't save during drag for performance)
+                    self.map_offset_x = self.drag_start_offset[0] - map_dx
+                    self.map_offset_y = self.drag_start_offset[1] - map_dy
                     
         return None
         
@@ -416,6 +510,9 @@ class NavigationScene:
         # Draw current position on map
         self._draw_position_indicator(surface)
         
+        # Draw waypoint on map
+        self._draw_waypoint_indicator(surface)
+        
         # Draw widgets
         for widget in self.widgets:
             self._render_widget(surface, widget)
@@ -437,9 +534,9 @@ class NavigationScene:
             map_section = pygame.Surface((max(1, map_rect.width), max(1, map_rect.height)))
             map_section.fill((0, 50, 100))  # Ocean blue
             
-        # Scale to fit the display area (adjusted for header)
-        display_w = LOGICAL_SIZE - 16
-        display_h = LOGICAL_SIZE - 92  # Same calculation as map_area_h
+        # Scale to fit the display area
+        display_w = LOGICAL_SIZE - 16   # 304 pixels
+        display_h = 290 - 56            # 234 pixels
         
         if map_section.get_width() > 0 and map_section.get_height() > 0:
             scaled_map = pygame.transform.scale(map_section, (display_w, display_h))
@@ -463,11 +560,11 @@ class NavigationScene:
             rel_x = (ship_map_x - map_rect.x) / map_rect.width
             rel_y = (ship_map_y - map_rect.y) / map_rect.height
             
-            # Convert to screen coordinates (adjusted for header and UI)
-            display_w = LOGICAL_SIZE - 16
-            display_h = LOGICAL_SIZE - 92  # Same calculation as map_area_h
+            # Convert to screen coordinates
+            display_w = LOGICAL_SIZE - 16   # 304 pixels
+            display_h = 290 - 56            # 234 pixels
             screen_x = 8 + rel_x * display_w
-            screen_y = 56 + rel_y * display_h  # 56 = 32 (header) + 24 (info area)
+            screen_y = 56 + rel_y * display_h
             
             # Draw position marker
             pygame.draw.circle(surface, POSITION_COLOR, (int(screen_x), int(screen_y)), 3)
@@ -479,6 +576,69 @@ class NavigationScene:
             pygame.draw.line(surface, POSITION_COLOR, 
                            (int(screen_x), int(screen_y)), 
                            (int(end_x), int(end_y)), 2)
+                           
+    def _draw_waypoint_indicator(self, surface):
+        """Draw waypoint on the map if one exists"""
+        waypoint = self.simulator.get_waypoint()
+        if not waypoint:
+            return
+            
+        # Get waypoint position in map coordinates
+        waypoint_map_x, waypoint_map_y = self._lat_lon_to_map_coords(
+            waypoint["latitude"], waypoint["longitude"]
+        )
+        
+        # Get the current viewport
+        map_rect = self._get_visible_map_rect()
+        
+        # Check if waypoint is within the visible viewport
+        if map_rect.collidepoint(waypoint_map_x, waypoint_map_y):
+            # Calculate waypoint position relative to the visible map area
+            rel_x = (waypoint_map_x - map_rect.x) / map_rect.width
+            rel_y = (waypoint_map_y - map_rect.y) / map_rect.height
+            
+            # Convert to screen coordinates
+            display_w = LOGICAL_SIZE - 16   # 304 pixels
+            display_h = 290 - 56            # 234 pixels
+            screen_x = 8 + rel_x * display_w
+            screen_y = 56 + rel_y * display_h
+            
+            # Draw waypoint marker (larger than position marker)
+            waypoint_color = (100, 255, 100)  # Green
+            pygame.draw.circle(surface, waypoint_color, (int(screen_x), int(screen_y)), 5)
+            pygame.draw.circle(surface, (255, 255, 255), (int(screen_x), int(screen_y)), 5, 2)
+            
+            # Draw waypoint information
+            if self.font:
+                distance = self.simulator.calculate_distance_to_waypoint()
+                bearing = self.simulator.calculate_bearing_to_waypoint()
+                
+                # Distance and bearing above the waypoint
+                if distance is not None and bearing is not None:
+                    label_above = f"{distance:.1f}nm {bearing:03.0f}°"
+                    text_surface_above = self.font.render(label_above, self.is_text_antialiased, waypoint_color)
+                    text_x_above = int(screen_x) - text_surface_above.get_width() // 2
+                    text_y_above = int(screen_y) - 20
+                    
+                    # Ensure text stays within screen bounds
+                    text_x_above = max(8, min(LOGICAL_SIZE - 8 - text_surface_above.get_width(), text_x_above))
+                    text_y_above = max(56, text_y_above)
+                    
+                    surface.blit(text_surface_above, (text_x_above, text_y_above))
+                
+                # Lat/lon below the waypoint
+                lat_str = f"{abs(waypoint['latitude']):.3f}°{'N' if waypoint['latitude'] >= 0 else 'S'}"
+                lon_str = f"{abs(waypoint['longitude']):.3f}°{'E' if waypoint['longitude'] >= 0 else 'W'}"
+                label_below = f"{lat_str} {lon_str}"
+                text_surface_below = self.font.render(label_below, self.is_text_antialiased, waypoint_color)
+                text_x_below = int(screen_x) - text_surface_below.get_width() // 2
+                text_y_below = int(screen_y) + 8
+                
+                # Ensure text stays within screen bounds
+                text_x_below = max(8, min(LOGICAL_SIZE - 8 - text_surface_below.get_width(), text_x_below))
+                text_y_below = min(LOGICAL_SIZE - 36 - text_surface_below.get_height(), text_y_below)
+                
+                surface.blit(text_surface_below, (text_x_below, text_y_below))
                            
     def _render_widget(self, surface, widget):
         """Render a single widget"""

@@ -812,7 +812,21 @@ class CoreSimulator:
         
         # Heading hold with discrete rudder control (like manual input)
         if autopilot["headingHold"]:
-            heading_error = targets["heading"] - position["heading"]
+            # For route follow mode, calculate bearing to waypoint as target heading
+            if nav.get("mode") == "route_follow":
+                waypoint_bearing = self.calculate_bearing_to_waypoint()
+                if waypoint_bearing is not None:
+                    target_heading = waypoint_bearing
+                    # Update the targets heading so it shows correctly in displays
+                    targets["heading"] = target_heading
+                else:
+                    # No waypoint, fall back to current target heading
+                    target_heading = targets["heading"]
+            else:
+                # Normal heading hold mode
+                target_heading = targets["heading"]
+            
+            heading_error = target_heading - position["heading"]
             # Normalize to -180 to +180
             while heading_error > 180:
                 heading_error -= 360
@@ -1862,6 +1876,80 @@ class CoreSimulator:
     def mark_update_check_completed(self):
         """Mark that an update check was just completed"""
         self.set_setting("lastUpdateCheck", time.time())
+
+    # === WAYPOINT MANAGEMENT METHODS ===
+    
+    def set_waypoint(self, latitude: float, longitude: float):
+        """Set a single waypoint for route following"""
+        route = self.game_state["navigation"]["route"]
+        route["waypoints"] = [{"latitude": latitude, "longitude": longitude}]
+        route["currentWaypoint"] = 0
+        route["active"] = True
+        
+    def clear_waypoint(self):
+        """Remove the current waypoint"""
+        route = self.game_state["navigation"]["route"]
+        route["waypoints"] = []
+        route["currentWaypoint"] = 0
+        route["active"] = False
+        
+    def get_waypoint(self) -> Optional[Dict[str, float]]:
+        """Get the current waypoint if one exists"""
+        route = self.game_state["navigation"]["route"]
+        if route["active"] and route["waypoints"]:
+            return route["waypoints"][0]
+        return None
+        
+    def calculate_bearing_to_waypoint(self) -> Optional[float]:
+        """Calculate bearing from current position to waypoint"""
+        waypoint = self.get_waypoint()
+        if not waypoint:
+            return None
+            
+        pos = self.game_state["navigation"]["position"]
+        
+        # Convert to radians
+        lat1 = math.radians(pos["latitude"])
+        lon1 = math.radians(pos["longitude"])
+        lat2 = math.radians(waypoint["latitude"])
+        lon2 = math.radians(waypoint["longitude"])
+        
+        # Calculate bearing using forward azimuth formula
+        dlon = lon2 - lon1
+        y = math.sin(dlon) * math.cos(lat2)
+        x = math.cos(lat1) * math.sin(lat2) - math.sin(lat1) * math.cos(lat2) * math.cos(dlon)
+        
+        bearing = math.atan2(y, x)
+        bearing = math.degrees(bearing)
+        bearing = (bearing + 360) % 360  # Normalize to 0-360
+        
+        return bearing
+        
+    def calculate_distance_to_waypoint(self) -> Optional[float]:
+        """Calculate distance from current position to waypoint in nautical miles"""
+        waypoint = self.get_waypoint()
+        if not waypoint:
+            return None
+            
+        pos = self.game_state["navigation"]["position"]
+        
+        # Haversine formula for great circle distance
+        lat1 = math.radians(pos["latitude"])
+        lon1 = math.radians(pos["longitude"])
+        lat2 = math.radians(waypoint["latitude"])
+        lon2 = math.radians(waypoint["longitude"])
+        
+        dlat = lat2 - lat1
+        dlon = lon2 - lon1
+        
+        a = math.sin(dlat/2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon/2)**2
+        c = 2 * math.asin(math.sqrt(a))
+        
+        # Earth radius in nautical miles
+        R = 3440.065
+        distance = R * c
+        
+        return distance
 
 
 # Global simulator instance
