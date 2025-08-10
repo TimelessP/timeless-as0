@@ -54,6 +54,10 @@ class SceneUpdate:
     
     def _init_widgets(self):
         """Initialize UI widgets"""
+        # Check current update checking setting
+        settings = self.simulator.get_settings()
+        update_checking_enabled = settings.get("checkForUpdates", True)
+        
         self.widgets = [
             {
                 "id": "check_now",
@@ -83,18 +87,18 @@ class SceneUpdate:
                 "enabled": False
             },
             {
-                "id": "disable_updates",
+                "id": "toggle_updates",
                 "type": "button",
                 "position": [80, 210],
                 "size": [160, 24],
-                "text": "Don't Check for Updates",
+                "text": "Enable Auto-Updates" if not update_checking_enabled else "Disable Auto-Updates",
                 "focused": False,
                 "enabled": True
             },
             {
                 "id": "back",
                 "type": "button",
-                "position": [80, 250],
+                "position": [80, 240],
                 "size": [160, 24],
                 "text": "Back to Main Menu",
                 "focused": False,
@@ -283,9 +287,18 @@ class SceneUpdate:
                 # Reset the last check time so we'll check again later
                 self.simulator.set_setting("lastUpdateCheck", time.time() - 82800)  # 23 hours ago
                 return "scene_main_menu"
-            elif widget_id == "disable_updates":
-                self.simulator.set_setting("checkForUpdates", False)
-                return "scene_main_menu"
+            elif widget_id == "toggle_updates":
+                # Toggle the auto-update setting
+                settings = self.simulator.get_settings()
+                current_setting = settings.get("checkForUpdates", True)
+                self.simulator.set_setting("checkForUpdates", not current_setting)
+                # Refresh the widgets to update button text
+                self._init_widgets()
+                # Update focus to the same button
+                for i, w in enumerate(self.widgets):
+                    if w["id"] == "toggle_updates":
+                        self._set_focus(i)
+                        break
             elif widget_id == "back":
                 return "scene_main_menu"
         
@@ -397,6 +410,15 @@ class SceneUpdate:
         # Render widgets
         for widget in self.widgets:
             self._render_widget(surface, widget)
+        
+        # Auto-update setting status
+        settings = self.simulator.get_settings()
+        auto_updates_enabled = settings.get("checkForUpdates", True)
+        auto_status_text = f"Auto-updates: {'Enabled' if auto_updates_enabled else 'Disabled'}"
+        auto_status_color = GOOD_COLOR if auto_updates_enabled else (180, 180, 180)
+        auto_status_surface = self.font.render(auto_status_text, True, auto_status_color)
+        auto_status_rect = auto_status_surface.get_rect(center=(160, 270))
+        surface.blit(auto_status_surface, auto_status_rect)
         
         # Instructions
         instruction_text = "Tab to navigate, Enter/Space to activate, Esc to go back"
