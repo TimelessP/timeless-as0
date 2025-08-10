@@ -28,23 +28,25 @@ class NavigationScene:
         self.simulator = simulator
         self.world_map = None
         self.map_surface = None
-        
+
         # Initialize with default values - will load from simulator on first update
         self.zoom_level = 1.0
         self.map_offset_x = 0.0
         self.map_offset_y = 0.0
-        
+
         # Flag to track if we've loaded saved settings yet
         self.settings_loaded = False
-        
+
         # Mouse dragging state
         self.is_dragging = False
         self.drag_start_pos = None
         self.drag_start_offset = None
-        
+        self.has_dragged = False  # Track if any actual dragging occurred
+        self.last_drag_pos = None  # Track last mouse position during drag (logical coords)
+
         # Initialize widgets
         self._init_widgets()
-        
+            
     def _init_widgets(self):
         """Initialize navigation widgets"""
         self.widgets = [
@@ -256,14 +258,15 @@ class NavigationScene:
         center_y = ship_map_y + self.map_offset_y
         
         # Calculate viewport rectangle centered on the (potentially offset) position
-        view_x = center_x - viewport_w // 2
-        view_y = center_y - viewport_h // 2
+        view_x = center_x - viewport_w / 2
+        view_y = center_y - viewport_h / 2
         
         # Clamp to map bounds
         view_x = max(0, min(map_w - viewport_w, view_x))
         view_y = max(0, min(map_h - viewport_h, view_y))
         
-        return pygame.Rect(int(view_x), int(view_y), viewport_w, viewport_h)
+        # Round to nearest integer for pixel-perfect positioning
+        return pygame.Rect(round(view_x), round(view_y), viewport_w, viewport_h)
         
     def handle_event(self, event) -> Optional[str]:
         """Handle pygame events"""
@@ -316,6 +319,8 @@ class NavigationScene:
                         self.is_dragging = True
                         self.drag_start_pos = logical_pos
                         self.drag_start_offset = (self.map_offset_x, self.map_offset_y)
+                        self.last_drag_pos = logical_pos
+                        self.has_dragged = False  # Reset drag tracking
             elif event.button == 3:  # Right click
                 logical_pos = event.pos
                 x, y = logical_pos
@@ -331,12 +336,8 @@ class NavigationScene:
             if event.button == 1:  # Left click release
                 # Check if this was a drag or a click
                 if self.is_dragging and self.drag_start_pos:
-                    current_pos = event.pos
-                    # Calculate distance moved
-                    dx = abs(current_pos[0] - self.drag_start_pos[0])
-                    dy = abs(current_pos[1] - self.drag_start_pos[1])
-                    
-                    if dx <= 3 and dy <= 3:
+                    # Determine if this was a drag based on cumulative distance
+                    if not self.has_dragged:
                         # This was a click, not a drag - set waypoint now
                         x, y = self.drag_start_pos
                         if 8 <= x <= LOGICAL_SIZE - 8 and 56 <= y <= 290:
@@ -352,23 +353,33 @@ class NavigationScene:
                 self.is_dragging = False
                 self.drag_start_pos = None
                 self.drag_start_offset = None
+                self.last_drag_pos = None
+                self.has_dragged = False  # Reset drag tracking
                 
         elif event.type == pygame.MOUSEMOTION:
-            if self.is_dragging and self.drag_start_pos and self.drag_start_offset:
-                # Calculate drag delta
+            if self.is_dragging and self.last_drag_pos and self.drag_start_pos and self.drag_start_offset:
+                # Calculate incremental drag delta from last position (more robust with quantized coords)
                 current_pos = event.pos
-                dx = current_pos[0] - self.drag_start_pos[0]
-                dy = current_pos[1] - self.drag_start_pos[1]
-                
-                # Only update if significant movement (to distinguish from clicks)
-                if abs(dx) > 3 or abs(dy) > 3:
+                step_dx = current_pos[0] - self.last_drag_pos[0]
+                step_dy = current_pos[1] - self.last_drag_pos[1]
+
+                if step_dx != 0 or step_dy != 0:
                     # Convert screen delta to map delta (accounting for zoom)
-                    map_dx = dx / self.zoom_level
-                    map_dy = dy / self.zoom_level
-                    
-                    # Update map offset (don't save during drag for performance)
-                    self.map_offset_x = self.drag_start_offset[0] - map_dx
-                    self.map_offset_y = self.drag_start_offset[1] - map_dy
+                    map_dx = step_dx / self.zoom_level
+                    map_dy = step_dy / self.zoom_level
+
+                    # Update map offset incrementally
+                    self.map_offset_x -= map_dx
+                    self.map_offset_y -= map_dy  # Restore original sign for vertical panning
+
+                    # Update last position
+                    self.last_drag_pos = current_pos
+
+                    # Determine cumulative movement from the start for click-vs-drag
+                    total_dx = current_pos[0] - self.drag_start_pos[0]
+                    total_dy = current_pos[1] - self.drag_start_pos[1]
+                    if abs(total_dx) > 2 or abs(total_dy) > 2:
+                        self.has_dragged = True
                     
         return None
         
@@ -634,10 +645,16 @@ class NavigationScene:
             surface.blit(scaled_map, (8, 56))
         
     def _draw_position_indicator(self, surface):
-        """Draw current position on the map"""
+        """Draw current position on the map using overlay subsurface"""
         game_state = self.simulator.get_state()
         position = game_state["navigation"]["position"]
         motion = game_state["navigation"]["motion"]
+        
+        # Create transparent overlay subsurface for navigation elements
+        display_w = LOGICAL_SIZE - 16   # 304 pixels
+        display_h = 290 - 56            # 234 pixels
+        overlay = pygame.Surface((display_w, display_h), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 0))  # Fully transparent background
         
         # Get ship's absolute position in map coordinates
         ship_map_x, ship_map_y = self._lat_lon_to_map_coords(position["latitude"], position["longitude"])
@@ -645,72 +662,78 @@ class NavigationScene:
         # Get the current viewport
         map_rect = self._get_visible_map_rect()
         
-        # Check if ship position is within the visible viewport
-        if map_rect.collidepoint(ship_map_x, ship_map_y):
-            # Calculate ship position relative to the visible map area
-            rel_x = (ship_map_x - map_rect.x) / map_rect.width
-            rel_y = (ship_map_y - map_rect.y) / map_rect.height
+        # Calculate ship position relative to the visible map area (can be outside viewport)
+        rel_x = (ship_map_x - map_rect.x) / map_rect.width
+        rel_y = (ship_map_y - map_rect.y) / map_rect.height
+        
+        # Convert to overlay coordinates (can be negative or > display size)
+        overlay_ship_x = rel_x * display_w
+        overlay_ship_y = rel_y * display_h
+        
+        # Draw 12-hour travel range using proper great circle navigation
+        current_speed = motion.get("groundSpeed", 0)  # knots
+        travel_distance_nm = current_speed * 12  # 12 hours of travel in nautical miles
+        
+        if travel_distance_nm > 0:
+            # Calculate destination using great circle navigation
+            current_lat = position["latitude"]
+            current_lon = position["longitude"]
+            bearing = position["heading"]
             
-            # Convert to screen coordinates
-            display_w = LOGICAL_SIZE - 16   # 304 pixels
-            display_h = 290 - 56            # 234 pixels
-            screen_x = 8 + rel_x * display_w
-            screen_y = 56 + rel_y * display_h
+            # Calculate end position after 12 hours of travel on great circle
+            end_lat, end_lon = self._calculate_destination(current_lat, current_lon, bearing, travel_distance_nm)
             
-            # Draw 12-hour travel range using proper great circle navigation
-            current_speed = motion.get("groundSpeed", 0)  # knots
-            travel_distance_nm = current_speed * 12  # 12 hours of travel in nautical miles
+            # Convert end position to map coordinates
+            end_map_x, end_map_y = self._lat_lon_to_map_coords(end_lat, end_lon)
             
-            if travel_distance_nm > 0:
-                # Calculate destination using great circle navigation
-                current_lat = position["latitude"]
-                current_lon = position["longitude"]
-                bearing = position["heading"]
+            # Calculate end position relative to the visible map area (can be outside viewport)
+            end_rel_x = (end_map_x - map_rect.x) / map_rect.width
+            end_rel_y = (end_map_y - map_rect.y) / map_rect.height
+            
+            # Convert to overlay coordinates
+            overlay_end_x = end_rel_x * display_w
+            overlay_end_y = end_rel_y * display_h
+            
+            # Calculate actual distance in overlay pixels for range circle
+            dx = overlay_end_x - overlay_ship_x
+            dy = overlay_end_y - overlay_ship_y
+            range_pixels = math.sqrt(dx*dx + dy*dy)
+            
+            # Draw range circle outline only using calculated radius
+            if range_pixels > 5:  # Only draw if reasonably visible
+                self._draw_transparent_circle_outline(overlay, AIRSHIP_RANGE_COLOR, 
+                                                     (int(overlay_ship_x), int(overlay_ship_y)), 
+                                                     int(range_pixels), 64)  # 25% opacity (64/255)
                 
-                # Calculate end position after 12 hours of travel on great circle
-                end_lat, end_lon = self._calculate_destination(current_lat, current_lon, bearing, travel_distance_nm)
+                # Draw heading line to range circle edge (not to end position)
+                heading_rad = math.radians(bearing)
+                line_end_x = overlay_ship_x + math.sin(heading_rad) * range_pixels
+                line_end_y = overlay_ship_y - math.cos(heading_rad) * range_pixels
                 
-                # Convert end position to map coordinates
-                end_map_x, end_map_y = self._lat_lon_to_map_coords(end_lat, end_lon)
-                
-                # Check if end position is within the visible viewport
-                map_rect = self._get_visible_map_rect()
-                if map_rect.collidepoint(end_map_x, end_map_y):
-                    # Calculate end position relative to the visible map area
-                    end_rel_x = (end_map_x - map_rect.x) / map_rect.width
-                    end_rel_y = (end_map_y - map_rect.y) / map_rect.height
-                    
-                    # Convert to screen coordinates
-                    end_screen_x = 8 + end_rel_x * display_w
-                    end_screen_y = 56 + end_rel_y * display_h
-                    
-                    # Calculate actual distance in screen pixels for range circle
-                    dx = end_screen_x - screen_x
-                    dy = end_screen_y - screen_y
-                    range_pixels = int(math.sqrt(dx*dx + dy*dy))
-                    
-                    # Draw range circle outline only (no fill) using calculated radius
-                    if range_pixels > 5:  # Only draw if reasonably visible
-                        self._draw_transparent_circle_outline(surface, AIRSHIP_RANGE_COLOR, 
-                                                             (int(screen_x), int(screen_y)), 
-                                                             range_pixels, 64)  # 25% opacity (64/255)
-                        
-                        # Draw heading line to actual calculated end position
-                        self._draw_transparent_line(surface, AIRSHIP_RANGE_COLOR,
-                                                  (int(screen_x), int(screen_y)), 
-                                                  (int(end_screen_x), int(end_screen_y)), 2, 128)  # 50% opacity, 2px width
-            
-            # Draw position marker (odd diameter for centered line)
-            marker_radius = 3  # 7 pixel diameter (odd number)
-            self._draw_transparent_circle(surface, AIRSHIP_COLOR, 
-                                        (int(screen_x), int(screen_y)), 
-                                        marker_radius, 191)  # 75% opacity (191/255)
+                self._draw_transparent_line(overlay, AIRSHIP_RANGE_COLOR,
+                                          (int(overlay_ship_x) - 1, int(overlay_ship_y) - 1), 
+                                          (int(line_end_x) - 1, int(line_end_y) - 1), 1, 128)  # 50% opacity, 1px width
+        
+        # Draw position marker (centered on ship position)
+        marker_radius = 3  # 7 pixel diameter (odd number)
+        self._draw_transparent_circle(overlay, AIRSHIP_COLOR, 
+                                    (int(overlay_ship_x), int(overlay_ship_y)), 
+                                    marker_radius, 191)  # 75% opacity (191/255)
+        
+        # Blit the overlay onto the main surface
+        surface.blit(overlay, (8, 56))
                            
     def _draw_waypoint_indicator(self, surface):
-        """Draw waypoint on the map if one exists"""
+        """Draw waypoint on the map using overlay subsurface"""
         waypoint = self.simulator.get_waypoint()
         if not waypoint:
             return
+        
+        # Create transparent overlay subsurface for waypoint elements
+        display_w = LOGICAL_SIZE - 16   # 304 pixels
+        display_h = 290 - 56            # 234 pixels
+        overlay = pygame.Surface((display_w, display_h), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 0))  # Fully transparent background
             
         # Get waypoint position in map coordinates
         waypoint_map_x, waypoint_map_y = self._lat_lon_to_map_coords(
@@ -720,62 +743,118 @@ class NavigationScene:
         # Get the current viewport
         map_rect = self._get_visible_map_rect()
         
-        # Check if waypoint is within the visible viewport
-        if map_rect.collidepoint(waypoint_map_x, waypoint_map_y):
-            # Calculate waypoint position relative to the visible map area
-            rel_x = (waypoint_map_x - map_rect.x) / map_rect.width
-            rel_y = (waypoint_map_y - map_rect.y) / map_rect.height
+        # Calculate waypoint position relative to the visible map area (can be outside viewport)
+        rel_x = (waypoint_map_x - map_rect.x) / map_rect.width
+        rel_y = (waypoint_map_y - map_rect.y) / map_rect.height
+        
+        # Convert to overlay coordinates
+        overlay_waypoint_x = rel_x * display_w
+        overlay_waypoint_y = rel_y * display_h
+        
+        # Get ship position for dashed line
+        game_state = self.simulator.get_state()
+        position = game_state["navigation"]["position"]
+        ship_map_x, ship_map_y = self._lat_lon_to_map_coords(position["latitude"], position["longitude"])
+        
+        # Calculate ship position in overlay coordinates
+        ship_rel_x = (ship_map_x - map_rect.x) / map_rect.width
+        ship_rel_y = (ship_map_y - map_rect.y) / map_rect.height
+        overlay_ship_x = ship_rel_x * display_w
+        overlay_ship_y = ship_rel_y * display_h
+        
+        # Draw dashed line from ship to waypoint (bottom layer, 25% opacity)
+        self._draw_dashed_line(overlay, AIRSHIP_RANGE_COLOR,
+                              (int(overlay_ship_x), int(overlay_ship_y)),
+                              (int(overlay_waypoint_x), int(overlay_waypoint_y)),
+                              1, 64, dash_length=8)  # 25% opacity, 8px dashes
+        
+        # Draw waypoint marker using consistent dark red colors
+        # Outer circle with transparency (same as range ring)
+        self._draw_transparent_circle(overlay, AIRSHIP_RANGE_COLOR, 
+                                    (int(overlay_waypoint_x), int(overlay_waypoint_y)), 
+                                    5, 64)  # 25% opacity (same as range elements)
+        
+        # Inner circle with higher opacity (same as ship dot)
+        self._draw_transparent_circle(overlay, AIRSHIP_COLOR, 
+                                    (int(overlay_waypoint_x), int(overlay_waypoint_y)), 
+                                    3, 191)  # 75% opacity (same as ship dot)
+        
+        # Draw waypoint information with semi-transparent dark brown text
+        if self.font:
+            distance = self.simulator.calculate_distance_to_waypoint()
+            bearing = self.simulator.calculate_bearing_to_waypoint()
             
-            # Convert to screen coordinates
-            display_w = LOGICAL_SIZE - 16   # 304 pixels
-            display_h = 290 - 56            # 234 pixels
-            screen_x = 8 + rel_x * display_w
-            screen_y = 56 + rel_y * display_h
+            # Distance and bearing above the waypoint
+            if distance is not None and bearing is not None:
+                label_above = f"{distance:.1f}nm {bearing:03.0f}°"
+                self._render_transparent_text(overlay, label_above, 
+                                            (int(overlay_waypoint_x), int(overlay_waypoint_y - 20)), 
+                                            WAYPOINT_TEXT_COLOR, 128, centered=True)
             
-            # Draw waypoint marker (larger than position marker)
-            waypoint_color = (100, 255, 100)  # Green for the dot itself
-            pygame.draw.circle(surface, waypoint_color, (int(screen_x), int(screen_y)), 5)
-            pygame.draw.circle(surface, (255, 255, 255), (int(screen_x), int(screen_y)), 5, 2)
+            # Lat/lon below the waypoint
+            lat_str = f"{abs(waypoint['latitude']):.3f}°{'N' if waypoint['latitude'] >= 0 else 'S'}"
+            lon_str = f"{abs(waypoint['longitude']):.3f}°{'E' if waypoint['longitude'] >= 0 else 'W'}"
+            label_below = f"{lat_str} {lon_str}"
+            self._render_transparent_text(overlay, label_below, 
+                                        (int(overlay_waypoint_x), int(overlay_waypoint_y + 8)), 
+                                        WAYPOINT_TEXT_COLOR, 128, centered=True)
+        
+        # Blit the overlay onto the main surface
+        surface.blit(overlay, (8, 56))
+    
+    def _render_transparent_text(self, surface, text, position, color, alpha, centered=False):
+        """Render transparent text on a surface"""
+        if not self.font:
+            return
             
-            # Draw waypoint information with semi-transparent dark brown text
-            if self.font:
-                distance = self.simulator.calculate_distance_to_waypoint()
-                bearing = self.simulator.calculate_bearing_to_waypoint()
-                
-                # Distance and bearing above the waypoint
-                if distance is not None and bearing is not None:
-                    label_above = f"{distance:.1f}nm {bearing:03.0f}°"
-                    text_surface_above = self.font.render(label_above, self.is_text_antialiased, WAYPOINT_TEXT_COLOR)
-                    
-                    # Apply 50% opacity
-                    text_surface_above.set_alpha(128)  # 50% of 255
-                    
-                    text_x_above = int(screen_x) - text_surface_above.get_width() // 2
-                    text_y_above = int(screen_y) - 20
-                    
-                    # Ensure text stays within screen bounds
-                    text_x_above = max(8, min(LOGICAL_SIZE - 8 - text_surface_above.get_width(), text_x_above))
-                    text_y_above = max(56, text_y_above)
-                    
-                    surface.blit(text_surface_above, (text_x_above, text_y_above))
-                
-                # Lat/lon below the waypoint
-                lat_str = f"{abs(waypoint['latitude']):.3f}°{'N' if waypoint['latitude'] >= 0 else 'S'}"
-                lon_str = f"{abs(waypoint['longitude']):.3f}°{'E' if waypoint['longitude'] >= 0 else 'W'}"
-                label_below = f"{lat_str} {lon_str}"
-                text_surface_below = self.font.render(label_below, self.is_text_antialiased, WAYPOINT_TEXT_COLOR)
-                
-                # Apply 50% opacity
-                text_surface_below.set_alpha(128)  # 50% of 255
-                
-                text_x_below = int(screen_x) - text_surface_below.get_width() // 2
-                text_y_below = int(screen_y) + 8
-                
-                # Ensure text stays within screen bounds
-                text_x_below = max(8, min(LOGICAL_SIZE - 8 - text_surface_below.get_width(), text_x_below))
-                text_y_below = min(LOGICAL_SIZE - 36 - text_surface_below.get_height(), text_y_below)
-                
-                surface.blit(text_surface_below, (text_x_below, text_y_below))
+        text_surface = self.font.render(text, self.is_text_antialiased, color)
+        text_surface.set_alpha(alpha)
+        
+        x, y = position
+        if centered:
+            x = x - text_surface.get_width() // 2
+            
+        surface.blit(text_surface, (x, y))
+    
+    def _draw_dashed_line(self, surface, color, start_pos, end_pos, width, alpha, dash_length=10):
+        """Draw a dashed line with transparency"""
+        x1, y1 = start_pos
+        x2, y2 = end_pos
+        
+        # Calculate line length and direction
+        dx = x2 - x1
+        dy = y2 - y1
+        line_length = math.sqrt(dx*dx + dy*dy)
+        
+        if line_length == 0:
+            return
+            
+        # Normalize direction vector
+        dx_norm = dx / line_length
+        dy_norm = dy / line_length
+        
+        # Draw dashes
+        current_distance = 0
+        gap_length = dash_length  # Same length for gaps
+        
+        while current_distance < line_length:
+            # Start of current dash
+            dash_start_x = x1 + dx_norm * current_distance
+            dash_start_y = y1 + dy_norm * current_distance
+            
+            # End of current dash
+            dash_end_distance = min(current_distance + dash_length, line_length)
+            dash_end_x = x1 + dx_norm * dash_end_distance
+            dash_end_y = y1 + dy_norm * dash_end_distance
+            
+            # Draw the dash
+            self._draw_transparent_line(surface, color,
+                                      (int(dash_start_x), int(dash_start_y)),
+                                      (int(dash_end_x), int(dash_end_y)),
+                                      width, alpha)
+            
+            # Move to next dash (skip the gap)
+            current_distance += dash_length + gap_length
                            
     def _render_widget(self, surface, widget):
         """Render a single widget"""
