@@ -6,6 +6,7 @@ import pygame
 import sys
 import os
 import argparse
+import tomllib
 from typing import Dict, Any, Optional
 
 # Import scenes
@@ -47,6 +48,15 @@ def set_assets_dir(path: str):
     """Set the assets directory path (called by main app)"""
     global _assets_dir
     _assets_dir = path
+
+def get_version() -> str:
+    """Get version from pyproject.toml"""
+    try:
+        with open("pyproject.toml", "rb") as f:
+            data = tomllib.load(f)
+            return data["project"]["version"]
+    except Exception:
+        return "unknown"
 
 class AirshipApp:
     def __init__(self, save_file_path: Optional[str] = None):
@@ -313,7 +323,8 @@ class AirshipApp:
         
     def run(self):
         """Main game loop"""
-        print("Starting Airship Zero...")
+        version = get_version()
+        print(f"Starting Airship Zero v{version}...")
         print(f"Logical resolution: {LOGICAL_SIZE}x{LOGICAL_SIZE}")
         print(f"Window size: {self.window_size[0]}x{self.window_size[1]}")
         
