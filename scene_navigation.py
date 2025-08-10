@@ -12,8 +12,11 @@ LOGICAL_SIZE = 320
 BACKGROUND_COLOR = (10, 20, 30)  # Dark blue
 TEXT_COLOR = (255, 255, 255)
 FOCUS_COLOR = (255, 200, 50)
-POSITION_COLOR = (255, 100, 100)  # Red for current position
+POSITION_COLOR = (255, 100, 100)  # Red for current position (legacy)
+AIRSHIP_COLOR = (120, 30, 30)     # Dark red for airship position marker
+AIRSHIP_RANGE_COLOR = (120, 30, 30)  # Dark red for range ring (same base color)
 ROUTE_COLOR = (100, 255, 100)     # Green for route
+WAYPOINT_TEXT_COLOR = (90, 60, 40)  # Desaturated dark brown for waypoint text
 NAV_HEADER_COLOR = (40, 60, 100)  # Blue for navigation scene
 
 class NavigationScene:
@@ -488,6 +491,93 @@ class NavigationScene:
             if widget["id"] == widget_id:
                 widget["text"] = new_text
                 break
+    
+    def _calculate_destination(self, lat1, lon1, bearing, distance_nm):
+        """
+        Calculate destination coordinates using great circle navigation
+        
+        Args:
+            lat1: Starting latitude in degrees
+            lon1: Starting longitude in degrees  
+            bearing: True bearing in degrees (0-360)
+            distance_nm: Distance in nautical miles
+            
+        Returns:
+            tuple: (end_latitude, end_longitude) in degrees
+        """
+        # Convert to radians
+        lat1_rad = math.radians(lat1)
+        lon1_rad = math.radians(lon1)
+        bearing_rad = math.radians(bearing)
+        
+        # Earth's radius in nautical miles (approximately)
+        earth_radius_nm = 3440.065  # nautical miles
+        
+        # Angular distance
+        angular_distance = distance_nm / earth_radius_nm
+        
+        # Calculate destination latitude
+        lat2_rad = math.asin(
+            math.sin(lat1_rad) * math.cos(angular_distance) +
+            math.cos(lat1_rad) * math.sin(angular_distance) * math.cos(bearing_rad)
+        )
+        
+        # Calculate destination longitude
+        delta_lon_rad = math.atan2(
+            math.sin(bearing_rad) * math.sin(angular_distance) * math.cos(lat1_rad),
+            math.cos(angular_distance) - math.sin(lat1_rad) * math.sin(lat2_rad)
+        )
+        
+        lon2_rad = lon1_rad + delta_lon_rad
+        
+        # Normalize longitude to [-180, 180] range
+        lon2_rad = ((lon2_rad + 3 * math.pi) % (2 * math.pi)) - math.pi
+        
+        # Convert back to degrees
+        lat2 = math.degrees(lat2_rad)
+        lon2 = math.degrees(lon2_rad)
+        
+        return lat2, lon2
+
+    def _draw_transparent_circle(self, surface, color, center, radius, alpha):
+        """Draw a circle with transparency"""
+        # Create a temporary surface with per-pixel alpha
+        temp_surface = pygame.Surface((radius * 2 + 2, radius * 2 + 2), pygame.SRCALPHA)
+        # Draw the circle on the temporary surface
+        pygame.draw.circle(temp_surface, (*color, alpha), (radius + 1, radius + 1), radius)
+        # Blit to the main surface
+        surface.blit(temp_surface, (center[0] - radius - 1, center[1] - radius - 1))
+    
+    def _draw_transparent_line(self, surface, color, start_pos, end_pos, width, alpha):
+        """Draw a line with transparency"""
+        # Calculate line dimensions
+        dx = end_pos[0] - start_pos[0]
+        dy = end_pos[1] - start_pos[1]
+        length = max(abs(dx), abs(dy), 1)
+        
+        # Create a temporary surface large enough for the line
+        temp_surface = pygame.Surface((length + width * 2, length + width * 2), pygame.SRCALPHA)
+        
+        # Offset coordinates for the temporary surface
+        offset_x = width
+        offset_y = width
+        start_temp = (start_pos[0] - start_pos[0] + offset_x, start_pos[1] - start_pos[1] + offset_y)
+        end_temp = (end_pos[0] - start_pos[0] + offset_x, end_pos[1] - start_pos[1] + offset_y)
+        
+        # Draw the line on the temporary surface
+        pygame.draw.line(temp_surface, (*color, alpha), start_temp, end_temp, width)
+        
+        # Blit to the main surface
+        surface.blit(temp_surface, (start_pos[0] - offset_x, start_pos[1] - offset_y))
+    
+    def _draw_transparent_circle_outline(self, surface, color, center, radius, alpha):
+        """Draw a circle outline with transparency"""
+        # Create a temporary surface with per-pixel alpha
+        temp_surface = pygame.Surface((radius * 2 + 4, radius * 2 + 4), pygame.SRCALPHA)
+        # Draw the circle outline on the temporary surface
+        pygame.draw.circle(temp_surface, (*color, alpha), (radius + 2, radius + 2), radius, 1)
+        # Blit to the main surface
+        surface.blit(temp_surface, (center[0] - radius - 2, center[1] - radius - 2))
                 
     def render(self, surface):
         """Render the navigation scene"""
@@ -547,6 +637,7 @@ class NavigationScene:
         """Draw current position on the map"""
         game_state = self.simulator.get_state()
         position = game_state["navigation"]["position"]
+        motion = game_state["navigation"]["motion"]
         
         # Get ship's absolute position in map coordinates
         ship_map_x, ship_map_y = self._lat_lon_to_map_coords(position["latitude"], position["longitude"])
@@ -566,16 +657,54 @@ class NavigationScene:
             screen_x = 8 + rel_x * display_w
             screen_y = 56 + rel_y * display_h
             
-            # Draw position marker
-            pygame.draw.circle(surface, POSITION_COLOR, (int(screen_x), int(screen_y)), 3)
+            # Draw 12-hour travel range using proper great circle navigation
+            current_speed = motion.get("groundSpeed", 0)  # knots
+            travel_distance_nm = current_speed * 12  # 12 hours of travel in nautical miles
             
-            # Draw heading indicator
-            heading_rad = math.radians(position["heading"])
-            end_x = screen_x + math.sin(heading_rad) * 12
-            end_y = screen_y - math.cos(heading_rad) * 12
-            pygame.draw.line(surface, POSITION_COLOR, 
-                           (int(screen_x), int(screen_y)), 
-                           (int(end_x), int(end_y)), 2)
+            if travel_distance_nm > 0:
+                # Calculate destination using great circle navigation
+                current_lat = position["latitude"]
+                current_lon = position["longitude"]
+                bearing = position["heading"]
+                
+                # Calculate end position after 12 hours of travel on great circle
+                end_lat, end_lon = self._calculate_destination(current_lat, current_lon, bearing, travel_distance_nm)
+                
+                # Convert end position to map coordinates
+                end_map_x, end_map_y = self._lat_lon_to_map_coords(end_lat, end_lon)
+                
+                # Check if end position is within the visible viewport
+                map_rect = self._get_visible_map_rect()
+                if map_rect.collidepoint(end_map_x, end_map_y):
+                    # Calculate end position relative to the visible map area
+                    end_rel_x = (end_map_x - map_rect.x) / map_rect.width
+                    end_rel_y = (end_map_y - map_rect.y) / map_rect.height
+                    
+                    # Convert to screen coordinates
+                    end_screen_x = 8 + end_rel_x * display_w
+                    end_screen_y = 56 + end_rel_y * display_h
+                    
+                    # Calculate actual distance in screen pixels for range circle
+                    dx = end_screen_x - screen_x
+                    dy = end_screen_y - screen_y
+                    range_pixels = int(math.sqrt(dx*dx + dy*dy))
+                    
+                    # Draw range circle outline only (no fill) using calculated radius
+                    if range_pixels > 5:  # Only draw if reasonably visible
+                        self._draw_transparent_circle_outline(surface, AIRSHIP_RANGE_COLOR, 
+                                                             (int(screen_x), int(screen_y)), 
+                                                             range_pixels, 64)  # 25% opacity (64/255)
+                        
+                        # Draw heading line to actual calculated end position
+                        self._draw_transparent_line(surface, AIRSHIP_RANGE_COLOR,
+                                                  (int(screen_x), int(screen_y)), 
+                                                  (int(end_screen_x), int(end_screen_y)), 2, 128)  # 50% opacity, 2px width
+            
+            # Draw position marker (odd diameter for centered line)
+            marker_radius = 3  # 7 pixel diameter (odd number)
+            self._draw_transparent_circle(surface, AIRSHIP_COLOR, 
+                                        (int(screen_x), int(screen_y)), 
+                                        marker_radius, 191)  # 75% opacity (191/255)
                            
     def _draw_waypoint_indicator(self, surface):
         """Draw waypoint on the map if one exists"""
@@ -604,11 +733,11 @@ class NavigationScene:
             screen_y = 56 + rel_y * display_h
             
             # Draw waypoint marker (larger than position marker)
-            waypoint_color = (100, 255, 100)  # Green
+            waypoint_color = (100, 255, 100)  # Green for the dot itself
             pygame.draw.circle(surface, waypoint_color, (int(screen_x), int(screen_y)), 5)
             pygame.draw.circle(surface, (255, 255, 255), (int(screen_x), int(screen_y)), 5, 2)
             
-            # Draw waypoint information
+            # Draw waypoint information with semi-transparent dark brown text
             if self.font:
                 distance = self.simulator.calculate_distance_to_waypoint()
                 bearing = self.simulator.calculate_bearing_to_waypoint()
@@ -616,7 +745,11 @@ class NavigationScene:
                 # Distance and bearing above the waypoint
                 if distance is not None and bearing is not None:
                     label_above = f"{distance:.1f}nm {bearing:03.0f}°"
-                    text_surface_above = self.font.render(label_above, self.is_text_antialiased, waypoint_color)
+                    text_surface_above = self.font.render(label_above, self.is_text_antialiased, WAYPOINT_TEXT_COLOR)
+                    
+                    # Apply 50% opacity
+                    text_surface_above.set_alpha(128)  # 50% of 255
+                    
                     text_x_above = int(screen_x) - text_surface_above.get_width() // 2
                     text_y_above = int(screen_y) - 20
                     
@@ -630,7 +763,11 @@ class NavigationScene:
                 lat_str = f"{abs(waypoint['latitude']):.3f}°{'N' if waypoint['latitude'] >= 0 else 'S'}"
                 lon_str = f"{abs(waypoint['longitude']):.3f}°{'E' if waypoint['longitude'] >= 0 else 'W'}"
                 label_below = f"{lat_str} {lon_str}"
-                text_surface_below = self.font.render(label_below, self.is_text_antialiased, waypoint_color)
+                text_surface_below = self.font.render(label_below, self.is_text_antialiased, WAYPOINT_TEXT_COLOR)
+                
+                # Apply 50% opacity
+                text_surface_below.set_alpha(128)  # 50% of 255
+                
                 text_x_below = int(screen_x) - text_surface_below.get_width() // 2
                 text_y_below = int(screen_y) + 8
                 
