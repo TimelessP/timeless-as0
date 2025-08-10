@@ -52,7 +52,11 @@ def set_assets_dir(path: str):
 def get_version() -> str:
     """Get version from pyproject.toml"""
     try:
-        with open("pyproject.toml", "rb") as f:
+        # Look for pyproject.toml relative to this script's location
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        toml_path = os.path.join(script_dir, "pyproject.toml")
+        
+        with open(toml_path, "rb") as f:
             data = tomllib.load(f)
             return data["project"]["version"]
     except Exception:
