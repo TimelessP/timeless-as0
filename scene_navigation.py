@@ -426,9 +426,17 @@ class NavigationScene:
         viewport_w = int((LOGICAL_SIZE - 16) / self.zoom_level)
         viewport_w = max(1, min(map_w, viewport_w))
         
-        # Calculate max offset that keeps viewport within map bounds
-        max_offset = (map_w - viewport_w) / 2
-        return max(-max_offset, min(max_offset, offset_x))
+        # Get ship position
+        game_state = self.simulator.get_state()
+        pos = game_state["navigation"]["position"]
+        ship_map_x, ship_map_y = self._lat_lon_to_map_coords(pos["latitude"], pos["longitude"])
+        
+        # Calculate bounds to keep viewport within map
+        # center_x = ship_x + offset_x, viewport goes from center_x ± viewport_w/2
+        min_offset = viewport_w/2 - ship_map_x  # Keeps left edge at 0
+        max_offset = map_w - viewport_w/2 - ship_map_x  # Keeps right edge at map_w
+        
+        return max(min_offset, min(max_offset, offset_x))
     
     def _clamp_offset_y(self, offset_y: float) -> float:
         """Clamp vertical offset to valid bounds"""
@@ -439,9 +447,17 @@ class NavigationScene:
         viewport_h = int((290 - 56) / self.zoom_level)
         viewport_h = max(1, min(map_h, viewport_h))
         
-        # Calculate max offset that keeps viewport within map bounds
-        max_offset = (map_h - viewport_h) / 2
-        return max(-max_offset, min(max_offset, offset_y))
+        # Get ship position
+        game_state = self.simulator.get_state()
+        pos = game_state["navigation"]["position"]
+        ship_map_x, ship_map_y = self._lat_lon_to_map_coords(pos["latitude"], pos["longitude"])
+        
+        # Calculate bounds to keep viewport within map
+        # center_y = ship_y + offset_y, viewport goes from center_y ± viewport_h/2
+        min_offset = viewport_h/2 - ship_map_y  # Keeps top edge at 0
+        max_offset = map_h - viewport_h/2 - ship_map_y  # Keeps bottom edge at map_h
+        
+        return max(min_offset, min(max_offset, offset_y))
         
     def _get_widget_at_pos(self, pos) -> Optional[int]:
         """Get widget index at logical position"""
