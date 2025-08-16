@@ -139,9 +139,9 @@ class AirshipSoundEngine:
             # Fundamental frequency (main propeller whoosh)
             fundamental = math.sin(phase_fundamental)
             
-            # Add harmonics for realism (blade tip effects, vortex shedding)
-            harmonic2 = 0.3 * math.sin(phase_harmonic2)
-            harmonic3 = 0.15 * math.sin(phase_harmonic3)
+            # Add harmonics for realism (reduced amplitudes to minimize boundary artifacts)
+            harmonic2 = 0.2 * math.sin(phase_harmonic2)  # Reduced from 0.3 to 0.2
+            harmonic3 = 0.1 * math.sin(phase_harmonic3)  # Reduced from 0.15 to 0.1
             
             # Combine with pitch-dependent amplitude
             propeller_wave = (fundamental + harmonic2 + harmonic3) * pitch_amplitude
@@ -261,17 +261,21 @@ class AirshipSoundEngine:
                            0.2 * math.sin(low_phase * 1.33) +
                            0.1 * math.sin(low_phase * 1.77))
             
-            # Mid frequency: rapid modulation for turbulence effect
+            # Mid frequency: rapid modulation for turbulence effect (with subtle variance)
             mid_phase = self.noise_phase + 2 * math.pi * mid_freq * t
             mid_modulation = 1.0 + 0.5 * math.sin(2 * math.pi * 7.0 * t)
-            mid_noise[i] = (0.4 * math.sin(mid_phase) * mid_modulation + 
+            # Add subtle phase variance for more natural turbulence
+            mid_variance = 0.05 * math.sin(2 * math.pi * 13.0 * t + 0.7)
+            mid_noise[i] = (0.4 * math.sin(mid_phase + mid_variance) * mid_modulation + 
                            0.2 * math.sin(mid_phase * 1.41) +
                            0.1 * math.sin(mid_phase * 2.13))
             
-            # High frequency: fast modulation for rigging effects
+            # High frequency: fast modulation for rigging effects (reduced amplitude, added variance)
             high_phase = self.noise_phase + 2 * math.pi * high_freq * t
             high_modulation = 1.0 + 0.8 * math.sin(2 * math.pi * 17.0 * t)
-            high_noise[i] = 0.2 * math.sin(high_phase) * high_modulation
+            # Add subtle phase variance to reduce whistly character
+            variance = 0.1 * math.sin(2 * math.pi * 41.0 * t + 1.5)
+            high_noise[i] = 0.1 * math.sin(high_phase + variance) * high_modulation  # Halved from 0.2 to 0.1
         
         # Apply filtering to each frequency band and combine
         for i in range(num_samples):
