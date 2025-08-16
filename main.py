@@ -22,6 +22,7 @@ from scene_crew import CrewScene
 from scene_missions import MissionsScene
 from scene_update import SceneUpdate
 from core_simulator import get_simulator
+from sound import AirshipSoundEngine
 
 # Constants
 LOGICAL_SIZE = 320
@@ -105,6 +106,10 @@ class AirshipApp:
         
         # Initialize scenes
         self._init_scenes()
+        
+        # Initialize sound engine
+        self.sound_engine = AirshipSoundEngine(self.simulator)
+        print("🔊 Sound engine initialized")
         
         # Check for updates if enabled
         self._check_for_updates_if_needed()
@@ -206,22 +211,35 @@ class AirshipApp:
         elif scene_name == "new_game":
             # Start a new game
             self.simulator.start_new_game()
+            print("🔊 Simulation started (new game)")
             scene_name = "scene_bridge"
         elif scene_name == "resume_game":
-            # Load saved game
+            # Load saved game and resume simulation
             if self.simulator.load_game():
+                self.simulator.resume_simulation()
+                print("🔊 Simulation resumed (loaded game)")
                 scene_name = "scene_bridge"
             else:
                 # Failed to load, stay on main menu
                 return
         elif scene_name == "scene_main_menu":
-            # Save game when returning to main menu
+            # Save game and pause simulation when returning to main menu
             if self.simulator.running:
                 self.simulator.save_game()
+                self.simulator.pause_simulation()
+                print("🔇 Simulation paused (main menu)")
                 
         if scene_name in self.scenes:
             self.scene_name = scene_name
             self.current_scene = self.scenes[scene_name]
+            
+            # Resume simulation when transitioning away from main menu to game scenes
+            if scene_name != "scene_main_menu" and self.simulator.running:
+                # Check if simulation is paused and resume it
+                game_state = self.simulator.get_state()
+                if game_state.get("gameInfo", {}).get("paused", False):
+                    self.simulator.resume_simulation()
+                    print("🔊 Simulation resumed (entering game scene)")
             
             # Enable resume game button if we've started a game
             if scene_name != "scene_main_menu":
@@ -304,6 +322,9 @@ class AirshipApp:
         """Update the game state"""
         # Update the centralized simulator
         self.simulator.update(dt)
+        
+        # Update sound engine (always runs, handles pause states internally)
+        self.sound_engine.update_audio()
         
         # Update current scene
         if self.current_scene and hasattr(self.current_scene, 'update'):

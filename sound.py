@@ -49,6 +49,9 @@ class AirshipSoundEngine:
         self.current_mixture = 0.0
         self.current_airspeed = 0.0
         self.is_hull_filter = True
+        self.volume = 0.5  # Master volume (0.0 to 1.0)
+        self.is_engine_running = True  # Engine state
+        self.is_simulation_paused = False  # Simulation pause state
         
         # Engine configuration
         self.engine_cylinders = 6  # 6-cylinder radial engine
@@ -71,12 +74,26 @@ class AirshipSoundEngine:
         navigation = state.get("navigation", {})
         motion = navigation.get("motion", {})
         controls = engine.get("controls", {})
+        game_info = state.get("gameInfo", {})
+        settings = state.get("settings", {})
         
-        # Extract audio-relevant parameters
-        self.current_rpm = engine.get("rpm", 0.0)
-        self.current_pitch = controls.get("propeller", 0.0)  # 0.0 to 1.0
-        self.current_mixture = controls.get("mixture", 0.0)  # 0.0 to 1.0
-        self.current_airspeed = motion.get("indicatedAirspeed", 0.0)
+        # Check simulation and engine state
+        self.is_simulation_paused = game_info.get("paused", False)
+        self.is_engine_running = engine.get("running", False) and self.simulator.running
+        self.volume = settings.get("soundVolume", 0.5)  # Default to 50% if not set
+        
+        # Extract audio-relevant parameters only if engine is running
+        if self.is_engine_running:
+            self.current_rpm = engine.get("rpm", 0.0)
+            self.current_pitch = controls.get("propeller", 0.0)  # 0.0 to 1.0
+            self.current_mixture = controls.get("mixture", 0.0)  # 0.0 to 1.0
+            self.current_airspeed = motion.get("indicatedAirspeed", 0.0)
+        else:
+            # Engine off - no sound parameters
+            self.current_rpm = 0.0
+            self.current_pitch = 0.0
+            self.current_mixture = 0.0
+            self.current_airspeed = 0.0
         
         # Debug: Print updated values
         # print(f"Audio update: RPM={self.current_rpm:.0f}, Pitch={self.current_pitch:.2f}, Mix={self.current_mixture:.2f}, Speed={self.current_airspeed:.1f}")
@@ -104,23 +121,33 @@ class AirshipSoundEngine:
         
         dt = 1.0 / self.sample_rate
         
+        # Pre-calculate angular frequency for efficiency
+        omega_fundamental = 2 * math.pi * prop_frequency
+        omega_harmonic2 = omega_fundamental * 2
+        omega_harmonic3 = omega_fundamental * 3
+        
         for i in range(num_samples):
             t = i * dt
             
+            # Calculate phase with continuous accumulator
+            phase_fundamental = self.phase_accumulator + omega_fundamental * t
+            phase_harmonic2 = self.phase_accumulator + omega_harmonic2 * t
+            phase_harmonic3 = self.phase_accumulator + omega_harmonic3 * t
+            
             # Fundamental frequency (main propeller whoosh)
-            fundamental = math.sin(2 * math.pi * prop_frequency * t + self.phase_accumulator)
+            fundamental = math.sin(phase_fundamental)
             
             # Add harmonics for realism (blade tip effects, vortex shedding)
-            harmonic2 = 0.3 * math.sin(2 * math.pi * prop_frequency * 2 * t + self.phase_accumulator)
-            harmonic3 = 0.15 * math.sin(2 * math.pi * prop_frequency * 3 * t + self.phase_accumulator)
+            harmonic2 = 0.3 * math.sin(phase_harmonic2)
+            harmonic3 = 0.15 * math.sin(phase_harmonic3)
             
             # Combine with pitch-dependent amplitude
             propeller_wave = (fundamental + harmonic2 + harmonic3) * pitch_amplitude
             
             samples[i] = propeller_wave
         
-        # Update phase accumulator for continuous playback
-        self.phase_accumulator += 2 * math.pi * prop_frequency * duration
+        # Update phase accumulator for continuous playback across buffers
+        self.phase_accumulator += omega_fundamental * duration
         self.phase_accumulator = self.phase_accumulator % (2 * math.pi)
         
         return samples
@@ -149,20 +176,25 @@ class AirshipSoundEngine:
         for i in range(num_samples):
             t = i * dt
             
-            # Generate firing pulses - sharp attacks with quick decay
-            # Use a sawtooth-like wave that simulates combustion pressure spikes
-            firing_phase = (firing_frequency * t + self.engine_phase) % 1.0
+            # Calculate continuous firing phase with proper phase tracking
+            firing_phase = (self.engine_phase + firing_frequency * t) % 1.0
             
+            # Generate firing pulses with smooth envelope to prevent clicking
             if firing_phase < 0.1:  # Sharp attack (10% of cycle)
-                firing_amplitude = firing_phase / 0.1
-            else:  # Quick exponential decay (90% of cycle)
-                firing_amplitude = math.exp(-(firing_phase - 0.1) * 8)
+                # Smooth attack curve to prevent discontinuities
+                attack_factor = firing_phase / 0.1
+                firing_amplitude = attack_factor * (2.0 - attack_factor)  # Parabolic curve
+            else:  # Exponential decay (90% of cycle)
+                decay_factor = (firing_phase - 0.1) / 0.9
+                firing_amplitude = math.exp(-decay_factor * 5.0)  # Gentler decay
             
             # Apply mixture-dependent amplitude
             engine_wave = firing_amplitude * mixture_amplitude
             
-            # Add some low-frequency rumble for engine body resonance
-            rumble = 0.1 * math.sin(2 * math.pi * (self.current_rpm / 60.0) * t + self.engine_phase)
+            # Add low-frequency rumble with continuous phase
+            rumble_frequency = self.current_rpm / 60.0
+            rumble_phase = self.engine_phase * 2 * math.pi + 2 * math.pi * rumble_frequency * t
+            rumble = 0.1 * math.sin(rumble_phase)
             
             samples[i] = engine_wave + rumble
         
@@ -174,39 +206,74 @@ class AirshipSoundEngine:
         
     def generate_wind_noise(self, duration: float) -> np.ndarray:
         """
-        Generate brown noise for wind sounds, affected by airspeed.
+        Generate realistic wind noise based on airspeed.
         
-        Brown noise has more low-frequency content than white noise,
-        simulating the wind rushing over the airship hull.
+        Wind noise is generated using multiple frequency bands with turbulent
+        modulation to simulate air flowing over the airship hull and rigging.
         """
         num_samples = int(duration * self.sample_rate)
         
         if self.current_airspeed <= 1.0:
             return np.zeros(num_samples, dtype=np.float32)
         
-        # Generate white noise
-        white_noise = np.random.normal(0, 1, num_samples).astype(np.float32)
-        
-        # Convert to brown noise by integrating (low-pass filtering)
-        brown_noise = np.zeros_like(white_noise)
-        integrator = 0.0
-        
-        for i in range(num_samples):
-            integrator += white_noise[i] * 0.02  # Integration constant
-            brown_noise[i] = integrator
-            integrator *= 0.999  # Slight decay to prevent DC buildup
-        
         # Airspeed affects both amplitude and frequency content
         speed_factor = min(self.current_airspeed / 100.0, 1.0)  # Normalize to 0-1
-        wind_amplitude = speed_factor * 0.2  # Wind amplitude based on speed
+        wind_amplitude = speed_factor * 0.15  # Wind amplitude based on speed
         
-        # High-frequency content increases with speed (turbulence)
-        if speed_factor > 0.5:
-            # Add some higher frequency content for high-speed turbulence
-            turbulence = np.random.normal(0, speed_factor * 0.1, num_samples).astype(np.float32)
-            brown_noise += turbulence
+        dt = 1.0 / self.sample_rate
+        wind_samples = np.zeros(num_samples, dtype=np.float32)
         
-        return brown_noise * wind_amplitude
+        # Generate multi-band wind noise with different frequency ranges
+        # Low frequency rumble (hull vibration from air pressure)
+        low_freq = 20.0 + speed_factor * 30.0  # 20-50 Hz
+        low_noise = np.random.normal(0, 0.3, num_samples).astype(np.float32)
+        
+        # Mid frequency hiss (air turbulence)
+        mid_freq = 200.0 + speed_factor * 400.0  # 200-600 Hz
+        mid_noise = np.random.normal(0, 0.4, num_samples).astype(np.float32)
+        
+        # High frequency whistle (rigging and sharp edges)
+        high_freq = 1000.0 + speed_factor * 2000.0  # 1-3 kHz
+        high_noise = np.random.normal(0, 0.2, num_samples).astype(np.float32)
+        
+        # Apply filtering to each frequency band and combine
+        for i in range(num_samples):
+            t = i * dt
+            
+            # Low frequency component (filtered random walk)
+            if i > 0:
+                low_noise[i] = low_noise[i-1] * 0.95 + low_noise[i] * 0.05
+            
+            # Mid frequency component with slight modulation
+            mid_modulation = 1.0 + 0.2 * math.sin(2 * math.pi * 5.0 * t)  # 5 Hz modulation
+            mid_filtered = mid_noise[i] * mid_modulation
+            
+            # High frequency component with rapid modulation (turbulence)
+            high_modulation = 1.0 + 0.3 * math.sin(2 * math.pi * 23.0 * t)  # 23 Hz turbulence
+            high_filtered = high_noise[i] * high_modulation
+            
+            # Combine frequency bands with speed-dependent mixing
+            wind_samples[i] = (
+                low_noise[i] * 0.4 +           # Always present
+                mid_filtered * 0.4 * speed_factor +  # Increases with speed
+                high_filtered * 0.2 * (speed_factor ** 2)  # Prominent at high speeds
+            )
+        
+        # Apply overall wind amplitude
+        wind_samples = wind_samples * wind_amplitude
+        
+        # Add gusting effect (slow amplitude modulation)
+        gust_frequency = 0.3  # 0.3 Hz gusting
+        for i in range(num_samples):
+            t = i * dt
+            gust_factor = 1.0 + 0.3 * math.sin(2 * math.pi * gust_frequency * t + self.noise_phase)
+            wind_samples[i] *= gust_factor
+        
+        # Update noise phase for continuous gusting
+        self.noise_phase += 2 * math.pi * gust_frequency * duration
+        self.noise_phase = self.noise_phase % (2 * math.pi)
+        
+        return wind_samples
         
     def apply_hull_filter(self, audio: np.ndarray) -> np.ndarray:
         """
@@ -246,6 +313,13 @@ class AirshipSoundEngine:
         # Update parameters from simulator
         self.update_from_simulator()
         
+        num_samples = int(duration * self.sample_rate)
+        
+        # If simulation is paused or engine is off, return silence
+        if self.is_simulation_paused or not self.is_engine_running or self.volume <= 0.0:
+            stereo_audio = np.zeros((num_samples, 2), dtype=np.float32)
+            return stereo_audio
+        
         # Generate individual sound components
         propeller_audio = self.generate_propeller_wave(duration)
         engine_audio = self.generate_engine_wave(duration)
@@ -258,13 +332,17 @@ class AirshipSoundEngine:
         if self.is_hull_filter:
             mixed_audio = self.apply_hull_filter(mixed_audio)
         
-        # Normalize to prevent clipping
+        # Apply volume control before normalization to preserve phase relationships
+        mixed_audio = mixed_audio * self.volume
+        
+        # Gentle normalization to prevent clipping while preserving waveform integrity
         max_amplitude = np.max(np.abs(mixed_audio))
-        if max_amplitude > 0.95:
-            mixed_audio = mixed_audio * (0.95 / max_amplitude)
+        if max_amplitude > 0.85:  # Lower threshold for gentler normalization
+            # Use soft limiting instead of hard clipping
+            normalize_factor = 0.85 / max_amplitude
+            mixed_audio = mixed_audio * normalize_factor
         
         # Convert to stereo (duplicate mono signal)
-        num_samples = len(mixed_audio)
         stereo_audio = np.zeros((num_samples, 2), dtype=np.float32)
         stereo_audio[:, 0] = mixed_audio  # Left channel
         stereo_audio[:, 1] = mixed_audio  # Right channel
@@ -322,6 +400,9 @@ class AirshipSoundEngine:
             "current_mixture": self.current_mixture,
             "current_airspeed": self.current_airspeed,
             "hull_filter": self.is_hull_filter,
+            "volume": self.volume,
+            "engine_running": self.is_engine_running,
+            "simulation_paused": self.is_simulation_paused,
             "propeller_freq": (self.current_rpm / 60.0) * 2 if self.current_rpm > 0 else 0,
             "engine_firing_freq": (self.current_rpm / 60.0) * 6 if self.current_rpm > 0 else 0
         }

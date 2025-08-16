@@ -80,7 +80,8 @@ class CoreSimulator:
             "settings": {
                 "checkForUpdates": True,
                 "lastUpdateCheck": 0.0,
-                "updateCheckInterval": 86400.0  # 24 hours in seconds
+                "updateCheckInterval": 86400.0,  # 24 hours in seconds
+                "soundVolume": 0.5  # Sound effects volume (0.0 to 1.0)
             },
             "navigation": {
                 "position": {
@@ -386,8 +387,14 @@ class CoreSimulator:
                     loaded_state["settings"] = {
                         "checkForUpdates": True,
                         "lastUpdateCheck": 0.0,
-                        "updateCheckInterval": 86400.0
+                        "updateCheckInterval": 86400.0,
+                        "soundVolume": 0.5
                     }
+                else:
+                    # Ensure sound volume setting exists in existing settings
+                    if "soundVolume" not in loaded_state["settings"]:
+                        print("🔧 Adding sound volume setting to save file...")
+                        loaded_state["settings"]["soundVolume"] = 0.5
                 
                 self.game_state = loaded_state
                 self.running = True

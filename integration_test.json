@@ -1,0 +1,290 @@
+{
+  "gameInfo": {
+    "version": "1.0.0",
+    "created": 1755377655.778487,
+    "lastSaved": 1755377660.2815535,
+    "totalFlightTime": 4.513000000000002,
+    "sessionTime": 4.513000000000002,
+    "paused": false
+  },
+  "settings": {
+    "checkForUpdates": true,
+    "lastUpdateCheck": 0.0,
+    "updateCheckInterval": 86400.0,
+    "soundVolume": 0.5
+  },
+  "navigation": {
+    "position": {
+      "latitude": 40.71346361510327,
+      "longitude": -74.00512450086268,
+      "altitude": 1250.0,
+      "heading": 45.0,
+      "track": 45.0
+    },
+    "motion": {
+      "indicatedAirspeed": 41.777155508266375,
+      "trueAirspeed": 42.68729757638595,
+      "groundSpeed": 37.09286648792059,
+      "verticalSpeed": 0.0,
+      "pitch": 0.0,
+      "roll": 0.0,
+      "yaw": 0.0,
+      "rateOfTurn": 0.0
+    },
+    "controls": {
+      "rudder": 0.0,
+      "elevator": 0.0,
+      "ailerons": 0.0
+    },
+    "targets": {
+      "altitude": 1250.0,
+      "heading": 45.0,
+      "airspeed": 85.0
+    },
+    "mode": "manual",
+    "autopilot": {
+      "engaged": false,
+      "headingHold": false,
+      "altitudeHold": false,
+      "airspeedHold": false,
+      "verticalSpeedHold": false,
+      "targetRudder": 0.0,
+      "headingError": 0.0,
+      "turnRate": 0.0
+    },
+    "route": {
+      "active": false,
+      "waypoints": [],
+      "currentWaypoint": 0,
+      "crossTrackError": 0.0
+    },
+    "mapView": {
+      "zoomLevel": 1.0,
+      "offsetX": 0.0,
+      "offsetY": 0.0
+    }
+  },
+  "engine": {
+    "running": true,
+    "rpm": 2263.555885016805,
+    "targetRpm": 2650.0,
+    "manifoldPressure": 39.90774404324782,
+    "fuelFlow": 17.28009473022886,
+    "oilPressure": 64.46270488425867,
+    "oilTemperature": 175.0,
+    "cylinderHeadTemp": 300.0,
+    "exhaustGasTemp": 1480.6249999999998,
+    "fuelPressure": 22.0,
+    "controls": {
+      "throttle": 0.75,
+      "mixture": 0.85,
+      "propeller": 0.8
+    },
+    "propellerFeathered": false,
+    "emergencyShutdown": false,
+    "startupSequence": false
+  },
+  "electrical": {
+    "batteryBusA": {
+      "switch": true,
+      "voltage": 12.6,
+      "current": 0,
+      "capacity": 24.0,
+      "remaining": 20.501541941666975
+    },
+    "batteryBusB": {
+      "switch": true,
+      "voltage": 12.6,
+      "current": 0,
+      "capacity": 24.0,
+      "remaining": 21.801541941666976
+    },
+    "alternator": {
+      "online": true,
+      "voltage": 14.2,
+      "current": 14.76,
+      "maxOutput": 60.0
+    },
+    "loads": {
+      "instruments": 3.2,
+      "navigation": 2.8,
+      "lighting": 4.5,
+      "radio": 1.8
+    }
+  },
+  "fuel": {
+    "totalCapacity": 360.0,
+    "currentLevel": 279.9559931839739,
+    "flowRate": 12.8,
+    "engineFeedCut": false,
+    "tanks": {
+      "forward": {
+        "level": 139.97799659198694,
+        "capacity": 180.0,
+        "feed": true,
+        "transferRate": 0.0,
+        "dumpRate": 0.0
+      },
+      "aft": {
+        "level": 139.97799659198694,
+        "capacity": 180.0,
+        "feed": true,
+        "transferRate": 0.0,
+        "dumpRate": 0.0
+      }
+    }
+  },
+  "cargo": {
+    "winch": {
+      "position": {
+        "x": 160,
+        "y": 50
+      },
+      "cableLength": 0,
+      "attachedCrate": null,
+      "movementState": {
+        "left": false,
+        "right": false,
+        "up": false,
+        "down": false
+      }
+    },
+    "cargoHold": [],
+    "loadingBay": [],
+    "totalWeight": 0.0,
+    "centerOfGravity": {
+      "x": 156.2,
+      "y": 100.0
+    },
+    "maxCapacity": 500.0,
+    "refreshAvailable": false,
+    "crateTypes": {
+      "fuel_canister": {
+        "name": "Fuel Canister",
+        "dimensions": {
+          "width": 4,
+          "height": 6
+        },
+        "contents": {
+          "amount": 10,
+          "unit": "gallons"
+        },
+        "colors": {
+          "outline": "#FFFFFF",
+          "fill": "#FF4444"
+        },
+        "usable": true,
+        "useAction": "transfer_fuel",
+        "weight": 8.0
+      },
+      "books": {
+        "name": "Books",
+        "dimensions": {
+          "width": 2,
+          "height": 3
+        },
+        "contents": {
+          "amount": 1,
+          "unit": "book"
+        },
+        "colors": {
+          "outline": "#8B4513",
+          "fill": "#DEB887"
+        },
+        "usable": false,
+        "weight": 2.0
+      },
+      "medical_supplies": {
+        "name": "Medical Kit",
+        "dimensions": {
+          "width": 4,
+          "height": 3
+        },
+        "contents": {
+          "amount": 1,
+          "unit": "kit"
+        },
+        "colors": {
+          "outline": "#FF0000",
+          "fill": "#FFE4E1"
+        },
+        "usable": true,
+        "useAction": "add_medical_supplies",
+        "weight": 5.0
+      },
+      "food_rations": {
+        "name": "Food Rations",
+        "dimensions": {
+          "width": 6,
+          "height": 2
+        },
+        "contents": {
+          "amount": 7,
+          "unit": "days"
+        },
+        "colors": {
+          "outline": "#228B22",
+          "fill": "#90EE90"
+        },
+        "usable": true,
+        "useAction": "add_food",
+        "weight": 12.0
+      },
+      "spare_parts": {
+        "name": "Engine Parts",
+        "dimensions": {
+          "width": 5,
+          "height": 3
+        },
+        "contents": {
+          "amount": 1,
+          "unit": "set"
+        },
+        "colors": {
+          "outline": "#696969",
+          "fill": "#D3D3D3"
+        },
+        "usable": false,
+        "weight": 15.0
+      },
+      "luxury_goods": {
+        "name": "Luxury Items",
+        "dimensions": {
+          "width": 3,
+          "height": 4
+        },
+        "contents": {
+          "amount": 1,
+          "unit": "crate"
+        },
+        "colors": {
+          "outline": "#FFD700",
+          "fill": "#FFFACD"
+        },
+        "usable": false,
+        "weight": 3.0
+      }
+    }
+  },
+  "environment": {
+    "weather": {
+      "temperature": 15.0,
+      "pressure": 29.92,
+      "humidity": 65.0,
+      "visibility": 10.0,
+      "windSpeed": 8.0,
+      "windDirection": 270.63333013933556
+    },
+    "time": {
+      "utc": 1755377660.2915225,
+      "local": 1755377660.2915225,
+      "timezone": "UTC",
+      "daylight": true
+    }
+  },
+  "systems": {
+    "warnings": [],
+    "alerts": [],
+    "failures": []
+  }
+}
