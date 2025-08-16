@@ -117,8 +117,9 @@ class SceneUpdate:
                 print(f"✅ Found pyproject.toml")
                 with open(pyproject_path, "rb") as f:
                     if tomllib:
+                        # Use same logic as main.py get_version()
                         data = tomllib.load(f)
-                        self.current_version = data.get("project", {}).get("version", "unknown")
+                        self.current_version = data["project"]["version"]
                         print(f"📋 Parsed current version from TOML: '{self.current_version}'")
                     else:
                         # Fallback parsing for older Python
@@ -151,18 +152,50 @@ class SceneUpdate:
             print(f"🌐 Fetching version from: {url}")
             
             if urllib.request:
-                with urllib.request.urlopen(url, timeout=10) as response:
+                # Get last check time from settings (CDN-friendly approach)
+                settings = self.simulator.get_settings()
+                last_check_time = settings.get("lastUpdateCheck", 0.0)
+                current_time = time.time()
+                time_since_last_check = current_time - last_check_time
+                
+                # Create request with CDN-friendly headers
+                request = urllib.request.Request(url)
+                
+                # Be kind to CDN - only bypass cache if it's been more than 1 day since last check
+                if time_since_last_check > 86400:  # 24 hours = 86400 seconds
+                    # Use If-Modified-Since with last check time for conditional requests
+                    if last_check_time > 0:
+                        last_check_formatted = time.strftime('%a, %d %b %Y %H:%M:%S GMT', time.gmtime(last_check_time))
+                        request.add_header('If-Modified-Since', last_check_formatted)
+                        print(f"📡 Using If-Modified-Since: {last_check_formatted}")
+                    
+                    # Gentle cache control - max-age=0 instead of no-cache
+                    request.add_header('Cache-Control', 'max-age=0')
+                    print(f"📡 CDN-friendly cache bypass (last check: {time_since_last_check/3600:.1f}h ago)")
+                else:
+                    print(f"📡 Using cached content (last check: {time_since_last_check/3600:.1f}h ago, < 24h)")
+                
+                # Always include a user agent for identification
+                request.add_header('User-Agent', f'AirshipZero-UpdateChecker/{self.current_version}')
+                
+                with urllib.request.urlopen(request, timeout=10) as response:
                     content = response.read().decode('utf-8')
                     print(f"📄 Fetched {len(content)} characters from GitHub")
+                    # Also log response headers if available
+                    if hasattr(response, 'headers'):
+                        cache_control = response.headers.get('Cache-Control', 'not set')
+                        etag = response.headers.get('ETag', 'not set') 
+                        print(f"📋 Response Cache-Control: {cache_control}")
+                        print(f"📋 Response ETag: {etag}")
             else:
                 # Fallback - this shouldn't happen on modern Python
                 self.update_status = "Update checking not supported on this Python version"
                 return
                 
             if tomllib:
-                # Parse TOML properly
+                # Parse TOML properly - use same logic as main.py
                 data = tomllib.loads(content)
-                self.latest_version = data.get("project", {}).get("version", "unknown")
+                self.latest_version = data["project"]["version"]
                 print(f"📋 Parsed version from TOML: '{self.latest_version}'")
             else:
                 # Fallback parsing
