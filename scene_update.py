@@ -137,12 +137,19 @@ class SceneUpdate:
             print(f"❌ Error reading current version: {e}")
             self.current_version = "unknown"
     
-    def _check_latest_version(self):
-        """Check the latest version from GitHub"""
+    def _check_latest_version(self, force_fresh=False):
+        """Check the latest version from GitHub
+        
+        Args:
+            force_fresh: If True, bypass all caching (for manual user checks)
+        """
         if self.checking_version:
             return
         
-        print("🔍 Checking for updates from GitHub...")
+        if force_fresh:
+            print("🔍 Manual update check - bypassing all caches...")
+        else:
+            print("🔍 Checking for updates from GitHub...")
         self.checking_version = True
         self.update_status = "Checking for updates..."
         
@@ -158,22 +165,31 @@ class SceneUpdate:
                 current_time = time.time()
                 time_since_last_check = current_time - last_check_time
                 
-                # Create request with CDN-friendly headers
+                # Create request with appropriate headers based on check type
                 request = urllib.request.Request(url)
                 
-                # Be kind to CDN - only bypass cache if it's been more than 1 day since last check
-                if time_since_last_check > 86400:  # 24 hours = 86400 seconds
-                    # Use If-Modified-Since with last check time for conditional requests
-                    if last_check_time > 0:
-                        last_check_formatted = time.strftime('%a, %d %b %Y %H:%M:%S GMT', time.gmtime(last_check_time))
-                        request.add_header('If-Modified-Since', last_check_formatted)
-                        print(f"📡 Using If-Modified-Since: {last_check_formatted}")
-                    
-                    # Gentle cache control - max-age=0 instead of no-cache
-                    request.add_header('Cache-Control', 'max-age=0')
-                    print(f"📡 CDN-friendly cache bypass (last check: {time_since_last_check/3600:.1f}h ago)")
+                if force_fresh:
+                    # Manual check - user wants fresh results, bypass all caches
+                    request.add_header('Cache-Control', 'no-cache, no-store, must-revalidate')
+                    request.add_header('Pragma', 'no-cache')
+                    request.add_header('Expires', '0')
+                    # Force fresh fetch by using epoch time for If-Modified-Since
+                    request.add_header('If-Modified-Since', 'Thu, 01 Jan 1970 00:00:00 GMT')
+                    print("📡 Manual check - using aggressive cache-busting headers")
                 else:
-                    print(f"📡 Using cached content (last check: {time_since_last_check/3600:.1f}h ago, < 24h)")
+                    # Automatic check - be kind to CDN, only bypass cache if it's been more than 1 day
+                    if time_since_last_check > 86400:  # 24 hours = 86400 seconds
+                        # Use If-Modified-Since with last check time for conditional requests
+                        if last_check_time > 0:
+                            last_check_formatted = time.strftime('%a, %d %b %Y %H:%M:%S GMT', time.gmtime(last_check_time))
+                            request.add_header('If-Modified-Since', last_check_formatted)
+                            print(f"📡 Using If-Modified-Since: {last_check_formatted}")
+                        
+                        # Gentle cache control - max-age=0 instead of no-cache
+                        request.add_header('Cache-Control', 'max-age=0')
+                        print(f"📡 CDN-friendly cache bypass (last check: {time_since_last_check/3600:.1f}h ago)")
+                    else:
+                        print(f"📡 Using cached content (last check: {time_since_last_check/3600:.1f}h ago, < 24h)")
                 
                 # Always include a user agent for identification
                 request.add_header('User-Agent', f'AirshipZero-UpdateChecker/{self.current_version}')
@@ -350,7 +366,8 @@ class SceneUpdate:
                 self.update_status = ""
                 self.update_available = False
                 self.latest_version = None
-                self._check_latest_version()
+                # Manual check - user wants fresh results, bypass cache
+                self._check_latest_version(force_fresh=True)
             elif widget_id == "update_now":
                 if self.update_available:
                     return self._perform_update()

@@ -193,8 +193,8 @@ class AirshipApp:
                 # Delegate to the update scene to perform the check
                 update_scene = self.scenes.get("scene_update")
                 if update_scene:
-                    # Trigger automatic check
-                    update_scene._check_latest_version()
+                    # Trigger automatic check (CDN-friendly, no force_fresh)
+                    update_scene._check_latest_version(force_fresh=False)
         except Exception as e:
             print(f"Error during automatic update check: {e}")
         
