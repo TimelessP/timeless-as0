@@ -39,7 +39,10 @@ class AirshipSoundEngine:
         
         # Audio generation state
         self.phase_accumulator = 0.0  # For continuous phase across buffers
+        self.phase_harmonic2 = 0.0    # Phase for 2nd harmonic
+        self.phase_harmonic3 = 0.0    # Phase for 3rd harmonic
         self.engine_phase = 0.0       # Separate phase for engine firing cycles
+        self.rumble_phase = 0.0       # Phase for engine rumble
         self.noise_phase = 0.0        # Phase for wind noise generation
         self.last_update_time = time.time()
         
@@ -128,12 +131,10 @@ class AirshipSoundEngine:
         omega_harmonic3 = omega_fundamental * 3
         
         for i in range(num_samples):
-            t = i * dt
-            
-            # Calculate phase with continuous accumulator
-            phase_fundamental = self.phase_accumulator + omega_fundamental * t
-            phase_harmonic2 = self.phase_accumulator + omega_harmonic2 * t
-            phase_harmonic3 = self.phase_accumulator + omega_harmonic3 * t
+            # Calculate phase for this exact sample, continuing from accumulator
+            phase_fundamental = self.phase_accumulator + omega_fundamental * (i * dt)
+            phase_harmonic2 = self.phase_harmonic2 + omega_harmonic2 * (i * dt)
+            phase_harmonic3 = self.phase_harmonic3 + omega_harmonic3 * (i * dt)
             
             # Fundamental frequency (main propeller whoosh)
             fundamental = math.sin(phase_fundamental)
@@ -147,9 +148,15 @@ class AirshipSoundEngine:
             
             samples[i] = propeller_wave
         
-        # Update phase accumulator for continuous playback across buffers
+        # Update all phase accumulators for continuous playback across buffers
         self.phase_accumulator += omega_fundamental * duration
         self.phase_accumulator = self.phase_accumulator % (2 * math.pi)
+        
+        self.phase_harmonic2 += omega_harmonic2 * duration
+        self.phase_harmonic2 = self.phase_harmonic2 % (2 * math.pi)
+        
+        self.phase_harmonic3 += omega_harmonic3 * duration
+        self.phase_harmonic3 = self.phase_harmonic3 % (2 * math.pi)
         
         return samples
         
@@ -177,8 +184,9 @@ class AirshipSoundEngine:
         for i in range(num_samples):
             t = i * dt
             
-            # Calculate continuous firing phase with proper phase tracking
-            firing_phase = (self.engine_phase + firing_frequency * t) % 1.0
+            # Calculate continuous firing phase (avoid modulo during buffer generation)
+            firing_phase_continuous = self.engine_phase + firing_frequency * t
+            firing_phase = firing_phase_continuous % 1.0
             
             # Generate firing pulses with smooth envelope to prevent clicking
             if firing_phase < 0.1:  # Sharp attack (10% of cycle)
@@ -192,16 +200,19 @@ class AirshipSoundEngine:
             # Apply mixture-dependent amplitude
             engine_wave = firing_amplitude * mixture_amplitude
             
-            # Add low-frequency rumble with continuous phase
+            # Add low-frequency rumble with continuous phase tracking
             rumble_frequency = self.current_rpm / 60.0
-            rumble_phase = self.engine_phase * 2 * math.pi + 2 * math.pi * rumble_frequency * t
+            rumble_phase = self.rumble_phase + 2 * math.pi * rumble_frequency * t
             rumble = 0.1 * math.sin(rumble_phase)
             
             samples[i] = engine_wave + rumble
         
-        # Update engine phase for continuous playback
+        # Update both engine phases for continuous playback
         self.engine_phase += firing_frequency * duration
         self.engine_phase = self.engine_phase % 1.0
+        
+        self.rumble_phase += 2 * math.pi * (self.current_rpm / 60.0) * duration
+        self.rumble_phase = self.rumble_phase % (2 * math.pi)
         
         return samples
         
@@ -224,18 +235,43 @@ class AirshipSoundEngine:
         dt = 1.0 / self.sample_rate
         wind_samples = np.zeros(num_samples, dtype=np.float32)
         
-        # Generate multi-band wind noise with different frequency ranges
+        # Generate multi-band wind noise using phase-continuous sine waves
+        # This avoids discontinuities from random noise while still sounding natural
+        
         # Low frequency rumble (hull vibration from air pressure)
         low_freq = 20.0 + speed_factor * 30.0  # 20-50 Hz
-        low_noise = np.random.normal(0, 0.3, num_samples).astype(np.float32)
+        low_noise = np.zeros(num_samples, dtype=np.float32)
         
-        # Mid frequency hiss (air turbulence)
+        # Mid frequency hiss (air turbulence) - multiple frequencies for texture
         mid_freq = 200.0 + speed_factor * 400.0  # 200-600 Hz
-        mid_noise = np.random.normal(0, 0.4, num_samples).astype(np.float32)
+        mid_noise = np.zeros(num_samples, dtype=np.float32)
         
         # High frequency whistle (rigging and sharp edges)
         high_freq = 1000.0 + speed_factor * 2000.0  # 1-3 kHz
-        high_noise = np.random.normal(0, 0.2, num_samples).astype(np.float32)
+        high_noise = np.zeros(num_samples, dtype=np.float32)
+        
+        # Add multiple phases for each band to create noise-like texture
+        dt = 1.0 / self.sample_rate
+        for i in range(num_samples):
+            t = i * dt
+            
+            # Low frequency: multiple harmonics for complexity
+            low_phase = self.noise_phase + 2 * math.pi * low_freq * t
+            low_noise[i] = (0.3 * math.sin(low_phase) + 
+                           0.2 * math.sin(low_phase * 1.33) +
+                           0.1 * math.sin(low_phase * 1.77))
+            
+            # Mid frequency: rapid modulation for turbulence effect
+            mid_phase = self.noise_phase + 2 * math.pi * mid_freq * t
+            mid_modulation = 1.0 + 0.5 * math.sin(2 * math.pi * 7.0 * t)
+            mid_noise[i] = (0.4 * math.sin(mid_phase) * mid_modulation + 
+                           0.2 * math.sin(mid_phase * 1.41) +
+                           0.1 * math.sin(mid_phase * 2.13))
+            
+            # High frequency: fast modulation for rigging effects
+            high_phase = self.noise_phase + 2 * math.pi * high_freq * t
+            high_modulation = 1.0 + 0.8 * math.sin(2 * math.pi * 17.0 * t)
+            high_noise[i] = 0.2 * math.sin(high_phase) * high_modulation
         
         # Apply filtering to each frequency band and combine
         for i in range(num_samples):
@@ -301,6 +337,16 @@ class AirshipSoundEngine:
             
         return filtered
         
+    def apply_soft_limiter(self, audio: np.ndarray, threshold: float = 0.85) -> np.ndarray:
+        """
+        Apply soft limiting to prevent harsh clipping artifacts.
+        Uses tanh-based soft clipping for musical distortion characteristics.
+        """
+        # Soft limiting using tanh function
+        # This provides gentle compression above the threshold
+        limited = np.tanh(audio / threshold) * threshold
+        return limited
+        
     def generate_audio_buffer(self, duration: float) -> np.ndarray:
         """
         Generate a complete audio buffer mixing all sound sources.
@@ -311,8 +357,8 @@ class AirshipSoundEngine:
         Returns:
             Mixed stereo audio buffer as numpy array
         """
-        # Update parameters from simulator
-        self.update_from_simulator()
+        # NOTE: update_from_simulator() should be called by the main game loop,
+        # not here, to maintain phase continuity between consecutive buffers
         
         num_samples = int(duration * self.sample_rate)
         
@@ -343,12 +389,8 @@ class AirshipSoundEngine:
         # Apply volume control before normalization to preserve phase relationships
         mixed_audio = mixed_audio * self.volume
         
-        # Gentle normalization to prevent clipping while preserving waveform integrity
-        max_amplitude = np.max(np.abs(mixed_audio))
-        if max_amplitude > 0.85:  # Lower threshold for gentler normalization
-            # Use soft limiting instead of hard clipping
-            normalize_factor = 0.85 / max_amplitude
-            mixed_audio = mixed_audio * normalize_factor
+        # Apply soft limiting instead of hard normalization to prevent harsh artifacts
+        mixed_audio = self.apply_soft_limiter(mixed_audio, threshold=0.80)
         
         # Convert to stereo (duplicate mono signal)
         stereo_audio = np.zeros((num_samples, 2), dtype=np.float32)
@@ -365,6 +407,10 @@ class AirshipSoundEngine:
         new audio data when needed. Should be called at least every 50ms
         to prevent audio underruns.
         """
+        # Update sound engine parameters from simulator state
+        # This is done once per game loop, not per buffer, to maintain phase continuity
+        self.update_from_simulator()
+        
         current_time = time.time()
         dt = current_time - self.last_update_time
         
