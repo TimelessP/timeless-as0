@@ -78,7 +78,7 @@ class AirshipSoundEngine:
         settings = state.get("settings", {})
         
         # Check simulation and engine state
-        self.is_simulation_paused = game_info.get("paused", False)
+        self.is_simulation_paused = game_info.get("paused", False) or not self.simulator.running
         self.is_engine_running = engine.get("running", False) and self.simulator.running
         self.volume = settings.get("soundVolume", 0.5)  # Default to 50% if not set
         
