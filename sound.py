@@ -194,7 +194,9 @@ class AirshipSoundEngine:
         
         for i in range(num_samples):
             t = i * dt
-            combined_engine_wave = 0.0
+            
+            # Collect all cylinder contributions at this time point
+            cylinder_contributions = []
             
             # Generate firing pulse for each cylinder
             for cylinder_idx in range(6):
@@ -210,7 +212,23 @@ class AirshipSoundEngine:
                 
                 # Apply cylinder contribution
                 cylinder_contribution = firing_pressure * cylinder_variation * mixture_amplitude
-                combined_engine_wave += cylinder_contribution
+                cylinder_contributions.append(cylinder_contribution)
+            
+            # Prevent excessive constructive interference while preserving natural sound
+            # Use max approach to limit peak amplitude, but blend with linear combination for naturalness
+            max_contribution = max(cylinder_contributions)
+            linear_combination = sum(cylinder_contributions)
+            
+            # Soft limiting: use max to prevent extreme peaks, but allow some constructive interference
+            # This preserves the natural "overlapping firing" character while preventing unrealistic spikes
+            if linear_combination <= max_contribution * 1.8:  # Allow up to 1.8x amplification
+                combined_engine_wave = linear_combination
+            else:
+                # Soft blend between linear and max approaches when interference gets excessive
+                excess_factor = linear_combination / (max_contribution * 1.8)
+                blend_factor = 1.0 / (1.0 + (excess_factor - 1.0) * 2.0)  # Smooth transition
+                combined_engine_wave = (linear_combination * blend_factor + 
+                                      max_contribution * 1.8 * (1.0 - blend_factor))
             
             # Add low-frequency rumble (engine block vibration)
             rumble_phase = self.rumble_phase + omega * t
