@@ -46,6 +46,11 @@ class NavigationScene:
         self.has_dragged = False  # Track if any actual dragging occurred
         self.last_drag_pos = None  # Track last mouse position during drag (logical coords)
 
+        # Day/night overlay cache for performance optimization
+        self.day_night_cache = None
+        self.cache_last_update = 0  # UTC time when cache was last updated
+        self.cache_update_interval = 60  # Update cache every 60 seconds
+
         # Initialize widgets
         self._init_widgets()
             
@@ -832,51 +837,105 @@ class NavigationScene:
 
     def _draw_day_night_overlay(self, surface):
         """
-        Draw realistic day/night shading overlay using proper solar illumination circle calculation
+        Draw realistic day/night shading overlay using cached full-world subsurface for performance
         """
         import time
         import datetime
         
+        # Get current UTC time
+        current_utc_time = time.time()
+        
+        # Check if we need to update the cache (every 60 seconds)
+        if (self.day_night_cache is None or 
+            current_utc_time - self.cache_last_update >= self.cache_update_interval):
+            
+            # Regenerate the cached day/night overlay for the entire world map
+            self._regenerate_day_night_cache()
+            self.cache_last_update = current_utc_time
+        
+        # Draw the appropriate viewport portion of the cached overlay
+        if self.day_night_cache is not None:
+            self._blit_cached_day_night_viewport(surface)
+    
+    def _blit_cached_day_night_viewport(self, surface):
+        """
+        Blit the appropriate viewport portion of the cached day/night overlay
+        """
+        if not self.world_map or self.day_night_cache is None:
+            return
+            
+        # Get current map viewport
+        map_rect = self._get_visible_map_rect()
+        
+        # Get the cached overlay dimensions (should match world map)
+        cache_w, cache_h = self.day_night_cache.get_size()
+        map_w, map_h = self.world_map.get_size()
+        
+        # Ensure cache matches world map size
+        if cache_w != map_w or cache_h != map_h:
+            # Cache is stale, regenerate it
+            self._regenerate_day_night_cache()
+            if self.day_night_cache is None:
+                return
+        
+        # Extract the viewport portion from the cached overlay
+        try:
+            # Clamp the map rect to ensure it's within bounds
+            clamped_rect = pygame.Rect(
+                max(0, min(map_w - 1, map_rect.x)),
+                max(0, min(map_h - 1, map_rect.y)),
+                max(1, min(map_w - map_rect.x, map_rect.width)),
+                max(1, min(map_h - map_rect.y, map_rect.height))
+            )
+            
+            viewport_overlay = self.day_night_cache.subsurface(clamped_rect)
+            
+            # Scale to display size
+            display_w = LOGICAL_SIZE - 16   # 304 pixels
+            display_h = 290 - 56            # 234 pixels
+            
+            if viewport_overlay.get_width() > 0 and viewport_overlay.get_height() > 0:
+                scaled_overlay = pygame.transform.scale(viewport_overlay, (display_w, display_h))
+                surface.blit(scaled_overlay, (8, 56))
+                
+        except (ValueError, pygame.error) as e:
+            # Handle edge cases - regenerate cache if needed
+            pass
+    
+    def _regenerate_day_night_cache(self):
+        """
+        Regenerate the cached day/night overlay for the entire world map
+        """
+        import time
+        import datetime
+        
+        if not self.world_map:
+            return
+            
         # Get current UTC time and date
         utc_time = time.gmtime()
         utc_hours = utc_time.tm_hour + utc_time.tm_min / 60.0 + utc_time.tm_sec / 3600.0
         utc_date = datetime.date(utc_time.tm_year, utc_time.tm_mon, utc_time.tm_mday)
         
-        # Create overlay surface for day/night shading
-        display_w = LOGICAL_SIZE - 16   # 304 pixels
-        display_h = 290 - 56            # 234 pixels
-        
-        # Create larger overlay to match our other subsurface approach
-        max_range = 500  # Same as position/waypoint indicators for consistency
-        overlay_w = display_w + max_range * 2
-        overlay_h = display_h + max_range * 2
-        
-        overlay = pygame.Surface((overlay_w, overlay_h), pygame.SRCALPHA)
+        # Create overlay surface matching the entire world map dimensions
+        map_w, map_h = self.world_map.get_size()
+        overlay = pygame.Surface((map_w, map_h), pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 0))  # Fully transparent background
-        
-        # Get current map viewport
-        map_rect = self._get_visible_map_rect()
         
         # Calculate solar illumination circle with proper subsolar point
         subsolar_lat, subsolar_lon, terminator_points = self._calculate_solar_illumination_circle(utc_hours, utc_date)
         
         if len(terminator_points) > 3:
             # Fill night areas using proper solar illumination calculation
-            night_color = (0, 0, 0, 25)  # 10% opacity black (25/255 ≈ 10%)
+            night_color = (0, 0, 0, 51)  # 20% opacity black (51/255 ≈ 20%)
             
-            # Sample points across the overlay and determine illumination status
-            sample_step = 8  # Sample every 8 pixels for performance
-            for y in range(0, overlay_h, sample_step):
-                for x in range(0, overlay_w, sample_step):
+            # Sample points across the entire world map
+            sample_step = 16  # Larger step for full world map performance (can adjust as needed)
+            for y in range(0, map_h, sample_step):
+                for x in range(0, map_w, sample_step):
                     try:
-                        # Convert overlay coordinates to lat/lon
-                        rel_x = (x - max_range) / display_w
-                        rel_y = (y - max_range) / display_h
-                        
-                        map_x = map_rect.x + rel_x * map_rect.width
-                        map_y = map_rect.y + rel_y * map_rect.height
-                        
-                        lat, lon = self._map_coords_to_lat_lon(int(map_x), int(map_y))
+                        # Convert map coordinates to lat/lon
+                        lat, lon = self._map_coords_to_lat_lon(x, y)
                         
                         # Check if this point is illuminated using proper solar calculation
                         if not self._is_point_illuminated(lat, lon, subsolar_lat, subsolar_lon):
@@ -890,10 +949,8 @@ class NavigationScene:
                         # Skip points that can't be converted (edge cases)
                         continue
         
-        # Blit only the visible portion of the overlay onto the main surface
-        visible_rect = pygame.Rect(max_range, max_range, display_w, display_h)
-        visible_portion = overlay.subsurface(visible_rect)
-        surface.blit(visible_portion, (8, 56))
+        # Cache the entire world map overlay
+        self.day_night_cache = overlay
 
     def _draw_transparent_circle(self, surface, color, center, radius, alpha):
         """Draw a circle with transparency"""
