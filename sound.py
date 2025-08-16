@@ -38,10 +38,19 @@ class AirshipSoundEngine:
         pygame.mixer.init()
         
         # Audio generation state
-        self.phase_accumulator = 0.0  # For continuous phase across buffers
+        self.phase_accumulator = 0.0  # For continuous phase across buffers  
         self.phase_harmonic2 = 0.0    # Phase for 2nd harmonic
         self.phase_harmonic3 = 0.0    # Phase for 3rd harmonic
-        self.engine_phase = 0.0       # Separate phase for engine firing cycles
+        self.propeller_blade1_phase = 0.0  # Phase for first propeller blade
+        self.propeller_blade2_phase = math.pi  # Second blade offset by 180° (π radians)
+        
+        # Individual cylinder phases for 6-cylinder radial engine
+        # Each cylinder fires once per engine revolution, evenly spaced
+        self.cylinder_phases = []
+        for i in range(6):
+            cylinder_phase = i * (2 * math.pi / 6)  # 60° spacing (π/3 radians)
+            self.cylinder_phases.append(cylinder_phase)
+        
         self.rumble_phase = 0.0       # Phase for engine rumble
         self.noise_phase = 0.0        # Phase for wind noise generation
         self.last_update_time = time.time()
@@ -104,10 +113,10 @@ class AirshipSoundEngine:
         
     def generate_propeller_wave(self, duration: float) -> np.ndarray:
         """
-        Generate propeller sound wave based on current RPM and pitch.
+        Generate propeller sound wave based on two-blade propeller physics.
         
-        Propeller sound is not a pure sine wave - it has harmonics from blade tip vortices
-        and pressure pulses. We'll model this as a fundamental frequency with harmonics.
+        Two propeller blades create separate pressure pulses, offset by 180°.
+        Each blade creates a positive pressure wave (compression) as it passes.
         """
         num_samples = int(duration * self.sample_rate)
         samples = np.zeros(num_samples, dtype=np.float32)
@@ -115,48 +124,48 @@ class AirshipSoundEngine:
         if self.current_rpm <= 50.0:  # Effectively silent below 50 RPM
             return samples
             
-        # Calculate propeller frequency (assuming 2-blade prop)
-        # Each blade passage creates a pressure pulse
-        prop_blades = 2
-        prop_frequency = (self.current_rpm / 60.0) * prop_blades  # Hz
+        # Calculate propeller rotation frequency
+        prop_frequency = self.current_rpm / 60.0  # Hz (one full rotation)
         
         # Propeller pitch affects amplitude - higher pitch = more air displacement
-        pitch_amplitude = 0.2 + (self.current_pitch * 0.6)  # 0.2 to 0.8 base amplitude
+        pitch_amplitude = 0.3 + (self.current_pitch * 0.7)  # 0.3 to 1.0 base amplitude
         
         dt = 1.0 / self.sample_rate
-        
-        # Pre-calculate angular frequency for efficiency
-        omega_fundamental = 2 * math.pi * prop_frequency
-        omega_harmonic2 = omega_fundamental * 2
-        omega_harmonic3 = omega_fundamental * 3
+        omega = 2 * math.pi * prop_frequency
         
         for i in range(num_samples):
-            # Calculate phase for this exact sample, continuing from accumulator
-            phase_fundamental = self.phase_accumulator + omega_fundamental * (i * dt)
-            phase_harmonic2 = self.phase_harmonic2 + omega_harmonic2 * (i * dt)
-            phase_harmonic3 = self.phase_harmonic3 + omega_harmonic3 * (i * dt)
+            t = i * dt
             
-            # Fundamental frequency (main propeller whoosh)
-            fundamental = math.sin(phase_fundamental)
+            # Calculate phase for each blade
+            blade1_phase = self.propeller_blade1_phase + omega * t
+            blade2_phase = self.propeller_blade2_phase + omega * t
             
-            # Add harmonics for realism (reduced amplitudes to minimize boundary artifacts)
-            harmonic2 = 0.2 * math.sin(phase_harmonic2)  # Reduced from 0.3 to 0.2
-            harmonic3 = 0.1 * math.sin(phase_harmonic3)  # Reduced from 0.15 to 0.1
+            # Each blade creates a positive pressure pulse (compression wave)
+            # Use rectified sine wave for positive-only pressure
+            blade1_pressure = max(0, math.sin(blade1_phase)) ** 1.5  # Sharp attack, smooth decay
+            blade2_pressure = max(0, math.sin(blade2_phase)) ** 1.5
             
-            # Combine with pitch-dependent amplitude
-            propeller_wave = (fundamental + harmonic2 + harmonic3) * pitch_amplitude
+            # Combine pressure waves from both blades
+            combined_pressure = blade1_pressure + blade2_pressure
+            
+            # Add very subtle harmonics for blade tip effects (much reduced to minimize high-frequency artifacts)
+            tip_harmonic = 0.03 * max(0, math.sin(blade1_phase * 2)) + 0.03 * max(0, math.sin(blade2_phase * 2))
+            
+            # Apply pitch-dependent amplitude
+            propeller_wave = (combined_pressure + tip_harmonic) * pitch_amplitude
             
             samples[i] = propeller_wave
         
-        # Update all phase accumulators for continuous playback across buffers
-        self.phase_accumulator += omega_fundamental * duration
-        self.phase_accumulator = self.phase_accumulator % (2 * math.pi)
+        # Update phase accumulators for both blades
+        self.propeller_blade1_phase += omega * duration
+        self.propeller_blade1_phase = self.propeller_blade1_phase % (2 * math.pi)
         
-        self.phase_harmonic2 += omega_harmonic2 * duration
-        self.phase_harmonic2 = self.phase_harmonic2 % (2 * math.pi)
+        self.propeller_blade2_phase += omega * duration
+        self.propeller_blade2_phase = self.propeller_blade2_phase % (2 * math.pi)
         
-        self.phase_harmonic3 += omega_harmonic3 * duration
-        self.phase_harmonic3 = self.phase_harmonic3 % (2 * math.pi)
+        # Remove DC offset to eliminate pumping/breathing artifacts
+        dc_offset = np.mean(samples)
+        samples = samples - dc_offset
         
         return samples
         
@@ -164,8 +173,9 @@ class AirshipSoundEngine:
         """
         Generate engine firing sound for 6-cylinder radial engine.
         
-        Each cylinder fires at a different time, creating sharp pulses with intervals.
-        The frequency is 6 times RPM (6 firings per engine revolution).
+        Each cylinder fires once per engine revolution at its own phase.
+        The cylinders are evenly spaced around the engine (60° apart).
+        This creates overlapping low-frequency pulses rather than rapid high-frequency firing.
         """
         num_samples = int(duration * self.sample_rate)
         samples = np.zeros(num_samples, dtype=np.float32)
@@ -173,46 +183,53 @@ class AirshipSoundEngine:
         if self.current_rpm <= 50.0:  # Effectively silent below 50 RPM
             return samples
             
-        # Engine firing frequency (6 cylinders, each fires once per revolution)
-        firing_frequency = (self.current_rpm / 60.0) * self.engine_cylinders  # Hz
+        # Engine rotation frequency - each cylinder fires once per rotation
+        engine_rotation_freq = self.current_rpm / 60.0  # Hz
         
         # Mixture affects amplitude - richer mixture = more power per firing
         mixture_amplitude = 0.1 + (self.current_mixture * 0.3)  # 0.1 to 0.4 amplitude
         
         dt = 1.0 / self.sample_rate
+        omega = 2 * math.pi * engine_rotation_freq
         
         for i in range(num_samples):
             t = i * dt
+            combined_engine_wave = 0.0
             
-            # Calculate continuous firing phase (avoid modulo during buffer generation)
-            firing_phase_continuous = self.engine_phase + firing_frequency * t
-            firing_phase = firing_phase_continuous % 1.0
+            # Generate firing pulse for each cylinder
+            for cylinder_idx in range(6):
+                # Calculate phase for this cylinder
+                cylinder_phase = self.cylinder_phases[cylinder_idx] + omega * t
+                
+                # Each cylinder creates a positive pressure pulse (combustion wave)
+                # Use rectified sine wave for positive-only pressure, similar to propeller
+                firing_pressure = max(0, math.sin(cylinder_phase)) ** 2.0  # Sharper than propeller
+                
+                # Add cylinder-specific character (slight variations)
+                cylinder_variation = 1.0 + 0.1 * math.sin(cylinder_phase * 1.7 + cylinder_idx * 0.5)
+                
+                # Apply cylinder contribution
+                cylinder_contribution = firing_pressure * cylinder_variation * mixture_amplitude
+                combined_engine_wave += cylinder_contribution
             
-            # Generate firing pulses with smooth envelope to prevent clicking
-            if firing_phase < 0.1:  # Sharp attack (10% of cycle)
-                # Smooth attack curve to prevent discontinuities
-                attack_factor = firing_phase / 0.1
-                firing_amplitude = attack_factor * (2.0 - attack_factor)  # Parabolic curve
-            else:  # Exponential decay (90% of cycle)
-                decay_factor = (firing_phase - 0.1) / 0.9
-                firing_amplitude = math.exp(-decay_factor * 5.0)  # Gentler decay
+            # Add low-frequency rumble (engine block vibration)
+            rumble_phase = self.rumble_phase + omega * t
+            rumble = 0.15 * math.sin(rumble_phase) + 0.08 * math.sin(rumble_phase * 1.5)
             
-            # Apply mixture-dependent amplitude
-            engine_wave = firing_amplitude * mixture_amplitude
-            
-            # Add low-frequency rumble with continuous phase tracking
-            rumble_frequency = self.current_rpm / 60.0
-            rumble_phase = self.rumble_phase + 2 * math.pi * rumble_frequency * t
-            rumble = 0.1 * math.sin(rumble_phase)
-            
-            samples[i] = engine_wave + rumble
+            samples[i] = combined_engine_wave + rumble
         
-        # Update both engine phases for continuous playback
-        self.engine_phase += firing_frequency * duration
-        self.engine_phase = self.engine_phase % 1.0
+        # Update all cylinder phases for continuous playback
+        for cylinder_idx in range(6):
+            self.cylinder_phases[cylinder_idx] += omega * duration
+            self.cylinder_phases[cylinder_idx] = self.cylinder_phases[cylinder_idx] % (2 * math.pi)
         
-        self.rumble_phase += 2 * math.pi * (self.current_rpm / 60.0) * duration
+        # Update rumble phase
+        self.rumble_phase += omega * duration
         self.rumble_phase = self.rumble_phase % (2 * math.pi)
+        
+        # Remove DC offset to prevent pumping artifacts (same as propeller)
+        dc_offset = np.mean(samples)
+        samples = samples - dc_offset
         
         return samples
         
@@ -462,7 +479,7 @@ class AirshipSoundEngine:
             "engine_running": self.is_engine_running,
             "simulation_paused": self.is_simulation_paused,
             "propeller_freq": (self.current_rpm / 60.0) * 2 if self.current_rpm > 0 else 0,
-            "engine_firing_freq": (self.current_rpm / 60.0) * 6 if self.current_rpm > 0 else 0
+            "engine_firing_freq": (self.current_rpm / 60.0) if self.current_rpm > 0 else 0  # Each cylinder fires once per rotation
         }
 
 
