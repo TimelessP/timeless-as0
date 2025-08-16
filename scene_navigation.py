@@ -597,6 +597,260 @@ class NavigationScene:
         
         return lat2, lon2
 
+    def _generate_great_circle_arc(self, lat1, lon1, lat2, lon2, num_points=50):
+        """
+        Generate points along a great circle arc between two points
+        
+        Args:
+            lat1, lon1: Start point in degrees
+            lat2, lon2: End point in degrees
+            num_points: Number of interpolated points to generate
+            
+        Returns:
+            list: List of (lat, lon) tuples along the great circle
+        """
+        # Convert to radians
+        lat1_rad = math.radians(lat1)
+        lon1_rad = math.radians(lon1)
+        lat2_rad = math.radians(lat2)
+        lon2_rad = math.radians(lon2)
+        
+        # Calculate the angular distance between points
+        delta_lat = lat2_rad - lat1_rad
+        delta_lon = lon2_rad - lon1_rad
+        
+        a = (math.sin(delta_lat/2)**2 + 
+             math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(delta_lon/2)**2)
+        angular_distance = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+        
+        points = []
+        
+        for i in range(num_points + 1):
+            fraction = i / num_points
+            
+            # Spherical linear interpolation (slerp)
+            if angular_distance == 0:
+                # Points are the same
+                lat_rad = lat1_rad
+                lon_rad = lon1_rad
+            else:
+                A = math.sin((1 - fraction) * angular_distance) / math.sin(angular_distance)
+                B = math.sin(fraction * angular_distance) / math.sin(angular_distance)
+                
+                x = A * math.cos(lat1_rad) * math.cos(lon1_rad) + B * math.cos(lat2_rad) * math.cos(lon2_rad)
+                y = A * math.cos(lat1_rad) * math.sin(lon1_rad) + B * math.cos(lat2_rad) * math.sin(lon2_rad)
+                z = A * math.sin(lat1_rad) + B * math.sin(lat2_rad)
+                
+                lat_rad = math.atan2(z, math.sqrt(x*x + y*y))
+                lon_rad = math.atan2(y, x)
+            
+            # Convert back to degrees and normalize longitude
+            lat = math.degrees(lat_rad)
+            lon = math.degrees(lon_rad)
+            lon = ((lon + 180) % 360) - 180  # Normalize to [-180, 180]
+            
+            points.append((lat, lon))
+        
+        return points
+
+    def _generate_range_ring_points(self, center_lat, center_lon, range_nm, num_points=72):
+        """
+        Generate points around a range ring on the sphere
+        
+        Args:
+            center_lat, center_lon: Center point in degrees
+            range_nm: Range in nautical miles
+            num_points: Number of points around the circle (default 72 = 5° intervals)
+            
+        Returns:
+            list: List of (lat, lon) tuples around the range ring
+        """
+        points = []
+        
+        for i in range(num_points):
+            bearing = (i * 360.0) / num_points  # Bearing in degrees
+            lat, lon = self._calculate_destination(center_lat, center_lon, bearing, range_nm)
+            points.append((lat, lon))
+        
+        # Close the ring by adding the first point again
+        if points:
+            points.append(points[0])
+            
+        return points
+
+    def _calculate_day_night_boundary(self, utc_time_hours):
+        """
+        Calculate the day/night terminator line for a given UTC time
+        
+        Args:
+            utc_time_hours: UTC time as decimal hours (0-24)
+            
+        Returns:
+            list: List of (lat, lon) tuples defining the terminator
+        """
+        import time
+        import datetime
+        
+        # Calculate sun's longitude based on UTC time
+        # Sun's longitude = -15 * (UTC_hours - 12) degrees
+        # At UTC 12:00, sun is at longitude 0° (Greenwich)
+        sun_longitude = -15.0 * (utc_time_hours - 12.0)
+        sun_longitude = ((sun_longitude + 180) % 360) - 180  # Normalize to [-180, 180]
+        
+        # For simplicity, assume sun's declination is 0° (equinox)
+        # In reality, this varies seasonally between ±23.44°
+        sun_declination = 0.0
+        
+        # Generate terminator points
+        terminator_points = []
+        
+        # Generate points along the terminator (90° from sun position)
+        for lat in range(-90, 91, 5):  # Every 5 degrees of latitude
+            lat_rad = math.radians(lat)
+            sun_decl_rad = math.radians(sun_declination)
+            
+            # Calculate longitude where sun angle is 90° (terminator)
+            # This is a simplified calculation - the actual terminator is more complex
+            try:
+                cos_hour_angle = -math.tan(lat_rad) * math.tan(sun_decl_rad)
+                
+                if cos_hour_angle > 1:
+                    # Polar night
+                    hour_angle = math.pi
+                elif cos_hour_angle < -1:
+                    # Polar day
+                    hour_angle = 0
+                else:
+                    hour_angle = math.acos(cos_hour_angle)
+                
+                # Convert hour angle to longitude offset from sun
+                lon_offset = math.degrees(hour_angle)
+                
+                # Two points on terminator (sunrise and sunset longitudes)
+                lon1 = sun_longitude + lon_offset
+                lon2 = sun_longitude - lon_offset
+                
+                # Normalize longitudes
+                lon1 = ((lon1 + 180) % 360) - 180
+                lon2 = ((lon2 + 180) % 360) - 180
+                
+                terminator_points.append((lat, lon1))
+                terminator_points.append((lat, lon2))
+                
+            except (ValueError, ZeroDivisionError):
+                # Handle edge cases at poles
+                continue
+        
+        # Sort points to create a continuous boundary
+        terminator_points.sort(key=lambda p: (p[1], p[0]))  # Sort by longitude, then latitude
+        
+        return terminator_points
+
+    def _draw_spherical_line_segments(self, surface, color, lat_lon_points, width, alpha, map_rect, display_w, display_h, max_range):
+        """
+        Draw a series of connected line segments from spherical coordinates
+        
+        Args:
+            surface: Surface to draw on (should be the large overlay)
+            color: Line color (RGB tuple)
+            lat_lon_points: List of (lat, lon) tuples
+            width: Line width in pixels
+            alpha: Alpha transparency (0-255)
+            map_rect: Current map viewport rectangle
+            display_w, display_h: Display area dimensions
+            max_range: Margin size for overlay
+        """
+        if len(lat_lon_points) < 2:
+            return
+            
+        # Convert all lat/lon points to overlay coordinates
+        overlay_points = []
+        for lat, lon in lat_lon_points:
+            map_x, map_y = self._lat_lon_to_map_coords(lat, lon)
+            
+            # Calculate position relative to viewport (can be outside)
+            rel_x = (map_x - map_rect.x) / map_rect.width
+            rel_y = (map_y - map_rect.y) / map_rect.height
+            
+            # Convert to overlay coordinates
+            overlay_x = rel_x * display_w + max_range
+            overlay_y = rel_y * display_h + max_range
+            
+            overlay_points.append((overlay_x, overlay_y))
+        
+        # Draw connected line segments
+        for i in range(len(overlay_points) - 1):
+            start_pos = overlay_points[i]
+            end_pos = overlay_points[i + 1]
+            
+            # Skip segments that are too long (likely wrapping around the world)
+            dx = end_pos[0] - start_pos[0]
+            dy = end_pos[1] - start_pos[1]
+            segment_length = math.sqrt(dx*dx + dy*dy)
+            
+            # If segment is very long, it's probably wrapping - skip it
+            # This prevents drawing lines across the entire map
+            max_segment_length = max(display_w, display_h) * 0.5
+            if segment_length < max_segment_length:
+                self._draw_transparent_line(surface, color, 
+                                          (int(start_pos[0]), int(start_pos[1])),
+                                          (int(end_pos[0]), int(end_pos[1])),
+                                          width, alpha)
+
+    def _draw_day_night_overlay(self, surface):
+        """
+        Draw day/night shading overlay on the map
+        """
+        import time
+        
+        # Get current UTC time
+        utc_time = time.gmtime()
+        utc_hours = utc_time.tm_hour + utc_time.tm_min / 60.0 + utc_time.tm_sec / 3600.0
+        
+        # Create overlay surface for day/night shading
+        display_w = LOGICAL_SIZE - 16   # 304 pixels
+        display_h = 290 - 56            # 234 pixels
+        
+        # Create an overlay that matches the current map viewport
+        overlay = pygame.Surface((display_w, display_h), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 0))  # Fully transparent
+        
+        # Get current map viewport
+        map_rect = self._get_visible_map_rect()
+        
+        # Calculate day/night regions
+        terminator_points = self._calculate_day_night_boundary(utc_hours)
+        
+        if len(terminator_points) > 3:
+            # Convert terminator points to screen coordinates
+            screen_points = []
+            for lat, lon in terminator_points:
+                map_x, map_y = self._lat_lon_to_map_coords(lat, lon)
+                
+                # Check if point is in viewport
+                if map_rect.collidepoint(map_x, map_y):
+                    rel_x = (map_x - map_rect.x) / map_rect.width
+                    rel_y = (map_y - map_rect.y) / map_rect.height
+                    
+                    screen_x = rel_x * display_w
+                    screen_y = rel_y * display_h
+                    screen_points.append((int(screen_x), int(screen_y)))
+            
+            # Draw night-time shading (simplified - just shade the western hemisphere)
+            # This is a placeholder - a proper implementation would need more sophisticated
+            # polygon filling based on the terminator curve
+            if len(screen_points) > 0:
+                # Create a simple night overlay - shade areas west of the sun
+                night_surface = pygame.Surface((display_w, display_h), pygame.SRCALPHA)
+                night_surface.fill((0, 0, 50, 25))  # Dark blue with 10% opacity
+                
+                # For now, apply uniform shading - in a real implementation,
+                # you'd calculate which areas are in shadow based on the terminator
+                overlay.blit(night_surface, (0, 0))
+        
+        # Blit the day/night overlay to the main surface
+        surface.blit(overlay, (8, 56))
+
     def _draw_transparent_circle(self, surface, color, center, radius, alpha):
         """Draw a circle with transparency"""
         # Create a temporary surface with per-pixel alpha
@@ -661,10 +915,13 @@ class NavigationScene:
         if self.world_map:
             self._draw_world_map(surface)
         
-        # Draw current position on map
+        # Draw day/night overlay (optional - can be enabled/disabled)
+        # self._draw_day_night_overlay(surface)
+        
+        # Draw current position on map (with spherical geometry)
         self._draw_position_indicator(surface)
         
-        # Draw waypoint on map
+        # Draw waypoint on map (with spherical geometry)
         self._draw_waypoint_indicator(surface)
         
         # Draw widgets
@@ -698,7 +955,7 @@ class NavigationScene:
             surface.blit(scaled_map, (8, 56))
         
     def _draw_position_indicator(self, surface):
-        """Draw current position on the map using overlay subsurface"""
+        """Draw current position on the map using spherical geometry"""
         game_state = self.simulator.get_state()
         position = game_state["navigation"]["position"]
         motion = game_state["navigation"]["motion"]
@@ -715,63 +972,34 @@ class NavigationScene:
         overlay = pygame.Surface((overlay_w, overlay_h), pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 0))  # Fully transparent background
         
-        # Get ship's absolute position in map coordinates
-        ship_map_x, ship_map_y = self._lat_lon_to_map_coords(position["latitude"], position["longitude"])
+        # Get ship's position
+        current_lat = position["latitude"]
+        current_lon = position["longitude"]
+        bearing = position["heading"]
+        current_speed = motion.get("groundSpeed", 0)  # knots
+        travel_distance_nm = current_speed * 12  # 12 hours of travel in nautical miles
         
         # Get the current viewport
         map_rect = self._get_visible_map_rect()
         
-        # Calculate ship position relative to the visible map area (can be outside viewport)
+        # Calculate ship position in overlay coordinates
+        ship_map_x, ship_map_y = self._lat_lon_to_map_coords(current_lat, current_lon)
         rel_x = (ship_map_x - map_rect.x) / map_rect.width
         rel_y = (ship_map_y - map_rect.y) / map_rect.height
-        
-        # Convert to overlay coordinates (offset by the extra margin)
         overlay_ship_x = rel_x * display_w + max_range
         overlay_ship_y = rel_y * display_h + max_range
         
-        # Draw 12-hour travel range using proper great circle navigation
-        current_speed = motion.get("groundSpeed", 0)  # knots
-        travel_distance_nm = current_speed * 12  # 12 hours of travel in nautical miles
-        
         if travel_distance_nm > 0:
-            # Calculate destination using great circle navigation
-            current_lat = position["latitude"]
-            current_lon = position["longitude"]
-            bearing = position["heading"]
+            # Draw spherical range ring using interpolated points
+            range_ring_points = self._generate_range_ring_points(current_lat, current_lon, travel_distance_nm, 72)
+            self._draw_spherical_line_segments(overlay, AIRSHIP_RANGE_COLOR, range_ring_points, 
+                                             1, 64, map_rect, display_w, display_h, max_range)  # 25% opacity
             
-            # Calculate end position after 12 hours of travel on great circle
+            # Draw great circle heading line using interpolated points
             end_lat, end_lon = self._calculate_destination(current_lat, current_lon, bearing, travel_distance_nm)
-            
-            # Convert end position to map coordinates
-            end_map_x, end_map_y = self._lat_lon_to_map_coords(end_lat, end_lon)
-            
-            # Calculate end position relative to the visible map area (can be outside viewport)
-            end_rel_x = (end_map_x - map_rect.x) / map_rect.width
-            end_rel_y = (end_map_y - map_rect.y) / map_rect.height
-            
-            # Convert to overlay coordinates (offset by the extra margin)
-            overlay_end_x = end_rel_x * display_w + max_range
-            overlay_end_y = end_rel_y * display_h + max_range
-            
-            # Calculate actual distance in overlay pixels for range circle
-            dx = overlay_end_x - overlay_ship_x
-            dy = overlay_end_y - overlay_ship_y
-            range_pixels = math.sqrt(dx*dx + dy*dy)
-            
-            # Draw range circle outline only using calculated radius
-            if range_pixels > 5:  # Only draw if reasonably visible
-                self._draw_transparent_circle_outline(overlay, AIRSHIP_RANGE_COLOR, 
-                                                     (int(overlay_ship_x), int(overlay_ship_y)), 
-                                                     int(range_pixels), 64)  # 25% opacity (64/255)
-                
-                # Draw heading line to range circle edge (not to end position)
-                heading_rad = math.radians(bearing)
-                line_end_x = overlay_ship_x + math.sin(heading_rad) * (range_pixels - 1)
-                line_end_y = overlay_ship_y - math.cos(heading_rad) * (range_pixels - 1)
-                
-                self._draw_transparent_line(overlay, AIRSHIP_RANGE_COLOR,
-                                          (int(overlay_ship_x), int(overlay_ship_y)), 
-                                          (int(line_end_x), int(line_end_y)), 1, 64)  # 25% opacity, 1px width
+            heading_line_points = self._generate_great_circle_arc(current_lat, current_lon, end_lat, end_lon, 25)
+            self._draw_spherical_line_segments(overlay, AIRSHIP_RANGE_COLOR, heading_line_points,
+                                             1, 64, map_rect, display_w, display_h, max_range)  # 25% opacity
         
         # Draw position marker (centered on ship position)
         marker_radius = 3  # 7 pixel diameter (odd number)
@@ -786,7 +1014,7 @@ class NavigationScene:
         surface.blit(visible_portion, (8, 56))
                            
     def _draw_waypoint_indicator(self, surface):
-        """Draw waypoint on the map using overlay subsurface"""
+        """Draw waypoint on the map using spherical geometry"""
         waypoint = self.simulator.get_waypoint()
         if not waypoint:
             return
@@ -802,39 +1030,29 @@ class NavigationScene:
         
         overlay = pygame.Surface((overlay_w, overlay_h), pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 0))  # Fully transparent background
-            
-        # Get waypoint position in map coordinates
-        waypoint_map_x, waypoint_map_y = self._lat_lon_to_map_coords(
-            waypoint["latitude"], waypoint["longitude"]
-        )
+        
+        # Get current positions
+        game_state = self.simulator.get_state()
+        position = game_state["navigation"]["position"]
+        ship_lat = position["latitude"]
+        ship_lon = position["longitude"]
+        waypoint_lat = waypoint["latitude"]
+        waypoint_lon = waypoint["longitude"]
         
         # Get the current viewport
         map_rect = self._get_visible_map_rect()
         
-        # Calculate waypoint position relative to the visible map area (can be outside viewport)
+        # Calculate waypoint position in overlay coordinates
+        waypoint_map_x, waypoint_map_y = self._lat_lon_to_map_coords(waypoint_lat, waypoint_lon)
         rel_x = (waypoint_map_x - map_rect.x) / map_rect.width
         rel_y = (waypoint_map_y - map_rect.y) / map_rect.height
-        
-        # Convert to overlay coordinates (offset by the extra margin)
         overlay_waypoint_x = rel_x * display_w + max_range
         overlay_waypoint_y = rel_y * display_h + max_range
         
-        # Get ship position for dashed line
-        game_state = self.simulator.get_state()
-        position = game_state["navigation"]["position"]
-        ship_map_x, ship_map_y = self._lat_lon_to_map_coords(position["latitude"], position["longitude"])
-        
-        # Calculate ship position in overlay coordinates (offset by the extra margin)
-        ship_rel_x = (ship_map_x - map_rect.x) / map_rect.width
-        ship_rel_y = (ship_map_y - map_rect.y) / map_rect.height
-        overlay_ship_x = ship_rel_x * display_w + max_range
-        overlay_ship_y = ship_rel_y * display_h + max_range
-        
-        # Draw dashed line from ship to waypoint (bottom layer, 25% opacity)
-        self._draw_dashed_line(overlay, AIRSHIP_RANGE_COLOR,
-                              (int(overlay_ship_x), int(overlay_ship_y)),
-                              (int(overlay_waypoint_x), int(overlay_waypoint_y)),
-                              1, 64, dash_length=8)  # 25% opacity, 8px dashes
+        # Draw great circle dashed line from ship to waypoint using interpolated points
+        great_circle_points = self._generate_great_circle_arc(ship_lat, ship_lon, waypoint_lat, waypoint_lon, 30)
+        self._draw_spherical_dashed_line(overlay, AIRSHIP_RANGE_COLOR, great_circle_points,
+                                       1, 64, map_rect, display_w, display_h, max_range, dash_length=8)  # 25% opacity
         
         # Draw waypoint marker using consistent dark red colors
         # Outer circle with transparency (same as range ring)
@@ -873,6 +1091,129 @@ class NavigationScene:
         visible_portion = overlay.subsurface(visible_rect)
         surface.blit(visible_portion, (8, 56))
     
+    def _draw_spherical_dashed_line(self, surface, color, lat_lon_points, width, alpha, map_rect, display_w, display_h, max_range, dash_length=10):
+        """
+        Draw a dashed line along spherical coordinates
+        
+        Args:
+            surface: Surface to draw on (should be the large overlay)
+            color: Line color (RGB tuple)
+            lat_lon_points: List of (lat, lon) tuples defining the path
+            width: Line width in pixels
+            alpha: Alpha transparency (0-255)
+            map_rect: Current map viewport rectangle
+            display_w, display_h: Display area dimensions
+            max_range: Margin size for overlay
+            dash_length: Length of each dash in pixels
+        """
+        if len(lat_lon_points) < 2:
+            return
+            
+        # Convert all lat/lon points to overlay coordinates
+        overlay_points = []
+        for lat, lon in lat_lon_points:
+            map_x, map_y = self._lat_lon_to_map_coords(lat, lon)
+            
+            # Calculate position relative to viewport (can be outside)
+            rel_x = (map_x - map_rect.x) / map_rect.width
+            rel_y = (map_y - map_rect.y) / map_rect.height
+            
+            # Convert to overlay coordinates
+            overlay_x = rel_x * display_w + max_range
+            overlay_y = rel_y * display_h + max_range
+            
+            overlay_points.append((overlay_x, overlay_y))
+        
+        # Calculate cumulative distances along the path
+        cumulative_distances = [0]
+        for i in range(1, len(overlay_points)):
+            dx = overlay_points[i][0] - overlay_points[i-1][0]
+            dy = overlay_points[i][1] - overlay_points[i-1][1]
+            segment_length = math.sqrt(dx*dx + dy*dy)
+            
+            # Skip segments that are too long (likely wrapping around the world)
+            max_segment_length = max(display_w, display_h) * 0.5
+            if segment_length > max_segment_length:
+                # Reset distance tracking to handle world wrapping
+                cumulative_distances.append(cumulative_distances[-1])
+            else:
+                cumulative_distances.append(cumulative_distances[-1] + segment_length)
+        
+        total_distance = cumulative_distances[-1]
+        if total_distance == 0:
+            return
+        
+        # Draw dashes along the path
+        gap_length = dash_length  # Same length for gaps
+        current_distance = 0
+        drawing_dash = True  # Start with a dash
+        
+        while current_distance < total_distance:
+            # Find segment containing current distance
+            segment_index = 0
+            for i in range(len(cumulative_distances) - 1):
+                if cumulative_distances[i] <= current_distance <= cumulative_distances[i + 1]:
+                    segment_index = i
+                    break
+            
+            if segment_index >= len(overlay_points) - 1:
+                break
+                
+            # Calculate position within the current segment
+            segment_start_dist = cumulative_distances[segment_index]
+            segment_end_dist = cumulative_distances[segment_index + 1]
+            segment_total_length = segment_end_dist - segment_start_dist
+            
+            if segment_total_length > 0:
+                segment_progress = (current_distance - segment_start_dist) / segment_total_length
+                
+                # Interpolate position within segment
+                start_point = overlay_points[segment_index]
+                end_point = overlay_points[segment_index + 1]
+                
+                current_x = start_point[0] + segment_progress * (end_point[0] - start_point[0])
+                current_y = start_point[1] + segment_progress * (end_point[1] - start_point[1])
+                
+                if drawing_dash:
+                    # Calculate dash end position
+                    dash_end_distance = min(current_distance + dash_length, total_distance)
+                    
+                    # Find dash end position
+                    end_segment_index = segment_index
+                    for i in range(segment_index, len(cumulative_distances) - 1):
+                        if cumulative_distances[i] <= dash_end_distance <= cumulative_distances[i + 1]:
+                            end_segment_index = i
+                            break
+                    
+                    if end_segment_index < len(overlay_points) - 1:
+                        end_segment_start = cumulative_distances[end_segment_index]
+                        end_segment_end = cumulative_distances[end_segment_index + 1]
+                        end_segment_length = end_segment_end - end_segment_start
+                        
+                        if end_segment_length > 0:
+                            end_progress = (dash_end_distance - end_segment_start) / end_segment_length
+                            end_start_point = overlay_points[end_segment_index]
+                            end_end_point = overlay_points[end_segment_index + 1]
+                            
+                            dash_end_x = end_start_point[0] + end_progress * (end_end_point[0] - end_start_point[0])
+                            dash_end_y = end_start_point[1] + end_progress * (end_end_point[1] - end_start_point[1])
+                            
+                            # Draw the dash
+                            self._draw_transparent_line(surface, color,
+                                                      (int(current_x), int(current_y)),
+                                                      (int(dash_end_x), int(dash_end_y)),
+                                                      width, alpha)
+                    
+                    current_distance += dash_length
+                else:
+                    # Skip gap
+                    current_distance += gap_length
+                
+                drawing_dash = not drawing_dash
+            else:
+                # Skip zero-length segments
+                current_distance += 1
+
     def _render_transparent_text(self, surface, text, position, color, alpha, centered=False):
         """Render transparent text on a surface"""
         if not self.font:
