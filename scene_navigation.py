@@ -919,17 +919,16 @@ class NavigationScene:
         
         # Create overlay surface matching the entire world map dimensions
         map_w, map_h = self.world_map.get_size()
-        overlay = pygame.Surface((map_w, map_h), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 0))  # Fully transparent background
+        
+        # Create a binary mask for day/night areas (grayscale for blurring)
+        mask = pygame.Surface((map_w, map_h))
+        mask.fill((0, 0, 0))  # Start with black (night areas)
         
         # Calculate solar illumination circle with proper subsolar point
         subsolar_lat, subsolar_lon, terminator_points = self._calculate_solar_illumination_circle(utc_hours, utc_date)
         
         if len(terminator_points) > 3:
-            # Fill night areas using proper solar illumination calculation
-            night_color = (0, 0, 0, 51)  # 20% opacity black (51/255 ≈ 20%)
-            
-            # Sample points across the entire world map
+            # Sample points across the entire world map to create binary mask
             sample_step = 16  # Larger step for full world map performance (can adjust as needed)
             for y in range(0, map_h, sample_step):
                 for x in range(0, map_w, sample_step):
@@ -938,16 +937,56 @@ class NavigationScene:
                         lat, lon = self._map_coords_to_lat_lon(x, y)
                         
                         # Check if this point is illuminated using proper solar calculation
-                        if not self._is_point_illuminated(lat, lon, subsolar_lat, subsolar_lon):
-                            # This point is in shadow (night)
-                            night_rect = pygame.Rect(x, y, sample_step, sample_step)
-                            night_surface = pygame.Surface((sample_step, sample_step), pygame.SRCALPHA)
-                            night_surface.fill(night_color)
-                            overlay.blit(night_surface, (x, y))
+                        if self._is_point_illuminated(lat, lon, subsolar_lat, subsolar_lon):
+                            # This point is in daylight - mark as white in mask
+                            daylight_rect = pygame.Rect(x, y, sample_step, sample_step)
+                            pygame.draw.rect(mask, (255, 255, 255), daylight_rect)
                             
                     except Exception:
                         # Skip points that can't be converted (edge cases)
                         continue
+            
+            # Apply blur to the mask to smooth the day/night edges
+            # Create a blurred mask by scaling down and back up (simple blur approximation)
+            # For 16x16 shadow squares, we need ~32-48 pixel blur radius for smooth edges
+            blur_w = max(1, map_w // 16)  # 16x downscale for stronger blur
+            blur_h = max(1, map_h // 16)  # This gives ~48 pixel effective blur radius
+            
+            # Scale down to create blur effect
+            blurred_mask = pygame.transform.smoothscale(mask, (blur_w, blur_h))
+            
+            # Scale back up to original size
+            blurred_mask = pygame.transform.smoothscale(blurred_mask, (map_w, map_h))
+            
+            # Create the final overlay using the blurred mask as alpha
+            overlay = pygame.Surface((map_w, map_h), pygame.SRCALPHA)
+            overlay.fill((0, 0, 0, 0))  # Start transparent
+            
+            # Apply the blurred mask as alpha for night areas
+            for y in range(0, map_h, 4):  # Smaller step for final alpha application
+                for x in range(0, map_w, 4):
+                    try:
+                        # Get the mask value (0-255)
+                        mask_color = blurred_mask.get_at((x, y))
+                        mask_value = mask_color[0]  # Use red channel (they're all the same in grayscale)
+                        
+                        # Invert the mask: 255 (day) becomes 0 (transparent), 0 (night) becomes 64 (25% black)
+                        alpha = int((255 - mask_value) * 64 / 255)
+                        
+                        if alpha > 0:
+                            # Draw shadow pixel
+                            shadow_rect = pygame.Rect(x, y, 4, 4)
+                            shadow_surface = pygame.Surface((4, 4), pygame.SRCALPHA)
+                            shadow_surface.fill((0, 0, 0, alpha))
+                            overlay.blit(shadow_surface, (x, y))
+                            
+                    except (IndexError, pygame.error):
+                        # Skip points that are out of bounds
+                        continue
+        else:
+            # Fallback: create empty overlay
+            overlay = pygame.Surface((map_w, map_h), pygame.SRCALPHA)
+            overlay.fill((0, 0, 0, 0))
         
         # Cache the entire world map overlay
         self.day_night_cache = overlay
