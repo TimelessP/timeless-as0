@@ -82,18 +82,19 @@ class AirshipSoundEngine:
         self.is_engine_running = engine.get("running", False) and self.simulator.running
         self.volume = settings.get("soundVolume", 0.5)  # Default to 50% if not set
         
-        # Extract audio-relevant parameters only if engine is running
+        # Always read airspeed (needed for wind noise regardless of engine state)
+        self.current_airspeed = motion.get("indicatedAirspeed", 0.0)
+        
+        # Extract engine-relevant parameters only if engine is running
         if self.is_engine_running:
             self.current_rpm = engine.get("rpm", 0.0)
             self.current_pitch = controls.get("propeller", 0.0)  # 0.0 to 1.0
             self.current_mixture = controls.get("mixture", 0.0)  # 0.0 to 1.0
-            self.current_airspeed = motion.get("indicatedAirspeed", 0.0)
         else:
-            # Engine off - no sound parameters
+            # Engine off - no engine sound parameters
             self.current_rpm = 0.0
             self.current_pitch = 0.0
             self.current_mixture = 0.0
-            self.current_airspeed = 0.0
         
         # Debug: Print updated values
         # print(f"Audio update: RPM={self.current_rpm:.0f}, Pitch={self.current_pitch:.2f}, Mix={self.current_mixture:.2f}, Speed={self.current_airspeed:.1f}")
@@ -108,7 +109,7 @@ class AirshipSoundEngine:
         num_samples = int(duration * self.sample_rate)
         samples = np.zeros(num_samples, dtype=np.float32)
         
-        if self.current_rpm <= 0:
+        if self.current_rpm <= 50.0:  # Effectively silent below 50 RPM
             return samples
             
         # Calculate propeller frequency (assuming 2-blade prop)
@@ -162,7 +163,7 @@ class AirshipSoundEngine:
         num_samples = int(duration * self.sample_rate)
         samples = np.zeros(num_samples, dtype=np.float32)
         
-        if self.current_rpm <= 0:
+        if self.current_rpm <= 50.0:  # Effectively silent below 50 RPM
             return samples
             
         # Engine firing frequency (6 cylinders, each fires once per revolution)
@@ -218,7 +219,7 @@ class AirshipSoundEngine:
         
         # Airspeed affects both amplitude and frequency content
         speed_factor = min(self.current_airspeed / 100.0, 1.0)  # Normalize to 0-1
-        wind_amplitude = speed_factor * 0.15  # Wind amplitude based on speed
+        wind_amplitude = speed_factor * 0.30  # Wind amplitude based on speed (doubled for better audibility)
         
         dt = 1.0 / self.sample_rate
         wind_samples = np.zeros(num_samples, dtype=np.float32)
@@ -315,14 +316,21 @@ class AirshipSoundEngine:
         
         num_samples = int(duration * self.sample_rate)
         
-        # If simulation is paused or engine is off, return silence
-        if self.is_simulation_paused or not self.is_engine_running or self.volume <= 0.0:
+        # If simulation is paused or volume is off, return complete silence
+        if self.is_simulation_paused or self.volume <= 0.0:
             stereo_audio = np.zeros((num_samples, 2), dtype=np.float32)
             return stereo_audio
         
-        # Generate individual sound components
-        propeller_audio = self.generate_propeller_wave(duration)
-        engine_audio = self.generate_engine_wave(duration)
+        # Generate individual sound components based on engine and motion state
+        if self.is_engine_running:
+            propeller_audio = self.generate_propeller_wave(duration)
+            engine_audio = self.generate_engine_wave(duration)
+        else:
+            # Engine is off - no propeller or engine sounds
+            propeller_audio = np.zeros(num_samples, dtype=np.float32)
+            engine_audio = np.zeros(num_samples, dtype=np.float32)
+        
+        # Wind noise is always generated based on airspeed (independent of engine state)
         wind_audio = self.generate_wind_noise(duration)
         
         # Mix the audio sources
