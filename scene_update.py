@@ -111,23 +111,29 @@ class SceneUpdate:
         try:
             script_dir = os.path.dirname(os.path.abspath(__file__))
             pyproject_path = os.path.join(script_dir, "pyproject.toml")
+            print(f"📁 Looking for pyproject.toml at: {pyproject_path}")
             
             if os.path.exists(pyproject_path):
+                print(f"✅ Found pyproject.toml")
                 with open(pyproject_path, "rb") as f:
                     if tomllib:
                         data = tomllib.load(f)
                         self.current_version = data.get("project", {}).get("version", "unknown")
+                        print(f"📋 Parsed current version from TOML: '{self.current_version}'")
                     else:
                         # Fallback parsing for older Python
+                        print("📋 Using fallback TOML parsing for current version...")
                         content = f.read().decode('utf-8')
                         for line in content.split('\n'):
                             if 'version =' in line:
                                 self.current_version = line.split('"')[1]
+                                print(f"📋 Extracted current version from line: '{line.strip()}' → '{self.current_version}'")
                                 break
             else:
+                print(f"❌ pyproject.toml not found at {pyproject_path}")
                 self.current_version = "unknown"
         except Exception as e:
-            print(f"Error reading version: {e}")
+            print(f"❌ Error reading current version: {e}")
             self.current_version = "unknown"
     
     def _check_latest_version(self):
@@ -142,10 +148,12 @@ class SceneUpdate:
         try:
             # GitHub raw file URL for main branch
             url = "https://raw.githubusercontent.com/TimelessP/timeless-as0/main/pyproject.toml"
+            print(f"🌐 Fetching version from: {url}")
             
             if urllib.request:
                 with urllib.request.urlopen(url, timeout=10) as response:
                     content = response.read().decode('utf-8')
+                    print(f"📄 Fetched {len(content)} characters from GitHub")
             else:
                 # Fallback - this shouldn't happen on modern Python
                 self.update_status = "Update checking not supported on this Python version"
@@ -155,19 +163,29 @@ class SceneUpdate:
                 # Parse TOML properly
                 data = tomllib.loads(content)
                 self.latest_version = data.get("project", {}).get("version", "unknown")
+                print(f"📋 Parsed version from TOML: '{self.latest_version}'")
             else:
                 # Fallback parsing
+                print("📋 Using fallback TOML parsing...")
                 for line in content.split('\n'):
                     if 'version =' in line:
                         self.latest_version = line.split('"')[1]
+                        print(f"📋 Extracted version from line: '{line.strip()}' → '{self.latest_version}'")
                         break
             
             # Compare versions
             if self.latest_version and self.current_version:
+                print(f"🔍 Version comparison:")
+                print(f"   Current version: '{self.current_version}'")
+                print(f"   Latest from GitHub: '{self.latest_version}'")
+                
                 version_diff = self._version_compare(self.latest_version, self.current_version)
+                print(f"   Version comparison result: {version_diff} (1=newer available, 0=same, -1=dev ahead)")
+                
                 if version_diff > 0:
                     self.update_available = True
                     self.update_status = f"Update available: v{self.latest_version}"
+                    print(f"✅ Update available: {self.current_version} → {self.latest_version}")
                     # Enable update buttons
                     for widget in self.widgets:
                         if widget["id"] in ["update_now", "remind_later"]:
@@ -178,17 +196,22 @@ class SceneUpdate:
                 elif version_diff < 0:
                     self.update_available = False
                     self.update_status = f"Development version (v{self.current_version}) - newer than released (v{self.latest_version})"
+                    print(f"✅ Development version ahead: {self.current_version} > {self.latest_version}")
                     # Notify main menu (no update available)
                     if self.main_menu_scene:
                         self.main_menu_scene.set_update_available(False)
                 else:
                     self.update_available = False
                     self.update_status = "You have the latest version"
+                    print(f"✅ Up to date: {self.current_version} = {self.latest_version}")
                     # Notify main menu
                     if self.main_menu_scene:
                         self.main_menu_scene.set_update_available(False)
             else:
                 self.update_status = "Could not determine versions"
+                print(f"❌ Version determination failed:")
+                print(f"   Current version: '{self.current_version}'")
+                print(f"   Latest from GitHub: '{self.latest_version}'")
                 
         except urllib.error.URLError as e:
             self.update_status = f"Network error: {str(e)}"
@@ -204,8 +227,11 @@ class SceneUpdate:
         """Compare two version strings. Returns 1 if v1 > v2, -1 if v1 < v2, 0 if equal"""
         def version_parts(v):
             try:
-                return [int(x) for x in v.split('.')]
-            except:
+                parts = [int(x) for x in v.split('.')]
+                print(f"   Parsed '{v}' → {parts}")
+                return parts
+            except Exception as e:
+                print(f"   Failed to parse '{v}': {e}")
                 return [0, 0, 0]
         
         v1_parts = version_parts(version1)
@@ -216,11 +242,17 @@ class SceneUpdate:
         v1_parts.extend([0] * (max_len - len(v1_parts)))
         v2_parts.extend([0] * (max_len - len(v2_parts)))
         
+        print(f"   Comparing {v1_parts} vs {v2_parts}")
+        
         for i in range(max_len):
             if v1_parts[i] > v2_parts[i]:
+                print(f"   → {version1} > {version2} (at position {i}: {v1_parts[i]} > {v2_parts[i]})")
                 return 1
             elif v1_parts[i] < v2_parts[i]:
+                print(f"   → {version1} < {version2} (at position {i}: {v1_parts[i]} < {v2_parts[i]})")
                 return -1
+        
+        print(f"   → {version1} = {version2}")
         return 0
     
     def _perform_update(self):
