@@ -379,7 +379,16 @@ class SceneUpdate:
                 # Toggle the auto-update setting
                 settings = self.simulator.get_settings()
                 current_setting = settings.get("checkForUpdates", True)
-                self.simulator.set_setting("checkForUpdates", not current_setting)
+                new_setting = not current_setting
+                self.simulator.set_setting("checkForUpdates", new_setting)
+                
+                # If we're re-enabling auto-updates, reset the last check time
+                # so the next auto check will run immediately regardless of when we last checked
+                if new_setting and not current_setting:
+                    # Reset to epoch time (1970) to ensure next auto check runs
+                    self.simulator.set_setting("lastUpdateCheck", 0.0)
+                    print("🔄 Auto-updates re-enabled - reset last check time for immediate next check")
+                
                 # Refresh the widgets to update button text
                 self._init_widgets()
                 # Update focus to the same button
