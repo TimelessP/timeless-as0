@@ -5,6 +5,8 @@ World map display with position and route planning
 import pygame
 import math
 import os
+import time
+import datetime
 from typing import List, Dict, Any, Optional
 
 # Constants
@@ -678,73 +680,104 @@ class NavigationScene:
             
         return points
 
-    def _calculate_day_night_boundary(self, utc_time_hours):
+    def _calculate_solar_illumination_circle(self, utc_time_hours, utc_date=None):
         """
-        Calculate the day/night terminator line for a given UTC time
+        Calculate the solar illumination circle on Earth's surface - the point where
+        the sun is directly overhead and the circle that defines the illuminated hemisphere
         
         Args:
             utc_time_hours: UTC time as decimal hours (0-24)
+            utc_date: datetime.date object, or None to use current UTC date
             
         Returns:
-            list: List of (lat, lon) tuples defining the terminator
+            tuple: (subsolar_lat, subsolar_lon, illuminated_points)
+                   where illuminated_points is a list of (lat, lon) on the day/night boundary
         """
         import time
         import datetime
         
-        # Calculate sun's longitude based on UTC time
-        # Sun's longitude = -15 * (UTC_hours - 12) degrees
-        # At UTC 12:00, sun is at longitude 0° (Greenwich)
-        sun_longitude = -15.0 * (utc_time_hours - 12.0)
-        sun_longitude = ((sun_longitude + 180) % 360) - 180  # Normalize to [-180, 180]
+        # Get current UTC date if not provided
+        if utc_date is None:
+            utc_time = time.gmtime()
+            utc_date = datetime.date(utc_time.tm_year, utc_time.tm_mon, utc_time.tm_mday)
         
-        # For simplicity, assume sun's declination is 0° (equinox)
-        # In reality, this varies seasonally between ±23.44°
-        sun_declination = 0.0
+        # Calculate subsolar point (where sun is directly overhead)
+        # Longitude: based on time of day
+        subsolar_lon = -15.0 * (utc_time_hours - 12.0)  # 15°/hour westward from Greenwich
+        subsolar_lon = ((subsolar_lon + 180) % 360) - 180  # Normalize to [-180, 180]
         
-        # Generate terminator points
+        # Latitude: based on Earth's axial tilt and day of year
+        max_declination = 23.44  # Earth's axial tilt in degrees
+        day_of_year = utc_date.timetuple().tm_yday
+        
+        # Summer solstice is approximately day 172 (June 21st)
+        # Calculate seasonal declination using accurate formula
+        declination_angle = (day_of_year - 172) * (2 * math.pi / 365.25)
+        subsolar_lat = max_declination * math.cos(declination_angle)
+        
+        # Generate points on the solar terminator (day/night boundary)
+        # The terminator is a great circle that is 90° away from the subsolar point
         terminator_points = []
         
-        # Generate points along the terminator (90° from sun position)
-        for lat in range(-90, 91, 5):  # Every 5 degrees of latitude
-            lat_rad = math.radians(lat)
-            sun_decl_rad = math.radians(sun_declination)
+        # Convert subsolar point to radians
+        subsolar_lat_rad = math.radians(subsolar_lat)
+        subsolar_lon_rad = math.radians(subsolar_lon)
+        
+        # Generate points on the terminator circle (90° from subsolar point)
+        for bearing_deg in range(0, 360, 3):  # Every 3 degrees for smooth curve
+            bearing_rad = math.radians(bearing_deg)
             
-            # Calculate longitude where sun angle is 90° (terminator)
-            # This is a simplified calculation - the actual terminator is more complex
-            try:
-                cos_hour_angle = -math.tan(lat_rad) * math.tan(sun_decl_rad)
-                
-                if cos_hour_angle > 1:
-                    # Polar night
-                    hour_angle = math.pi
-                elif cos_hour_angle < -1:
-                    # Polar day
-                    hour_angle = 0
-                else:
-                    hour_angle = math.acos(cos_hour_angle)
-                
-                # Convert hour angle to longitude offset from sun
-                lon_offset = math.degrees(hour_angle)
-                
-                # Two points on terminator (sunrise and sunset longitudes)
-                lon1 = sun_longitude + lon_offset
-                lon2 = sun_longitude - lon_offset
-                
-                # Normalize longitudes
-                lon1 = ((lon1 + 180) % 360) - 180
-                lon2 = ((lon2 + 180) % 360) - 180
-                
-                terminator_points.append((lat, lon1))
-                terminator_points.append((lat, lon2))
-                
-            except (ValueError, ZeroDivisionError):
-                # Handle edge cases at poles
-                continue
+            # Calculate point that is 90° away from subsolar point at this bearing
+            # Using spherical geometry to find points on great circle 90° from subsolar point
+            angular_distance = math.pi / 2  # 90 degrees in radians
+            
+            # Calculate terminator point using spherical trigonometry
+            term_lat_rad = math.asin(
+                math.sin(subsolar_lat_rad) * math.cos(angular_distance) +
+                math.cos(subsolar_lat_rad) * math.sin(angular_distance) * math.cos(bearing_rad)
+            )
+            
+            term_lon_rad = subsolar_lon_rad + math.atan2(
+                math.sin(bearing_rad) * math.sin(angular_distance) * math.cos(subsolar_lat_rad),
+                math.cos(angular_distance) - math.sin(subsolar_lat_rad) * math.sin(term_lat_rad)
+            )
+            
+            # Convert back to degrees and normalize
+            term_lat = math.degrees(term_lat_rad)
+            term_lon = math.degrees(term_lon_rad)
+            term_lon = ((term_lon + 180) % 360) - 180  # Normalize to [-180, 180]
+            
+            terminator_points.append((term_lat, term_lon))
         
-        # Sort points to create a continuous boundary
-        terminator_points.sort(key=lambda p: (p[1], p[0]))  # Sort by longitude, then latitude
+        return subsolar_lat, subsolar_lon, terminator_points
+
+    def _is_point_illuminated(self, lat, lon, subsolar_lat, subsolar_lon):
+        """
+        Determine if a point on Earth's surface is illuminated by the sun
         
-        return terminator_points
+        Args:
+            lat, lon: Point coordinates in degrees
+            subsolar_lat, subsolar_lon: Subsolar point coordinates in degrees
+            
+        Returns:
+            bool: True if illuminated (day), False if in shadow (night)
+        """
+        # Convert to radians
+        lat_rad = math.radians(lat)
+        lon_rad = math.radians(lon)
+        subsolar_lat_rad = math.radians(subsolar_lat)
+        subsolar_lon_rad = math.radians(subsolar_lon)
+        
+        # Calculate angular distance from point to subsolar point using haversine formula
+        delta_lat = lat_rad - subsolar_lat_rad
+        delta_lon = lon_rad - subsolar_lon_rad
+        
+        a = (math.sin(delta_lat/2)**2 + 
+             math.cos(lat_rad) * math.cos(subsolar_lat_rad) * math.sin(delta_lon/2)**2)
+        angular_distance = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+        
+        # Point is illuminated if it's less than 90° from the subsolar point
+        return angular_distance < math.pi / 2
 
     def _draw_spherical_line_segments(self, surface, color, lat_lon_points, width, alpha, map_rect, display_w, display_h, max_range):
         """
@@ -799,57 +832,68 @@ class NavigationScene:
 
     def _draw_day_night_overlay(self, surface):
         """
-        Draw day/night shading overlay on the map
+        Draw realistic day/night shading overlay using proper solar illumination circle calculation
         """
         import time
+        import datetime
         
-        # Get current UTC time
+        # Get current UTC time and date
         utc_time = time.gmtime()
         utc_hours = utc_time.tm_hour + utc_time.tm_min / 60.0 + utc_time.tm_sec / 3600.0
+        utc_date = datetime.date(utc_time.tm_year, utc_time.tm_mon, utc_time.tm_mday)
         
         # Create overlay surface for day/night shading
         display_w = LOGICAL_SIZE - 16   # 304 pixels
         display_h = 290 - 56            # 234 pixels
         
-        # Create an overlay that matches the current map viewport
-        overlay = pygame.Surface((display_w, display_h), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 0))  # Fully transparent
+        # Create larger overlay to match our other subsurface approach
+        max_range = 500  # Same as position/waypoint indicators for consistency
+        overlay_w = display_w + max_range * 2
+        overlay_h = display_h + max_range * 2
+        
+        overlay = pygame.Surface((overlay_w, overlay_h), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 0))  # Fully transparent background
         
         # Get current map viewport
         map_rect = self._get_visible_map_rect()
         
-        # Calculate day/night regions
-        terminator_points = self._calculate_day_night_boundary(utc_hours)
+        # Calculate solar illumination circle with proper subsolar point
+        subsolar_lat, subsolar_lon, terminator_points = self._calculate_solar_illumination_circle(utc_hours, utc_date)
         
         if len(terminator_points) > 3:
-            # Convert terminator points to screen coordinates
-            screen_points = []
-            for lat, lon in terminator_points:
-                map_x, map_y = self._lat_lon_to_map_coords(lat, lon)
-                
-                # Check if point is in viewport
-                if map_rect.collidepoint(map_x, map_y):
-                    rel_x = (map_x - map_rect.x) / map_rect.width
-                    rel_y = (map_y - map_rect.y) / map_rect.height
-                    
-                    screen_x = rel_x * display_w
-                    screen_y = rel_y * display_h
-                    screen_points.append((int(screen_x), int(screen_y)))
+            # Fill night areas using proper solar illumination calculation
+            night_color = (0, 0, 0, 25)  # 10% opacity black (25/255 ≈ 10%)
             
-            # Draw night-time shading (simplified - just shade the western hemisphere)
-            # This is a placeholder - a proper implementation would need more sophisticated
-            # polygon filling based on the terminator curve
-            if len(screen_points) > 0:
-                # Create a simple night overlay - shade areas west of the sun
-                night_surface = pygame.Surface((display_w, display_h), pygame.SRCALPHA)
-                night_surface.fill((0, 0, 50, 25))  # Dark blue with 10% opacity
-                
-                # For now, apply uniform shading - in a real implementation,
-                # you'd calculate which areas are in shadow based on the terminator
-                overlay.blit(night_surface, (0, 0))
+            # Sample points across the overlay and determine illumination status
+            sample_step = 8  # Sample every 8 pixels for performance
+            for y in range(0, overlay_h, sample_step):
+                for x in range(0, overlay_w, sample_step):
+                    try:
+                        # Convert overlay coordinates to lat/lon
+                        rel_x = (x - max_range) / display_w
+                        rel_y = (y - max_range) / display_h
+                        
+                        map_x = map_rect.x + rel_x * map_rect.width
+                        map_y = map_rect.y + rel_y * map_rect.height
+                        
+                        lat, lon = self._map_coords_to_lat_lon(int(map_x), int(map_y))
+                        
+                        # Check if this point is illuminated using proper solar calculation
+                        if not self._is_point_illuminated(lat, lon, subsolar_lat, subsolar_lon):
+                            # This point is in shadow (night)
+                            night_rect = pygame.Rect(x, y, sample_step, sample_step)
+                            night_surface = pygame.Surface((sample_step, sample_step), pygame.SRCALPHA)
+                            night_surface.fill(night_color)
+                            overlay.blit(night_surface, (x, y))
+                            
+                    except Exception:
+                        # Skip points that can't be converted (edge cases)
+                        continue
         
-        # Blit the day/night overlay to the main surface
-        surface.blit(overlay, (8, 56))
+        # Blit only the visible portion of the overlay onto the main surface
+        visible_rect = pygame.Rect(max_range, max_range, display_w, display_h)
+        visible_portion = overlay.subsurface(visible_rect)
+        surface.blit(visible_portion, (8, 56))
 
     def _draw_transparent_circle(self, surface, color, center, radius, alpha):
         """Draw a circle with transparency"""
@@ -915,8 +959,8 @@ class NavigationScene:
         if self.world_map:
             self._draw_world_map(surface)
         
-        # Draw day/night overlay (optional - can be enabled/disabled)
-        # self._draw_day_night_overlay(surface)
+        # Draw day/night overlay (realistic Earth axis tilt)
+        self._draw_day_night_overlay(surface)
         
         # Draw current position on map (with spherical geometry)
         self._draw_position_indicator(surface)
