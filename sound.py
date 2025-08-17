@@ -69,6 +69,36 @@ class AirshipSoundEngine:
         self.is_engine_running = True  # Engine state
         self.is_simulation_paused = False  # Simulation pause state
         
+        # Individual audio track controls for testing and debugging
+        self.track_controls = {
+            # Propeller tracks
+            "propeller_blade1": {"enabled": True, "volume": 1.0},
+            "propeller_blade2": {"enabled": True, "volume": 1.0},
+            "propeller_harmonics": {"enabled": True, "volume": 1.0},
+            
+            # Engine combustion tracks (individual cylinders)
+            "engine_cylinder0": {"enabled": True, "volume": 1.0},
+            "engine_cylinder1": {"enabled": True, "volume": 1.0},
+            "engine_cylinder2": {"enabled": True, "volume": 1.0},
+            "engine_cylinder3": {"enabled": True, "volume": 1.0},
+            "engine_cylinder4": {"enabled": True, "volume": 1.0},
+            "engine_cylinder5": {"enabled": True, "volume": 1.0},
+            
+            # Engine rumble tracks
+            "engine_rumble_fundamental": {"enabled": True, "volume": 1.0},
+            "engine_rumble_harmonic": {"enabled": True, "volume": 1.0},
+            
+            # Wind noise tracks
+            "wind_low_freq": {"enabled": True, "volume": 1.0},
+            "wind_low_harmonic1": {"enabled": True, "volume": 1.0},
+            "wind_low_harmonic2": {"enabled": True, "volume": 1.0},
+            "wind_mid_freq": {"enabled": True, "volume": 1.0},
+            "wind_mid_harmonic1": {"enabled": True, "volume": 1.0},
+            "wind_mid_harmonic2": {"enabled": True, "volume": 1.0},
+            "wind_high_freq": {"enabled": True, "volume": 1.0},
+            "wind_gusting": {"enabled": True, "volume": 1.0},
+        }
+        
         # Engine configuration
         self.engine_cylinders = 6  # 6-cylinder radial engine
         
@@ -137,6 +167,11 @@ class AirshipSoundEngine:
         dt = 1.0 / self.sample_rate
         omega = 2 * math.pi * prop_frequency
         
+        # Separate blade components for individual control
+        blade1_samples = np.zeros(num_samples, dtype=np.float32)
+        blade2_samples = np.zeros(num_samples, dtype=np.float32)
+        harmonic_samples = np.zeros(num_samples, dtype=np.float32)
+        
         for i in range(num_samples):
             t = i * dt
             
@@ -144,21 +179,23 @@ class AirshipSoundEngine:
             blade1_phase = self.propeller_blade1_phase + omega * t
             blade2_phase = self.propeller_blade2_phase + omega * t
             
-            # Each blade creates a positive pressure pulse (compression wave)
-            # Use rectified sine wave for positive-only pressure
-            blade1_pressure = max(0, math.sin(blade1_phase)) ** 1.5  # Sharp attack, smooth decay
-            blade2_pressure = max(0, math.sin(blade2_phase)) ** 1.5
+            # Blade 1 pressure wave
+            if self.track_controls["propeller_blade1"]["enabled"]:
+                blade1_pressure = max(0, math.sin(blade1_phase)) ** 1.5  # Sharp attack, smooth decay
+                blade1_samples[i] = blade1_pressure * pitch_amplitude * self.track_controls["propeller_blade1"]["volume"]
             
-            # Combine pressure waves from both blades
-            combined_pressure = blade1_pressure + blade2_pressure
+            # Blade 2 pressure wave
+            if self.track_controls["propeller_blade2"]["enabled"]:
+                blade2_pressure = max(0, math.sin(blade2_phase)) ** 1.5
+                blade2_samples[i] = blade2_pressure * pitch_amplitude * self.track_controls["propeller_blade2"]["volume"]
             
-            # Add very subtle harmonics for blade tip effects (much reduced to minimize high-frequency artifacts)
-            tip_harmonic = 0.03 * max(0, math.sin(blade1_phase * 2)) + 0.03 * max(0, math.sin(blade2_phase * 2))
-            
-            # Apply pitch-dependent amplitude
-            propeller_wave = (combined_pressure + tip_harmonic) * pitch_amplitude
-            
-            samples[i] = propeller_wave
+            # Blade tip harmonics
+            if self.track_controls["propeller_harmonics"]["enabled"]:
+                tip_harmonic = 0.03 * max(0, math.sin(blade1_phase * 2)) + 0.03 * max(0, math.sin(blade2_phase * 2))
+                harmonic_samples[i] = tip_harmonic * pitch_amplitude * self.track_controls["propeller_harmonics"]["volume"]
+        
+        # Combine all propeller components
+        samples = blade1_samples + blade2_samples + harmonic_samples
         
         # Update phase accumulators for both blades
         self.propeller_blade1_phase += omega * duration
@@ -206,6 +243,14 @@ class AirshipSoundEngine:
         for cylinder_idx in range(6):
             cylinder_track = np.zeros(num_samples, dtype=np.float32)
             
+            # Check if this cylinder is enabled
+            cylinder_track_name = f"engine_cylinder{cylinder_idx}"
+            if not self.track_controls[cylinder_track_name]["enabled"]:
+                cylinder_tracks.append(cylinder_track)
+                continue
+            
+            cylinder_volume = self.track_controls[cylinder_track_name]["volume"]
+            
             # Calculate when this cylinder should fire within the current buffer
             # Each cylinder fires at a different offset within the engine cycle
             cylinder_cycle_offset = cylinder_idx / 6.0  # 0.0, 0.167, 0.333, 0.5, 0.667, 0.833
@@ -243,15 +288,26 @@ class AirshipSoundEngine:
                             decay_progress = (t_combustion - attack_duration) / decay_duration
                             envelope = math.exp(-decay_progress * 3.0)  # Exponential decay
                         
+                        # Ensure envelope ends at zero (force last sample to zero)
+                        if i == combustion_samples - 1:
+                            envelope = 0.0
+                        
                         # Create pressure wave with realistic combustion character
                         pressure_wave = envelope * mixture_amplitude
+                        
+                        # Add bipolar polarity to eliminate DC offset
+                        if (cylinder_idx + int(firing_time * 13.7)) % 2 == 0:
+                            pressure_wave = -pressure_wave
                         
                         # Add cylinder-specific character (slight variations)
                         cylinder_variation = 1.0 + 0.1 * math.sin(self.engine_time_accumulator * 13.7 + cylinder_idx * 0.8)
                         pressure_wave *= cylinder_variation
                         
-                        # Use max() within cylinder track to handle overlapping events naturally
-                        cylinder_track[sample_idx] = max(cylinder_track[sample_idx], pressure_wave)
+                        # Apply cylinder volume control
+                        pressure_wave *= cylinder_volume
+                        
+                        # Use additive synthesis instead of max() to prevent DC buildup
+                        cylinder_track[sample_idx] += pressure_wave
                 
                 # Next firing event for this cylinder (one engine cycle later)
                 firing_time += engine_period
@@ -264,12 +320,39 @@ class AirshipSoundEngine:
         for track in cylinder_tracks:
             combined_engine_wave += track
         
-        # Add low-frequency rumble (engine block vibration)
+        # Add low-frequency rumble (engine block vibration) with polarity variation
+        rumble_fundamental = np.zeros(num_samples, dtype=np.float32)
+        rumble_harmonic = np.zeros(num_samples, dtype=np.float32)
+        
         for i in range(num_samples):
             t = i * dt
             rumble_phase = 2 * math.pi * engine_rotation_freq * (self.engine_time_accumulator + t)
-            rumble = 0.15 * math.sin(rumble_phase) + 0.08 * math.sin(rumble_phase * 1.5)
-            combined_engine_wave[i] += rumble
+            
+            # Fundamental rumble frequency
+            if self.track_controls["engine_rumble_fundamental"]["enabled"]:
+                fundamental = 0.15 * math.sin(rumble_phase)
+                rumble_fundamental[i] = fundamental * self.track_controls["engine_rumble_fundamental"]["volume"]
+            
+            # Harmonic rumble frequency
+            if self.track_controls["engine_rumble_harmonic"]["enabled"]:
+                harmonic = 0.08 * math.sin(rumble_phase * 1.5)
+                rumble_harmonic[i] = harmonic * self.track_controls["engine_rumble_harmonic"]["volume"]
+        
+        # Add rumble components to the combined wave
+        combined_engine_wave += rumble_fundamental + rumble_harmonic
+        
+        # Apply crossfade at buffer boundaries to eliminate discontinuities
+        fade_samples = min(64, num_samples // 8)  # 64 samples (~3ms) or 1/8 buffer
+        
+        if fade_samples > 0:
+            # Fade in at start (only if not the first buffer)
+            if self.engine_time_accumulator > 0:
+                fade_in = np.linspace(0.0, 1.0, fade_samples)
+                combined_engine_wave[:fade_samples] *= fade_in
+            
+            # Fade out at end
+            fade_out = np.linspace(1.0, 0.0, fade_samples)
+            combined_engine_wave[-fade_samples:] *= fade_out
         
         # Update engine time accumulator for continuous playback
         self.engine_time_accumulator += duration
@@ -308,10 +391,14 @@ class AirshipSoundEngine:
         # Low frequency rumble (hull vibration from air pressure)
         low_freq = 20.0 + speed_factor * 30.0  # 20-50 Hz
         low_noise = np.zeros(num_samples, dtype=np.float32)
+        low_harmonic1 = np.zeros(num_samples, dtype=np.float32)
+        low_harmonic2 = np.zeros(num_samples, dtype=np.float32)
         
         # Mid frequency hiss (air turbulence) - multiple frequencies for texture
         mid_freq = 200.0 + speed_factor * 400.0  # 200-600 Hz
         mid_noise = np.zeros(num_samples, dtype=np.float32)
+        mid_harmonic1 = np.zeros(num_samples, dtype=np.float32)
+        mid_harmonic2 = np.zeros(num_samples, dtype=np.float32)
         
         # High frequency whistle (rigging and sharp edges)
         high_freq = 1000.0 + speed_factor * 2000.0  # 1-3 kHz
@@ -324,25 +411,39 @@ class AirshipSoundEngine:
             
             # Low frequency: multiple harmonics for complexity
             low_phase = self.noise_phase + 2 * math.pi * low_freq * t
-            low_noise[i] = (0.3 * math.sin(low_phase) + 
-                           0.2 * math.sin(low_phase * 1.33) +
-                           0.1 * math.sin(low_phase * 1.77))
+            
+            if self.track_controls["wind_low_freq"]["enabled"]:
+                low_noise[i] = 0.3 * math.sin(low_phase) * self.track_controls["wind_low_freq"]["volume"]
+            
+            if self.track_controls["wind_low_harmonic1"]["enabled"]:
+                low_harmonic1[i] = 0.2 * math.sin(low_phase * 1.33) * self.track_controls["wind_low_harmonic1"]["volume"]
+                
+            if self.track_controls["wind_low_harmonic2"]["enabled"]:
+                low_harmonic2[i] = 0.1 * math.sin(low_phase * 1.77) * self.track_controls["wind_low_harmonic2"]["volume"]
             
             # Mid frequency: rapid modulation for turbulence effect (with subtle variance)
             mid_phase = self.noise_phase + 2 * math.pi * mid_freq * t
             mid_modulation = 1.0 + 0.5 * math.sin(2 * math.pi * 7.0 * t)
             # Add subtle phase variance for more natural turbulence
             mid_variance = 0.05 * math.sin(2 * math.pi * 13.0 * t + 0.7)
-            mid_noise[i] = (0.4 * math.sin(mid_phase + mid_variance) * mid_modulation + 
-                           0.2 * math.sin(mid_phase * 1.41) +
-                           0.1 * math.sin(mid_phase * 2.13))
+            
+            if self.track_controls["wind_mid_freq"]["enabled"]:
+                mid_noise[i] = 0.4 * math.sin(mid_phase + mid_variance) * mid_modulation * self.track_controls["wind_mid_freq"]["volume"]
+                
+            if self.track_controls["wind_mid_harmonic1"]["enabled"]:
+                mid_harmonic1[i] = 0.2 * math.sin(mid_phase * 1.41) * self.track_controls["wind_mid_harmonic1"]["volume"]
+                
+            if self.track_controls["wind_mid_harmonic2"]["enabled"]:
+                mid_harmonic2[i] = 0.1 * math.sin(mid_phase * 2.13) * self.track_controls["wind_mid_harmonic2"]["volume"]
             
             # High frequency: fast modulation for rigging effects (reduced amplitude, added variance)
             high_phase = self.noise_phase + 2 * math.pi * high_freq * t
             high_modulation = 1.0 + 0.8 * math.sin(2 * math.pi * 17.0 * t)
             # Add subtle phase variance to reduce whistly character
             variance = 0.1 * math.sin(2 * math.pi * 41.0 * t + 1.5)
-            high_noise[i] = 0.1 * math.sin(high_phase + variance) * high_modulation  # Halved from 0.2 to 0.1
+            
+            if self.track_controls["wind_high_freq"]["enabled"]:
+                high_noise[i] = 0.1 * math.sin(high_phase + variance) * high_modulation * self.track_controls["wind_high_freq"]["volume"]
         
         # Apply filtering to each frequency band and combine
         for i in range(num_samples):
@@ -363,7 +464,11 @@ class AirshipSoundEngine:
             # Combine frequency bands with speed-dependent mixing
             wind_samples[i] = (
                 low_noise[i] * 0.4 +           # Always present
+                low_harmonic1[i] +
+                low_harmonic2[i] +
                 mid_filtered * 0.4 * speed_factor +  # Increases with speed
+                mid_harmonic1[i] * speed_factor +
+                mid_harmonic2[i] * speed_factor +
                 high_filtered * 0.2 * (speed_factor ** 2)  # Prominent at high speeds
             )
         
@@ -371,15 +476,19 @@ class AirshipSoundEngine:
         wind_samples = wind_samples * wind_amplitude
         
         # Add gusting effect (slow amplitude modulation)
-        gust_frequency = 0.3  # 0.3 Hz gusting
-        for i in range(num_samples):
-            t = i * dt
-            gust_factor = 1.0 + 0.3 * math.sin(2 * math.pi * gust_frequency * t + self.noise_phase)
-            wind_samples[i] *= gust_factor
+        if self.track_controls["wind_gusting"]["enabled"]:
+            gust_frequency = 0.3  # 0.3 Hz gusting
+            gust_volume = self.track_controls["wind_gusting"]["volume"]
+            for i in range(num_samples):
+                t = i * dt
+                gust_factor = 1.0 + 0.3 * math.sin(2 * math.pi * gust_frequency * t + self.noise_phase) * gust_volume
+                wind_samples[i] *= gust_factor
         
         # Update noise phase for continuous gusting
-        self.noise_phase += 2 * math.pi * gust_frequency * duration
-        self.noise_phase = self.noise_phase % (2 * math.pi)
+        if self.track_controls["wind_gusting"]["enabled"]:
+            gust_frequency = 0.3  # 0.3 Hz gusting
+            self.noise_phase += 2 * math.pi * gust_frequency * duration
+            self.noise_phase = self.noise_phase % (2 * math.pi)
         
         return wind_samples
         
@@ -569,6 +678,57 @@ class AirshipSoundEngine:
     def set_hull_filter(self, enabled: bool):
         """Enable or disable hull filtering effect"""
         self.is_hull_filter = enabled
+        
+    def set_track_enabled(self, track_name: str, enabled: bool):
+        """Enable or disable a specific audio track"""
+        if track_name in self.track_controls:
+            self.track_controls[track_name]["enabled"] = enabled
+        else:
+            print(f"Warning: Unknown track '{track_name}'")
+            
+    def set_track_volume(self, track_name: str, volume: float):
+        """Set volume for a specific audio track (0.0 to 1.0)"""
+        if track_name in self.track_controls:
+            self.track_controls[track_name]["volume"] = max(0.0, min(1.0, volume))
+        else:
+            print(f"Warning: Unknown track '{track_name}'")
+            
+    def disable_all_tracks(self):
+        """Disable all audio tracks"""
+        for track in self.track_controls:
+            self.track_controls[track]["enabled"] = False
+            
+    def enable_all_tracks(self):
+        """Enable all audio tracks"""
+        for track in self.track_controls:
+            self.track_controls[track]["enabled"] = True
+            
+    def set_track_group_enabled(self, group: str, enabled: bool):
+        """Enable/disable groups of tracks"""
+        if group == "propeller":
+            tracks = ["propeller_blade1", "propeller_blade2", "propeller_harmonics"]
+        elif group == "engine_cylinders":
+            tracks = [f"engine_cylinder{i}" for i in range(6)]
+        elif group == "engine_rumble":
+            tracks = ["engine_rumble_fundamental", "engine_rumble_harmonic"]
+        elif group == "wind":
+            tracks = ["wind_low_freq", "wind_low_harmonic1", "wind_low_harmonic2",
+                     "wind_mid_freq", "wind_mid_harmonic1", "wind_mid_harmonic2",
+                     "wind_high_freq", "wind_gusting"]
+        else:
+            print(f"Warning: Unknown track group '{group}'")
+            return
+            
+        for track in tracks:
+            self.set_track_enabled(track, enabled)
+            
+    def get_track_list(self):
+        """Get list of all available audio tracks"""
+        return list(self.track_controls.keys())
+        
+    def get_track_info(self):
+        """Get current status of all audio tracks"""
+        return self.track_controls.copy()
         
     def get_audio_info(self) -> Dict[str, Any]:
         """Get current audio engine status for debugging"""
