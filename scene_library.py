@@ -307,9 +307,9 @@ class LibraryScene:
         # Instructions
         if self.books:
             if self.focus_index >= len(self.widgets):
-                instr_text = "↑↓: Select book  Enter: Read  Space: Move to Cargo  Tab: Buttons"
+                instr_text = "Up/Down: Select book  Enter: Read  Space: Move to Cargo  Tab: Buttons"
             else:
-                instr_text = "↑↓: Navigate buttons  Enter: Activate  Tab: Book list"
+                instr_text = "Up/Down: Navigate buttons  Enter: Activate  Tab: Book list"
         else:
             instr_text = "Collect book crates and use them to add books to your library"
         

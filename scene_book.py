@@ -365,7 +365,7 @@ class BookScene:
             self._render_button(screen, widget)
 
         # Instructions
-        instr_text = "←→: Turn pages  Esc: Close  Click page to turn"
+        instr_text = "Left/Right: Turn pages  Esc: Close  Click page to turn"
         instr_surface = self.font.render(instr_text, self.is_text_antialiased, BUTTON_TEXT_COLOR)
         instr_rect = instr_surface.get_rect(center=(160, 300))
         screen.blit(instr_surface, instr_rect)
