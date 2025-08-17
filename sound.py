@@ -149,8 +149,11 @@ class AirshipSoundEngine:
         """
         Generate propeller sound wave based on two-blade propeller physics.
         
-        Two propeller blades create separate pressure pulses, offset by 180°.
-        Each blade creates a positive pressure wave (compression) as it passes.
+        COMPLETELY REWRITTEN FOR ARTIFACT ELIMINATION:
+        - Pure sinusoidal basis to eliminate all sharp transitions
+        - Smooth amplitude modulation for blade character
+        - No rectification or clipping operations
+        - Optimized for clean, artifact-free audio
         """
         num_samples = int(duration * self.sample_rate)
         samples = np.zeros(num_samples, dtype=np.float32)
@@ -162,49 +165,71 @@ class AirshipSoundEngine:
         prop_frequency = self.current_rpm / 60.0  # Hz (one full rotation)
         
         # Propeller pitch affects amplitude - higher pitch = more air displacement
-        pitch_amplitude = 0.3 + (self.current_pitch * 0.7)  # 0.3 to 1.0 base amplitude
+        pitch_amplitude = 0.15 + (self.current_pitch * 0.35)  # 0.15 to 0.5 amplitude (reduced for cleaner sound)
         
         dt = 1.0 / self.sample_rate
         omega = 2 * math.pi * prop_frequency
         
-        # Separate blade components for individual control
-        blade1_samples = np.zeros(num_samples, dtype=np.float32)
-        blade2_samples = np.zeros(num_samples, dtype=np.float32)
-        harmonic_samples = np.zeros(num_samples, dtype=np.float32)
-        
+        # Generate completely smooth propeller sound using pure sinusoidal components
         for i in range(num_samples):
             t = i * dt
             
-            # Calculate phase for each blade
+            # Calculate continuous phases for each blade
             blade1_phase = self.propeller_blade1_phase + omega * t
             blade2_phase = self.propeller_blade2_phase + omega * t
             
-            # Blade 1 pressure wave
+            total_sample = 0.0
+            
+            # Blade 1 - smooth sinusoidal with gentle amplitude modulation
             if self.track_controls["propeller_blade1"]["enabled"]:
-                blade1_pressure = max(0, math.sin(blade1_phase)) ** 1.5  # Sharp attack, smooth decay
-                blade1_samples[i] = blade1_pressure * pitch_amplitude * self.track_controls["propeller_blade1"]["volume"]
+                # Pure sine wave with smooth amplitude envelope
+                blade1_base = math.sin(blade1_phase)
+                # Gentle amplitude modulation to create blade character (no sharp edges)
+                blade1_envelope = 0.5 + 0.5 * math.sin(blade1_phase * 2)  # Creates 2 pulses per rotation
+                blade1_smooth = blade1_base * blade1_envelope * 0.4  # Reduced amplitude
+                
+                total_sample += blade1_smooth * self.track_controls["propeller_blade1"]["volume"]
             
-            # Blade 2 pressure wave
+            # Blade 2 - similar processing but phase-shifted
             if self.track_controls["propeller_blade2"]["enabled"]:
-                blade2_pressure = max(0, math.sin(blade2_phase)) ** 1.5
-                blade2_samples[i] = blade2_pressure * pitch_amplitude * self.track_controls["propeller_blade2"]["volume"]
+                blade2_base = math.sin(blade2_phase)
+                blade2_envelope = 0.5 + 0.5 * math.sin(blade2_phase * 2)
+                blade2_smooth = blade2_base * blade2_envelope * 0.4
+                
+                total_sample += blade2_smooth * self.track_controls["propeller_blade2"]["volume"]
             
-            # Blade tip harmonics
+            # Harmonics - very gentle harmonic content
             if self.track_controls["propeller_harmonics"]["enabled"]:
-                tip_harmonic = 0.03 * max(0, math.sin(blade1_phase * 2)) + 0.03 * max(0, math.sin(blade2_phase * 2))
-                harmonic_samples[i] = tip_harmonic * pitch_amplitude * self.track_controls["propeller_harmonics"]["volume"]
+                # Pure harmonic frequencies without any clipping or rectification
+                harmonic1 = 0.05 * math.sin(blade1_phase * 3)  # 3rd harmonic
+                harmonic2 = 0.03 * math.sin(blade2_phase * 3)
+                harmonic3 = 0.02 * math.sin((blade1_phase + blade2_phase) * 1.5)  # Beat frequency
+                
+                total_sample += (harmonic1 + harmonic2 + harmonic3) * self.track_controls["propeller_harmonics"]["volume"]
+            
+            # Apply pitch amplitude scaling
+            samples[i] = total_sample * pitch_amplitude
         
-        # Combine all propeller components
-        samples = blade1_samples + blade2_samples + harmonic_samples
+        # Apply very gentle crossfade at buffer boundaries
+        fade_samples = min(16, num_samples // 8)  # Shorter fade: 16 samples (~0.7ms)
         
-        # Update phase accumulators for both blades
+        if fade_samples > 0:
+            # Gentle fade in
+            fade_in = np.sin(np.linspace(0, math.pi/2, fade_samples)) ** 2  # Smooth sine-squared fade
+            samples[:fade_samples] *= fade_in
+            
+            # Gentle fade out
+            fade_out = np.cos(np.linspace(0, math.pi/2, fade_samples)) ** 2  # Smooth cosine-squared fade
+            samples[-fade_samples:] *= fade_out
+        
+        # Update phase accumulators for continuous playback
         self.propeller_blade1_phase += omega * duration
         self.propeller_blade1_phase = self.propeller_blade1_phase % (2 * math.pi)
         
         self.propeller_blade2_phase += omega * duration
         self.propeller_blade2_phase = self.propeller_blade2_phase % (2 * math.pi)
         
-        # Remove DC offset to eliminate pumping/breathing artifacts
+        # Final DC offset removal (should be minimal with pure sine waves)
         dc_offset = np.mean(samples)
         samples = samples - dc_offset
         
@@ -273,44 +298,70 @@ class AirshipSoundEngine:
                 combustion_samples = int(combustion_duration * self.sample_rate)
                 attack_samples = int(attack_duration * self.sample_rate)
                 
-                # Generate combustion pressure wave for this firing event
+                # Generate smooth combustion pressure wave for this firing event
+                # ARTIFACT ELIMINATION: Use smooth envelope curves without sharp transitions
                 for i in range(combustion_samples):
                     sample_idx = firing_start_sample + i
                     if 0 <= sample_idx < num_samples:
                         t_combustion = i / self.sample_rate  # Time within combustion event
                         
                         if t_combustion < attack_duration:
-                            # Fast attack phase - exponential rise
+                            # Smooth attack phase using sine-based curve instead of sharp exponential
                             attack_progress = t_combustion / attack_duration
-                            envelope = attack_progress ** 0.3  # Fast rise
+                            # Use sine curve for smooth attack without sharp derivatives
+                            envelope = math.sin(attack_progress * math.pi / 2) ** 1.2  # Gentle S-curve
                         else:
-                            # Slower decay phase - exponential decay
+                            # Smooth decay phase with gentler exponential curve
                             decay_progress = (t_combustion - attack_duration) / decay_duration
-                            envelope = math.exp(-decay_progress * 3.0)  # Exponential decay
+                            # Use smoother exponential decay with cosine taper
+                            exponential_decay = math.exp(-decay_progress * 2.5)  # Gentler than 3.0
+                            cosine_taper = math.cos(decay_progress * math.pi / 2) ** 0.8  # Smooth taper
+                            envelope = exponential_decay * cosine_taper
                         
-                        # Ensure envelope ends at zero (force last sample to zero)
-                        if i == combustion_samples - 1:
-                            envelope = 0.0
+                        # Apply gentle end taper instead of hard cutoff
+                        # Smooth the last 20% of the combustion event to prevent sharp edges
+                        end_taper_threshold = 0.8  # Start taper at 80% through event
+                        event_progress = t_combustion / combustion_duration
+                        if event_progress > end_taper_threshold:
+                            taper_progress = (event_progress - end_taper_threshold) / (1.0 - end_taper_threshold)
+                            # Smooth cosine taper to zero
+                            end_taper = math.cos(taper_progress * math.pi / 2) ** 2
+                            envelope *= end_taper
                         
                         # Create pressure wave with realistic combustion character
                         pressure_wave = envelope * mixture_amplitude
                         
-                        # Add bipolar polarity to eliminate DC offset
-                        if (cylinder_idx + int(firing_time * 13.7)) % 2 == 0:
-                            pressure_wave = -pressure_wave
+                        # Apply smooth polarity variation instead of hard switching
+                        # Use continuous phase-based polarity for smooth DC balance
+                        polarity_phase = (cylinder_idx * 0.7 + firing_time * 0.3) * math.pi
+                        polarity_factor = math.sin(polarity_phase)  # Smooth bipolar variation
+                        pressure_wave *= polarity_factor
                         
-                        # Add cylinder-specific character (slight variations)
-                        cylinder_variation = 1.0 + 0.1 * math.sin(self.engine_time_accumulator * 13.7 + cylinder_idx * 0.8)
+                        # Add cylinder-specific character with smooth modulation
+                        cylinder_phase = self.engine_time_accumulator * 2.1 + cylinder_idx * 1.3
+                        cylinder_variation = 1.0 + 0.05 * math.sin(cylinder_phase)  # Reduced variation
                         pressure_wave *= cylinder_variation
                         
                         # Apply cylinder volume control
                         pressure_wave *= cylinder_volume
                         
-                        # Use additive synthesis instead of max() to prevent DC buildup
+                        # Use additive synthesis with smooth blending
                         cylinder_track[sample_idx] += pressure_wave
                 
                 # Next firing event for this cylinder (one engine cycle later)
                 firing_time += engine_period
+            
+            # Apply gentle smoothing filter to each cylinder track to eliminate any remaining artifacts
+            if len(cylinder_track) > 1 and np.max(np.abs(cylinder_track)) > 1e-6:
+                # Light low-pass filtering to smooth sharp transitions
+                alpha = 0.06  # Gentle filtering coefficient
+                filtered_track = np.zeros_like(cylinder_track)
+                filtered_track[0] = cylinder_track[0]
+                
+                for i in range(1, len(cylinder_track)):
+                    filtered_track[i] = filtered_track[i-1] * alpha + cylinder_track[i] * (1.0 - alpha)
+                
+                cylinder_track = filtered_track
             
             cylinder_tracks.append(cylinder_track)
         
@@ -341,17 +392,17 @@ class AirshipSoundEngine:
         # Add rumble components to the combined wave
         combined_engine_wave += rumble_fundamental + rumble_harmonic
         
-        # Apply crossfade at buffer boundaries to eliminate discontinuities
-        fade_samples = min(64, num_samples // 8)  # 64 samples (~3ms) or 1/8 buffer
+        # Apply enhanced crossfade at buffer boundaries to eliminate discontinuities
+        fade_samples = min(32, num_samples // 6)  # 32 samples (~1.5ms) or 1/6 buffer
         
         if fade_samples > 0:
-            # Fade in at start (only if not the first buffer)
+            # Smooth sine-squared fade in at start (only if not the first buffer)
             if self.engine_time_accumulator > 0:
-                fade_in = np.linspace(0.0, 1.0, fade_samples)
+                fade_in = np.sin(np.linspace(0, math.pi/2, fade_samples)) ** 2
                 combined_engine_wave[:fade_samples] *= fade_in
             
-            # Fade out at end
-            fade_out = np.linspace(1.0, 0.0, fade_samples)
+            # Smooth cosine-squared fade out at end
+            fade_out = np.cos(np.linspace(0, math.pi/2, fade_samples)) ** 2
             combined_engine_wave[-fade_samples:] *= fade_out
         
         # Update engine time accumulator for continuous playback
@@ -370,8 +421,11 @@ class AirshipSoundEngine:
         """
         Generate realistic wind noise based on airspeed.
         
-        Wind noise is generated using multiple frequency bands with turbulent
-        modulation to simulate air flowing over the airship hull and rigging.
+        REWRITTEN FOR REALISTIC TURBULENCE:
+        Wind noise comes from many small turbulence sources on the hull - each creates
+        a soft pressure pulse at different frequencies and phases. The result is a 
+        chaotic but smooth combination of many overlapping sine waves that construct
+        and destruct naturally, creating broadband noise without sharp artifacts.
         """
         num_samples = int(duration * self.sample_rate)
         
@@ -380,115 +434,148 @@ class AirshipSoundEngine:
         
         # Airspeed affects both amplitude and frequency content
         speed_factor = min(self.current_airspeed / 100.0, 1.0)  # Normalize to 0-1
-        wind_amplitude = speed_factor * 0.30  # Wind amplitude based on speed (doubled for better audibility)
+        wind_amplitude = speed_factor * 0.20  # Reduced amplitude for more realistic level
         
         dt = 1.0 / self.sample_rate
-        wind_samples = np.zeros(num_samples, dtype=np.float32)
         
-        # Generate multi-band wind noise using phase-continuous sine waves
-        # This avoids discontinuities from random noise while still sounding natural
+        # Create multiple turbulence generators - many small sources of varying frequencies
+        # Each represents turbulence from different hull features (rigging, edges, surfaces)
         
-        # Low frequency rumble (hull vibration from air pressure)
-        low_freq = 20.0 + speed_factor * 30.0  # 20-50 Hz
-        low_noise = np.zeros(num_samples, dtype=np.float32)
+        # Low frequency rumble: Large-scale hull vibration and pressure waves
+        low_freq_base = 15.0 + speed_factor * 25.0  # 15-40 Hz base
+        low_turbulence = np.zeros(num_samples, dtype=np.float32)
         low_harmonic1 = np.zeros(num_samples, dtype=np.float32)
         low_harmonic2 = np.zeros(num_samples, dtype=np.float32)
         
-        # Mid frequency hiss (air turbulence) - multiple frequencies for texture
-        mid_freq = 200.0 + speed_factor * 400.0  # 200-600 Hz
-        mid_noise = np.zeros(num_samples, dtype=np.float32)
+        # Mid frequency hiss: Medium-scale turbulence from hull details
+        mid_freq_base = 80.0 + speed_factor * 120.0  # 80-200 Hz base
+        mid_turbulence = np.zeros(num_samples, dtype=np.float32)
         mid_harmonic1 = np.zeros(num_samples, dtype=np.float32)
         mid_harmonic2 = np.zeros(num_samples, dtype=np.float32)
         
-        # High frequency whistle (rigging and sharp edges)
-        high_freq = 1000.0 + speed_factor * 2000.0  # 1-3 kHz
-        high_noise = np.zeros(num_samples, dtype=np.float32)
+        # High frequency content: Small-scale turbulence (reduced frequency range)
+        high_freq_base = 200.0 + speed_factor * 300.0  # 200-500 Hz (much lower than before)
+        high_turbulence = np.zeros(num_samples, dtype=np.float32)
         
-        # Add multiple phases for each band to create noise-like texture
-        dt = 1.0 / self.sample_rate
+        # Generate chaotic turbulence using multiple interfering sine waves
         for i in range(num_samples):
             t = i * dt
             
-            # Low frequency: multiple harmonics for complexity
-            low_phase = self.noise_phase + 2 * math.pi * low_freq * t
-            
+            # === LOW FREQUENCY TURBULENCE ===
             if self.track_controls["wind_low_freq"]["enabled"]:
-                low_noise[i] = 0.3 * math.sin(low_phase) * self.track_controls["wind_low_freq"]["volume"]
+                # Create 5 interfering low-frequency sources with slightly different frequencies
+                low_sum = 0.0
+                for osc in range(5):
+                    freq_offset = low_freq_base * (1.0 + osc * 0.07)  # 7% frequency spread
+                    phase_offset = self.noise_phase + osc * 1.3  # Different phase for each oscillator
+                    low_sum += math.sin(2 * math.pi * freq_offset * t + phase_offset)
+                
+                # Average and apply slow envelope modulation for natural variation
+                envelope = 1.0 + 0.3 * math.sin(2 * math.pi * 0.4 * t + self.noise_phase)
+                low_turbulence[i] = (low_sum / 5.0) * envelope * 0.15 * self.track_controls["wind_low_freq"]["volume"]
             
             if self.track_controls["wind_low_harmonic1"]["enabled"]:
-                low_harmonic1[i] = 0.2 * math.sin(low_phase * 1.33) * self.track_controls["wind_low_harmonic1"]["volume"]
+                # Low harmonic with 3 interfering sources
+                low_harm1_sum = 0.0
+                for osc in range(3):
+                    freq = low_freq_base * 1.6 * (1.0 + osc * 0.05)
+                    phase = self.noise_phase * 1.7 + osc * 0.9
+                    low_harm1_sum += math.sin(2 * math.pi * freq * t + phase)
+                
+                low_harmonic1[i] = (low_harm1_sum / 3.0) * 0.08 * self.track_controls["wind_low_harmonic1"]["volume"]
                 
             if self.track_controls["wind_low_harmonic2"]["enabled"]:
-                low_harmonic2[i] = 0.1 * math.sin(low_phase * 1.77) * self.track_controls["wind_low_harmonic2"]["volume"]
-            
-            # Mid frequency: rapid modulation for turbulence effect (with subtle variance)
-            mid_phase = self.noise_phase + 2 * math.pi * mid_freq * t
-            mid_modulation = 1.0 + 0.5 * math.sin(2 * math.pi * 7.0 * t)
-            # Add subtle phase variance for more natural turbulence
-            mid_variance = 0.05 * math.sin(2 * math.pi * 13.0 * t + 0.7)
-            
-            if self.track_controls["wind_mid_freq"]["enabled"]:
-                mid_noise[i] = 0.4 * math.sin(mid_phase + mid_variance) * mid_modulation * self.track_controls["wind_mid_freq"]["volume"]
+                # Second low harmonic with 3 interfering sources  
+                low_harm2_sum = 0.0
+                for osc in range(3):
+                    freq = low_freq_base * 2.3 * (1.0 + osc * 0.04)
+                    phase = self.noise_phase * 2.1 + osc * 1.1
+                    low_harm2_sum += math.sin(2 * math.pi * freq * t + phase)
                 
+                low_harmonic2[i] = (low_harm2_sum / 3.0) * 0.05 * self.track_controls["wind_low_harmonic2"]["volume"]
+            
+            # === MID FREQUENCY TURBULENCE ===
+            if self.track_controls["wind_mid_freq"]["enabled"]:
+                # Create 8 interfering mid-frequency sources (more complexity)
+                mid_sum = 0.0
+                for osc in range(8):
+                    freq_offset = mid_freq_base * (1.0 + osc * 0.12)  # 12% frequency spread
+                    phase_offset = self.noise_phase * 1.4 + osc * 0.7
+                    # Add slow amplitude modulation to each oscillator
+                    amp_mod = 1.0 + 0.2 * math.sin(2 * math.pi * (0.3 + osc * 0.1) * t + phase_offset)
+                    mid_sum += math.sin(2 * math.pi * freq_offset * t + phase_offset) * amp_mod
+                
+                mid_turbulence[i] = (mid_sum / 8.0) * 0.12 * speed_factor * self.track_controls["wind_mid_freq"]["volume"]
+            
             if self.track_controls["wind_mid_harmonic1"]["enabled"]:
-                mid_harmonic1[i] = 0.2 * math.sin(mid_phase * 1.41) * self.track_controls["wind_mid_harmonic1"]["volume"]
+                # Mid harmonic 1 with 4 interfering sources
+                mid_harm1_sum = 0.0
+                for osc in range(4):
+                    freq = mid_freq_base * 1.8 * (1.0 + osc * 0.08)
+                    phase = self.noise_phase * 1.9 + osc * 0.6
+                    mid_harm1_sum += math.sin(2 * math.pi * freq * t + phase)
+                
+                mid_harmonic1[i] = (mid_harm1_sum / 4.0) * 0.08 * speed_factor * self.track_controls["wind_mid_harmonic1"]["volume"]
                 
             if self.track_controls["wind_mid_harmonic2"]["enabled"]:
-                mid_harmonic2[i] = 0.1 * math.sin(mid_phase * 2.13) * self.track_controls["wind_mid_harmonic2"]["volume"]
+                # Mid harmonic 2 with 4 interfering sources
+                mid_harm2_sum = 0.0
+                for osc in range(4):
+                    freq = mid_freq_base * 2.7 * (1.0 + osc * 0.06)
+                    phase = self.noise_phase * 2.3 + osc * 0.8
+                    mid_harm2_sum += math.sin(2 * math.pi * freq * t + phase)
+                
+                mid_harmonic2[i] = (mid_harm2_sum / 4.0) * 0.06 * speed_factor * self.track_controls["wind_mid_harmonic2"]["volume"]
             
-            # High frequency: fast modulation for rigging effects (reduced amplitude, added variance)
-            high_phase = self.noise_phase + 2 * math.pi * high_freq * t
-            high_modulation = 1.0 + 0.8 * math.sin(2 * math.pi * 17.0 * t)
-            # Add subtle phase variance to reduce whistly character
-            variance = 0.1 * math.sin(2 * math.pi * 41.0 * t + 1.5)
-            
+            # === HIGH FREQUENCY TURBULENCE ===
             if self.track_controls["wind_high_freq"]["enabled"]:
-                high_noise[i] = 0.1 * math.sin(high_phase + variance) * high_modulation * self.track_controls["wind_high_freq"]["volume"]
+                # Create 12 interfering high-frequency sources (maximum complexity)
+                high_sum = 0.0
+                for osc in range(12):
+                    freq_offset = high_freq_base * (1.0 + osc * 0.15)  # 15% frequency spread  
+                    phase_offset = self.noise_phase * 2.1 + osc * 0.5
+                    # Each source has its own envelope modulation
+                    env_freq = 0.8 + osc * 0.3  # Different envelope rates
+                    envelope = 1.0 + 0.4 * math.sin(2 * math.pi * env_freq * t + phase_offset)
+                    high_sum += math.sin(2 * math.pi * freq_offset * t + phase_offset) * envelope
+                
+                # High frequencies prominent only at higher airspeeds
+                high_factor = speed_factor ** 1.5  # More nonlinear response
+                high_turbulence[i] = (high_sum / 12.0) * 0.06 * high_factor * self.track_controls["wind_high_freq"]["volume"]
         
-        # Apply filtering to each frequency band and combine
+        # Combine all turbulence components
+        wind_samples = np.zeros(num_samples, dtype=np.float32)
         for i in range(num_samples):
-            t = i * dt
-            
-            # Low frequency component (filtered random walk)
-            if i > 0:
-                low_noise[i] = low_noise[i-1] * 0.95 + low_noise[i] * 0.05
-            
-            # Mid frequency component with slight modulation
-            mid_modulation = 1.0 + 0.2 * math.sin(2 * math.pi * 5.0 * t)  # 5 Hz modulation
-            mid_filtered = mid_noise[i] * mid_modulation
-            
-            # High frequency component with rapid modulation (turbulence)
-            high_modulation = 1.0 + 0.3 * math.sin(2 * math.pi * 23.0 * t)  # 23 Hz turbulence
-            high_filtered = high_noise[i] * high_modulation
-            
-            # Combine frequency bands with speed-dependent mixing
             wind_samples[i] = (
-                low_noise[i] * 0.4 +           # Always present
+                low_turbulence[i] +      # Always present
                 low_harmonic1[i] +
                 low_harmonic2[i] +
-                mid_filtered * 0.4 * speed_factor +  # Increases with speed
-                mid_harmonic1[i] * speed_factor +
-                mid_harmonic2[i] * speed_factor +
-                high_filtered * 0.2 * (speed_factor ** 2)  # Prominent at high speeds
+                mid_turbulence[i] +      # Increases with speed
+                mid_harmonic1[i] +
+                mid_harmonic2[i] +
+                high_turbulence[i]       # Prominent at high speeds
             )
         
         # Apply overall wind amplitude
         wind_samples = wind_samples * wind_amplitude
         
-        # Add gusting effect (slow amplitude modulation)
+        # Add slow gusting effect (amplitude modulation of the entire mix)
         if self.track_controls["wind_gusting"]["enabled"]:
-            gust_frequency = 0.3  # 0.3 Hz gusting
+            gust_frequency = 0.25  # 0.25 Hz gusting (4-second period)
             gust_volume = self.track_controls["wind_gusting"]["volume"]
             for i in range(num_samples):
                 t = i * dt
-                gust_factor = 1.0 + 0.3 * math.sin(2 * math.pi * gust_frequency * t + self.noise_phase) * gust_volume
+                # Use multiple overlapping gust frequencies for natural variation
+                gust1 = math.sin(2 * math.pi * gust_frequency * t + self.noise_phase)
+                gust2 = 0.6 * math.sin(2 * math.pi * gust_frequency * 1.3 * t + self.noise_phase * 1.7)
+                gust3 = 0.4 * math.sin(2 * math.pi * gust_frequency * 0.7 * t + self.noise_phase * 2.1)
+                combined_gust = (gust1 + gust2 + gust3) / 3.0
+                gust_factor = 1.0 + 0.25 * combined_gust * gust_volume
                 wind_samples[i] *= gust_factor
         
-        # Update noise phase for continuous gusting
-        if self.track_controls["wind_gusting"]["enabled"]:
-            gust_frequency = 0.3  # 0.3 Hz gusting
-            self.noise_phase += 2 * math.pi * gust_frequency * duration
-            self.noise_phase = self.noise_phase % (2 * math.pi)
+        # Update noise phase for continuous evolution
+        self.noise_phase += 2 * math.pi * 0.13 * duration  # Slow phase evolution
+        self.noise_phase = self.noise_phase % (2 * math.pi)
         
         return wind_samples
         
