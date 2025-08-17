@@ -358,7 +358,8 @@ class CoreSimulator:
                 "failures": []
             },
             "library": {
-                "books": []  # List of book filenames currently in the library
+                "books": [],  # List of book filenames currently in the library
+                "bookmarks": {}  # Dict mapping book filenames to page numbers
             }
         }
     
@@ -514,7 +515,9 @@ class CoreSimulator:
                     
                     # Ensure library section exists for backward compatibility
                     if "library" not in self.game_state:
-                        self.game_state["library"] = {"books": []}
+                        self.game_state["library"] = {"books": [], "bookmarks": {}}
+                    elif "bookmarks" not in self.game_state["library"]:
+                        self.game_state["library"]["bookmarks"] = {}
                     
                     # Migrate old book crate types to new usable format
                     book_crate_type = None
@@ -2133,6 +2136,48 @@ class CoreSimulator:
         
         # If no space found, still remove from library but warn
         return True  # Book was removed from library, even if cargo placement failed
+
+    # Bookmark management methods
+    def set_bookmark(self, book_filename: str, page_number: int):
+        """Set a bookmark for a specific book"""
+        # Ensure library section exists
+        if "library" not in self.game_state:
+            self.game_state["library"] = {"books": [], "bookmarks": {}}
+        
+        library = self.game_state["library"]
+        if "bookmarks" not in library:
+            library["bookmarks"] = {}
+        
+        library["bookmarks"][book_filename] = page_number
+
+    def get_bookmark(self, book_filename: str) -> Optional[int]:
+        """Get the bookmark page number for a specific book"""
+        # Ensure library section exists
+        if "library" not in self.game_state:
+            self.game_state["library"] = {"books": [], "bookmarks": {}}
+        
+        library = self.game_state["library"]
+        if "bookmarks" not in library:
+            library["bookmarks"] = {}
+        
+        return library["bookmarks"].get(book_filename)
+
+    def remove_bookmark(self, book_filename: str):
+        """Remove the bookmark for a specific book"""
+        # Ensure library section exists
+        if "library" not in self.game_state:
+            self.game_state["library"] = {"books": [], "bookmarks": {}}
+        
+        library = self.game_state["library"]
+        if "bookmarks" not in library:
+            library["bookmarks"] = {}
+        
+        if book_filename in library["bookmarks"]:
+            del library["bookmarks"][book_filename]
+
+    def has_bookmark(self, book_filename: str) -> bool:
+        """Check if a book has a bookmark"""
+        return self.get_bookmark(book_filename) is not None
 
 
 # Global simulator instance

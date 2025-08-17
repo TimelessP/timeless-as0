@@ -14,6 +14,8 @@ PAGE_BORDER_COLOR = (139, 69, 19)  # Saddle brown border
 BUTTON_COLOR = (60, 60, 80)
 BUTTON_FOCUSED = (90, 90, 130)
 BUTTON_TEXT_COLOR = (230, 230, 240)
+BOOKMARK_COLOR = (70, 130, 255)  # Brighter blue bookmark color
+BOOKMARK_PLACEHOLDER_COLOR = (100, 100, 100)  # Grey placeholder
 
 class BookScene:
     def __init__(self, simulator, book_filename: str):
@@ -53,6 +55,7 @@ class BookScene:
             {"id": "close", "type": "button", "position": [20, 20], "size": [60, 20], "text": "Close", "focused": True},
             {"id": "prev_page", "type": "button", "position": [100, 260], "size": [80, 20], "text": "< Previous", "focused": False},
             {"id": "next_page", "type": "button", "position": [200, 260], "size": [80, 20], "text": "Next >", "focused": False},
+            {"id": "bookmark", "type": "bookmark", "position": [285, 40], "size": [12, 20], "text": "", "focused": False},
         ]
 
     def _load_book(self):
@@ -251,6 +254,12 @@ class BookScene:
             elif event.key == pygame.K_END:
                 self.current_page = max(0, len(self.pages) - 1)
             
+            # Bookmark shortcuts
+            elif event.key == pygame.K_b:
+                self._toggle_bookmark()
+            elif event.key == pygame.K_g:
+                self._goto_bookmark()
+            
             # Button navigation
             elif event.key == pygame.K_TAB:
                 if mods & pygame.KMOD_SHIFT:
@@ -272,7 +281,19 @@ class BookScene:
                 if x <= event.pos[0] <= x + w and y <= event.pos[1] <= y + h:
                     self.focus_index = i
                     self._update_focus()
-                    return self._activate_focused()
+                    
+                    # Special handling for bookmark
+                    if widget["id"] == "bookmark":
+                        current_bookmark = self.simulator.get_bookmark(self.book_filename)
+                        if current_bookmark is not None and current_bookmark != self.current_page:
+                            # Go to bookmark if bookmark exists and we're not on bookmarked page
+                            self._goto_bookmark()
+                        else:
+                            # Toggle bookmark if on bookmarked page, or set bookmark if none exists
+                            self._toggle_bookmark()
+                        return None  # Don't call _activate_focused for bookmarks
+                    else:
+                        return self._activate_focused()
             
             # Page area clicks for navigation
             page_rect = pygame.Rect(self.page_x, self.page_y, self.page_width, self.page_height)
@@ -307,6 +328,8 @@ class BookScene:
             self._prev_page()
         elif widget["id"] == "next_page":
             self._next_page()
+        elif widget["id"] == "bookmark":
+            self._toggle_bookmark()
         return None
 
     def _prev_page(self):
@@ -316,6 +339,23 @@ class BookScene:
     def _next_page(self):
         if self.current_page < len(self.pages) - 1:
             self.current_page += 1
+
+    def _toggle_bookmark(self):
+        """Toggle bookmark for current page"""
+        current_bookmark = self.simulator.get_bookmark(self.book_filename)
+        
+        if current_bookmark is not None:
+            # Remove bookmark
+            self.simulator.remove_bookmark(self.book_filename)
+        else:
+            # Add bookmark
+            self.simulator.set_bookmark(self.book_filename, self.current_page)
+
+    def _goto_bookmark(self):
+        """Go to bookmarked page"""
+        bookmark_page = self.simulator.get_bookmark(self.book_filename)
+        if bookmark_page is not None and 0 <= bookmark_page < len(self.pages):
+            self.current_page = bookmark_page
 
     def update(self, dt: float):
         """Update the scene"""
@@ -361,12 +401,24 @@ class BookScene:
             page_rect = page_surface.get_rect(center=(160, 285))
             screen.blit(page_surface, page_rect)
 
+        # Render bookmark
+        self._render_bookmark(screen)
+
         # Render buttons
         for widget in self.widgets:
-            self._render_button(screen, widget)
+            if widget["id"] != "bookmark":  # Don't render bookmark as regular button
+                self._render_button(screen, widget)
 
         # Instructions
-        instr_text = "Left/Right: Turn pages  Esc: Close  Click page to turn"
+        bookmark_page = self.simulator.get_bookmark(self.book_filename)
+        if bookmark_page is not None:
+            if bookmark_page == self.current_page:
+                instr_text = "Left/Right: Turn pages  B: Remove bookmark  G: Go to bookmark  Esc: Close"
+            else:
+                instr_text = "Left/Right: Turn pages  B: Set bookmark  Click bookmark to go  Esc: Close"
+        else:
+            instr_text = "Left/Right: Turn pages  B: Set bookmark  Click grey tab  Esc: Close"
+        
         instr_surface = self.font.render(instr_text, self.is_text_antialiased, BUTTON_TEXT_COLOR)
         instr_rect = instr_surface.get_rect(center=(160, 300))
         screen.blit(instr_surface, instr_rect)
@@ -385,3 +437,69 @@ class BookScene:
         text_surface = self.font.render(widget["text"], self.is_text_antialiased, BUTTON_TEXT_COLOR)
         text_rect = text_surface.get_rect(center=(x + w // 2, y + h // 2))
         screen.blit(text_surface, text_rect)
+
+    def _render_bookmark(self, screen):
+        """Render the bookmark"""
+        bookmark_page = self.simulator.get_bookmark(self.book_filename)
+        
+        # Get bookmark widget position and size
+        bookmark_widget = None
+        for widget in self.widgets:
+            if widget["id"] == "bookmark":
+                bookmark_widget = widget
+                break
+        
+        if not bookmark_widget:
+            return
+        
+        x, y = bookmark_widget["position"]
+        w, h = bookmark_widget["size"]
+        
+        # Check if bookmark is focused
+        focused = bookmark_widget.get("focused", False)
+        
+        # Always show some kind of bookmark indicator
+        if bookmark_page is not None:
+            # Create bookmark shape - rectangle with triangle cut out bottom
+            bookmark_points = [
+                (x, y),                    # Top left
+                (x + w, y),                # Top right
+                (x + w, y + h - 6),        # Right side, above triangle
+                (x + w//2, y + h),         # Bottom point (triangle point)
+                (x, y + h - 6),            # Left side, above triangle
+            ]
+            
+            # Use proper bookmark color regardless of focus
+            bookmark_color = BOOKMARK_COLOR
+            border_color = BUTTON_FOCUSED if focused else BUTTON_TEXT_COLOR
+            border_width = 2 if focused else 1
+            
+            # If we're on the bookmarked page, show the full bookmark with ribbon end
+            if bookmark_page == self.current_page:
+                # Draw full bookmark with ribbon cut
+                pygame.draw.polygon(screen, bookmark_color, bookmark_points)
+                pygame.draw.polygon(screen, border_color, bookmark_points, border_width)
+            else:
+                # Show just the rectangle part (sticking out from page)
+                rect_points = [
+                    (x, y),
+                    (x + w, y),
+                    (x + w, y + h - 6),
+                    (x, y + h - 6),
+                ]
+                pygame.draw.polygon(screen, bookmark_color, rect_points)
+                pygame.draw.polygon(screen, border_color, rect_points, border_width)
+        else:
+            # Show grey placeholder bookmark (just the rectangle part)
+            placeholder_color = BOOKMARK_PLACEHOLDER_COLOR
+            border_color = BUTTON_FOCUSED if focused else BUTTON_TEXT_COLOR
+            border_width = 2 if focused else 1
+            
+            rect_points = [
+                (x, y),
+                (x + w, y),
+                (x + w, y + h - 6),
+                (x, y + h - 6),
+            ]
+            pygame.draw.polygon(screen, placeholder_color, rect_points)
+            pygame.draw.polygon(screen, border_color, rect_points, border_width)
