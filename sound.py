@@ -376,6 +376,44 @@ class AirshipSoundEngine:
             
         return filtered
         
+    def apply_logarithmic_normalization(self, audio: np.ndarray) -> np.ndarray:
+        """
+        Apply logarithmic normalization ("HDR" audio processing).
+        
+        This preserves energy and detail at lower amplitudes while preventing
+        clipping at higher amplitudes, similar to HDR in visual processing.
+        Uses a logarithmic curve to compress dynamic range naturally.
+        """
+        # Find the maximum absolute amplitude in the signal
+        max_amplitude = np.max(np.abs(audio))
+        
+        # If signal is too quiet, skip normalization to avoid noise amplification
+        if max_amplitude < 1e-6:
+            return audio
+        
+        # Logarithmic compression parameter - controls how aggressive the compression is
+        # Higher values = more compression at high amplitudes
+        compression_factor = 2.0
+        
+        # Apply sign-preserving logarithmic compression
+        # Uses log(1 + x) curve which naturally compresses higher values more
+        normalized_audio = np.zeros_like(audio)
+        
+        for i in range(len(audio)):
+            # Normalize to 0-1 range (preserving sign)
+            normalized_sample = audio[i] / max_amplitude
+            
+            # Apply logarithmic compression while preserving sign
+            if normalized_sample >= 0:
+                compressed_sample = np.log(1 + normalized_sample * compression_factor) / np.log(1 + compression_factor)
+            else:
+                compressed_sample = -np.log(1 + (-normalized_sample) * compression_factor) / np.log(1 + compression_factor)
+            
+            # Scale back to appropriate amplitude range
+            normalized_audio[i] = compressed_sample * 0.8  # Leave headroom for subsequent processing
+        
+        return normalized_audio
+        
     def apply_soft_limiter(self, audio: np.ndarray, threshold: float = 0.85) -> np.ndarray:
         """
         Apply soft limiting to prevent harsh clipping artifacts.
@@ -420,6 +458,10 @@ class AirshipSoundEngine:
         
         # Mix the audio sources
         mixed_audio = propeller_audio + engine_audio + wind_audio
+        
+        # Apply logarithmic normalization ("HDR" audio) to preserve energy at low amplitudes
+        # while preventing clipping at high amplitudes
+        mixed_audio = self.apply_logarithmic_normalization(mixed_audio)
         
         # Apply hull filtering if enabled
         if self.is_hull_filter:
