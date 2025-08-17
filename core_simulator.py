@@ -8,7 +8,7 @@ import math
 import os
 import platform
 from pathlib import Path
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, Optional, Tuple, List
 
 # Cargo grid pixel size (must match scene_cargo.GRID_SIZE)
 CARGO_GRID_PX = 8
@@ -233,7 +233,8 @@ class CoreSimulator:
                         "dimensions": {"width": 2, "height": 3},
                         "contents": {"amount": 1, "unit": "book"},
                         "colors": {"outline": "#8B4513", "fill": "#DEB887"},
-                        "usable": False,
+                        "usable": True,
+                        "useAction": "add_to_library",
                         "weight": 2.0
                     },
                     "medical_supplies": {
@@ -292,6 +293,9 @@ class CoreSimulator:
                 "warnings": [],
                 "alerts": [],
                 "failures": []
+            },
+            "library": {
+                "books": []  # List of book filenames currently in the library
             }
         }
     
@@ -444,6 +448,24 @@ class CoreSimulator:
                         if not crate_found:
                             print(f"🔧 Clearing invalid winch attachment: {attached_id}")
                             winch["attachedCrate"] = None
+                    
+                    # Ensure library section exists for backward compatibility
+                    if "library" not in self.game_state:
+                        self.game_state["library"] = {"books": []}
+                    
+                    # Migrate old book crate types to new usable format
+                    book_crate_type = None
+                    for crate_type_id, crate_type in self.game_state["cargo"]["crateTypes"].items():
+                        if crate_type.get("name") == "Books":
+                            book_crate_type = crate_type
+                            break
+                    
+                    if book_crate_type:
+                        # Update to new format if needed
+                        if not book_crate_type.get("usable", False):
+                            book_crate_type["usable"] = True
+                            book_crate_type["useAction"] = "add_to_library"
+                            print("📚 Migrated book crate type to be usable")
                     
                 except Exception:
                     pass
@@ -1515,6 +1537,9 @@ class CoreSimulator:
         elif use_action == "add_food":
             # Add food rations (placeholder)
             success = True
+        elif use_action == "add_to_library":
+            # Add a random book to the library
+            success = self.add_random_book_to_library()
         
         if success and crate_index is not None:
             # Remove used crate from the appropriate area
@@ -1957,6 +1982,94 @@ class CoreSimulator:
         distance = R * c
         
         return distance
+
+    # Library management methods
+    def add_random_book_to_library(self) -> bool:
+        """Add a random available book to the library"""
+        import os
+        import random
+        
+        # Ensure library section exists
+        if "library" not in self.game_state:
+            self.game_state["library"] = {"books": []}
+        
+        library = self.game_state["library"]
+        current_books = set(library.get("books", []))
+        
+        # Get all available books from assets/books/*.md
+        books_dir = os.path.join("assets", "books")
+        if not os.path.exists(books_dir):
+            return False
+        
+        available_books = []
+        for filename in os.listdir(books_dir):
+            if filename.endswith('.md') and filename not in current_books:
+                available_books.append(filename)
+        
+        if not available_books:
+            return False  # No new books available
+        
+        # Select a random book and add it to the library
+        selected_book = random.choice(available_books)
+        library["books"].append(selected_book)
+        return True
+    
+    def get_library_books(self) -> List[str]:
+        """Get list of books currently in the library"""
+        # Ensure library section exists
+        if "library" not in self.game_state:
+            self.game_state["library"] = {"books": []}
+        
+        return self.game_state["library"].get("books", [])
+    
+    def remove_book_from_library(self, book_filename: str) -> bool:
+        """Remove a book from the library and add a generic book crate to cargo hold"""
+        # Ensure library section exists
+        if "library" not in self.game_state:
+            self.game_state["library"] = {"books": []}
+        
+        library = self.game_state["library"]
+        books = library.get("books", [])
+        
+        if book_filename not in books:
+            return False
+        
+        # Remove the book from library
+        books.remove(book_filename)
+        
+        # Add a generic book crate to cargo hold
+        cargo = self.game_state.get("cargo", {})
+        cargo_hold = cargo.get("cargoHold", [])
+        
+        # Find a valid position for the new book crate
+        import random
+        import uuid
+        
+        # Try to find an empty spot in the cargo hold
+        for attempt in range(10):  # Limit attempts to avoid infinite loop
+            x = random.randint(0, 18) * 8  # Grid-aligned position
+            y = random.randint(0, 20) * 8
+            
+            # Check if position is available
+            position_available = True
+            for existing_crate in cargo_hold:
+                ex, ey = existing_crate["position"]["x"], existing_crate["position"]["y"]
+                if abs(x - ex) < 16 and abs(y - ey) < 24:  # Book dimensions are 2x3 grid = 16x24 pixels
+                    position_available = False
+                    break
+            
+            if position_available:
+                new_crate = {
+                    "id": str(uuid.uuid4()),
+                    "type": "books",
+                    "position": {"x": x, "y": y}
+                }
+                cargo_hold.append(new_crate)
+                self._update_cargo_physics()
+                return True
+        
+        # If no space found, still remove from library but warn
+        return True  # Book was removed from library, even if cargo placement failed
 
 
 # Global simulator instance

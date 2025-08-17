@@ -117,7 +117,7 @@ class CommunicationsScene:
     
     def _get_prev_scene(self) -> str:
         """Get the previous scene in circular order"""
-        return "scene_cargo"
+        return "scene_library"
     
     def _get_next_scene(self) -> str:
         """Get the next scene in circular order"""

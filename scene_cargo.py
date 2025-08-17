@@ -121,7 +121,7 @@ class CargoScene:
             elif event.key == pygame.K_LEFTBRACKET:
                 return "scene_fuel"
             elif event.key == pygame.K_RIGHTBRACKET:
-                return "scene_communications"
+                return "scene_library"
             elif event.key == pygame.K_TAB:
                 if pygame.key.get_pressed()[pygame.K_LSHIFT] or pygame.key.get_pressed()[pygame.K_RSHIFT]:
                     self._cycle_focus(-1)
@@ -671,7 +671,7 @@ class CargoScene:
         if widget_id == "prev_scene":
             return "scene_fuel"
         elif widget_id == "next_scene":
-            return "scene_communications"
+            return "scene_library"
         elif widget_id == "attach":
             # Attach to nearest crate (no ID means find nearest)
             nearest = self._find_nearest_crate_to_hook()

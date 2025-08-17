@@ -16,6 +16,8 @@ from scene_engine_room import EngineRoomScene
 from scene_navigation import NavigationScene
 from scene_fuel import FuelScene
 from scene_cargo import CargoScene
+from scene_library import LibraryScene
+from scene_book import BookScene
 from scene_communications import CommunicationsScene
 from scene_camera import CameraScene
 from scene_crew import CrewScene
@@ -171,6 +173,7 @@ class AirshipApp:
         self.scenes["scene_navigation"] = NavigationScene(self.simulator)
         self.scenes["scene_fuel"] = FuelScene(self.simulator)
         self.scenes["scene_cargo"] = CargoScene(self.simulator)
+        self.scenes["scene_library"] = LibraryScene(self.simulator)
         self.scenes["scene_communications"] = CommunicationsScene(self.simulator)
         self.scenes["scene_camera"] = CameraScene(self.simulator)
         self.scenes["scene_crew"] = CrewScene(self.simulator)
@@ -229,19 +232,27 @@ class AirshipApp:
                 self.simulator.pause_simulation()
                 print("🔇 Simulation paused (main menu)")
                 
-        if scene_name in self.scenes:
+        if scene_name.startswith("scene_book:"):
+            # Handle special book scene with book filename
+            book_filename = scene_name[11:]  # Remove "scene_book:" prefix
+            book_scene = BookScene(self.simulator, book_filename)
+            book_scene.set_font(self.font, self.is_text_antialiased)
+            self.current_scene = book_scene
+            self.scene_name = scene_name
+        elif scene_name in self.scenes:
             self.scene_name = scene_name
             self.current_scene = self.scenes[scene_name]
             
             # Define actual game scenes that should resume simulation
             game_scenes = {
                 "scene_bridge", "scene_engine_room", "scene_navigation", 
-                "scene_fuel", "scene_cargo", "scene_communications", 
+                "scene_fuel", "scene_cargo", "scene_library", "scene_communications", 
                 "scene_camera", "scene_crew", "scene_missions"
             }
             
             # Resume simulation only when transitioning to actual game scenes
-            if scene_name in game_scenes and self.simulator.running:
+            is_game_scene = scene_name in game_scenes or scene_name.startswith("scene_book:")
+            if is_game_scene and self.simulator.running:
                 # Check if simulation is paused and resume it
                 game_state = self.simulator.get_state()
                 if game_state.get("gameInfo", {}).get("paused", False):
@@ -249,7 +260,7 @@ class AirshipApp:
                     print("🔊 Simulation resumed (entering game scene)")
             
             # Enable resume game button if we've started a game
-            if scene_name in game_scenes:
+            if is_game_scene:
                 self.scenes["scene_main_menu"].set_game_exists(True)
                 
     def _screen_to_logical(self, screen_pos) -> tuple:
