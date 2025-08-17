@@ -46,10 +46,14 @@ class AirshipSoundEngine:
         
         # Individual cylinder phases for 6-cylinder radial engine
         # Each cylinder fires once per engine revolution, evenly spaced
-        self.cylinder_phases = []
+        # Track absolute time positions for each cylinder's next firing
+        self.cylinder_next_firing_times = []
         for i in range(6):
-            cylinder_phase = i * (2 * math.pi / 6)  # 60° spacing (π/3 radians)
-            self.cylinder_phases.append(cylinder_phase)
+            # Each cylinder starts at its phase offset in the engine cycle
+            cylinder_time_offset = i / 6.0  # 0/6, 1/6, 2/6, etc. of engine cycle
+            self.cylinder_next_firing_times.append(cylinder_time_offset)
+        
+        self.engine_time_accumulator = 0.0  # Track absolute engine time
         
         self.rumble_phase = 0.0       # Phase for engine rumble
         self.noise_phase = 0.0        # Phase for wind noise generation
@@ -173,9 +177,9 @@ class AirshipSoundEngine:
         """
         Generate engine firing sound for 6-cylinder radial engine.
         
-        Each cylinder fires once per engine revolution at its own phase.
-        The cylinders are evenly spaced around the engine (60° apart).
-        This creates overlapping low-frequency pulses rather than rapid high-frequency firing.
+        Each cylinder fires once per engine revolution, creating discrete combustion 
+        pressure waves that are placed in a timeline. These are not continuous tones
+        but discrete events with fast attack and slower decay phases.
         """
         num_samples = int(duration * self.sample_rate)
         samples = np.zeros(num_samples, dtype=np.float32)
@@ -185,67 +189,95 @@ class AirshipSoundEngine:
             
         # Engine rotation frequency - each cylinder fires once per rotation
         engine_rotation_freq = self.current_rpm / 60.0  # Hz
+        engine_period = 1.0 / engine_rotation_freq  # Time for one complete revolution
         
         # Mixture affects amplitude - richer mixture = more power per firing
-        mixture_amplitude = 0.1 + (self.current_mixture * 0.3)  # 0.1 to 0.4 amplitude
+        mixture_amplitude = 0.03 + (self.current_mixture * 0.1)  # 0.03 to 0.13 amplitude (reduced by ~1/3)
+        
+        # Combustion pressure wave characteristics (independent of RPM)
+        combustion_duration = 0.08  # 80ms combustion event duration
+        attack_duration = 0.005     # 5ms fast attack phase
+        decay_duration = combustion_duration - attack_duration  # 75ms decay phase
         
         dt = 1.0 / self.sample_rate
-        omega = 2 * math.pi * engine_rotation_freq
         
+        # Generate separate audio tracks for each cylinder
+        cylinder_tracks = []
+        for cylinder_idx in range(6):
+            cylinder_track = np.zeros(num_samples, dtype=np.float32)
+            
+            # Calculate when this cylinder should fire within the current buffer
+            # Each cylinder fires at a different offset within the engine cycle
+            cylinder_cycle_offset = cylinder_idx / 6.0  # 0.0, 0.167, 0.333, 0.5, 0.667, 0.833
+            
+            # Find the next firing time for this cylinder
+            current_engine_cycles = self.engine_time_accumulator / engine_period
+            current_cycle_position = current_engine_cycles - math.floor(current_engine_cycles)
+            
+            # Calculate when this cylinder should fire next
+            next_firing_cycle_position = cylinder_cycle_offset
+            if next_firing_cycle_position <= current_cycle_position:
+                next_firing_cycle_position += 1.0  # Next engine cycle
+                
+            time_to_next_firing = (next_firing_cycle_position - current_cycle_position) * engine_period
+            
+            # Generate all firing events for this cylinder within the buffer
+            firing_time = time_to_next_firing
+            while firing_time < duration + combustion_duration:
+                firing_start_sample = int(firing_time * self.sample_rate)
+                combustion_samples = int(combustion_duration * self.sample_rate)
+                attack_samples = int(attack_duration * self.sample_rate)
+                
+                # Generate combustion pressure wave for this firing event
+                for i in range(combustion_samples):
+                    sample_idx = firing_start_sample + i
+                    if 0 <= sample_idx < num_samples:
+                        t_combustion = i / self.sample_rate  # Time within combustion event
+                        
+                        if t_combustion < attack_duration:
+                            # Fast attack phase - exponential rise
+                            attack_progress = t_combustion / attack_duration
+                            envelope = attack_progress ** 0.3  # Fast rise
+                        else:
+                            # Slower decay phase - exponential decay
+                            decay_progress = (t_combustion - attack_duration) / decay_duration
+                            envelope = math.exp(-decay_progress * 3.0)  # Exponential decay
+                        
+                        # Create pressure wave with realistic combustion character
+                        pressure_wave = envelope * mixture_amplitude
+                        
+                        # Add cylinder-specific character (slight variations)
+                        cylinder_variation = 1.0 + 0.1 * math.sin(self.engine_time_accumulator * 13.7 + cylinder_idx * 0.8)
+                        pressure_wave *= cylinder_variation
+                        
+                        # Use max() within cylinder track to handle overlapping events naturally
+                        cylinder_track[sample_idx] = max(cylinder_track[sample_idx], pressure_wave)
+                
+                # Next firing event for this cylinder (one engine cycle later)
+                firing_time += engine_period
+            
+            cylinder_tracks.append(cylinder_track)
+        
+        # Combine all cylinder tracks (linear addition is natural here since each track
+        # already handles its own overlaps with max())
+        combined_engine_wave = np.zeros(num_samples, dtype=np.float32)
+        for track in cylinder_tracks:
+            combined_engine_wave += track
+        
+        # Add low-frequency rumble (engine block vibration)
         for i in range(num_samples):
             t = i * dt
-            
-            # Collect all cylinder contributions at this time point
-            cylinder_contributions = []
-            
-            # Generate firing pulse for each cylinder
-            for cylinder_idx in range(6):
-                # Calculate phase for this cylinder
-                cylinder_phase = self.cylinder_phases[cylinder_idx] + omega * t
-                
-                # Each cylinder creates a positive pressure pulse (combustion wave)
-                # Use rectified sine wave for positive-only pressure, similar to propeller
-                firing_pressure = max(0, math.sin(cylinder_phase)) ** 2.0  # Sharper than propeller
-                
-                # Add cylinder-specific character (slight variations)
-                cylinder_variation = 1.0 + 0.1 * math.sin(cylinder_phase * 1.7 + cylinder_idx * 0.5)
-                
-                # Apply cylinder contribution
-                cylinder_contribution = firing_pressure * cylinder_variation * mixture_amplitude
-                cylinder_contributions.append(cylinder_contribution)
-            
-            # Prevent excessive constructive interference while preserving natural sound
-            # Use max approach to limit peak amplitude, but blend with linear combination for naturalness
-            max_contribution = max(cylinder_contributions)
-            linear_combination = sum(cylinder_contributions)
-            
-            # Soft limiting: use max to prevent extreme peaks, but allow some constructive interference
-            # This preserves the natural "overlapping firing" character while preventing unrealistic spikes
-            if linear_combination <= max_contribution * 1.8:  # Allow up to 1.8x amplification
-                combined_engine_wave = linear_combination
-            else:
-                # Soft blend between linear and max approaches when interference gets excessive
-                excess_factor = linear_combination / (max_contribution * 1.8)
-                blend_factor = 1.0 / (1.0 + (excess_factor - 1.0) * 2.0)  # Smooth transition
-                combined_engine_wave = (linear_combination * blend_factor + 
-                                      max_contribution * 1.8 * (1.0 - blend_factor))
-            
-            # Add low-frequency rumble (engine block vibration)
-            rumble_phase = self.rumble_phase + omega * t
+            rumble_phase = 2 * math.pi * engine_rotation_freq * (self.engine_time_accumulator + t)
             rumble = 0.15 * math.sin(rumble_phase) + 0.08 * math.sin(rumble_phase * 1.5)
-            
-            samples[i] = combined_engine_wave + rumble
+            combined_engine_wave[i] += rumble
         
-        # Update all cylinder phases for continuous playback
-        for cylinder_idx in range(6):
-            self.cylinder_phases[cylinder_idx] += omega * duration
-            self.cylinder_phases[cylinder_idx] = self.cylinder_phases[cylinder_idx] % (2 * math.pi)
+        # Update engine time accumulator for continuous playback
+        self.engine_time_accumulator += duration
         
-        # Update rumble phase
-        self.rumble_phase += omega * duration
-        self.rumble_phase = self.rumble_phase % (2 * math.pi)
+        # Copy to output samples
+        samples = combined_engine_wave
         
-        # Remove DC offset to prevent pumping artifacts (same as propeller)
+        # Remove DC offset to prevent pumping artifacts
         dc_offset = np.mean(samples)
         samples = samples - dc_offset
         
@@ -382,7 +414,7 @@ class AirshipSoundEngine:
         
         This preserves energy and detail at lower amplitudes while preventing
         clipping at higher amplitudes, similar to HDR in visual processing.
-        Uses a logarithmic curve to compress dynamic range naturally.
+        Uses a logarithmic curve that primarily affects signals above 95% amplitude.
         """
         # Find the maximum absolute amplitude in the signal
         max_amplitude = np.max(np.abs(audio))
@@ -391,26 +423,42 @@ class AirshipSoundEngine:
         if max_amplitude < 1e-6:
             return audio
         
-        # Logarithmic compression parameter - controls how aggressive the compression is
-        # Higher values = more compression at high amplitudes
-        compression_factor = 2.0
+        # Threshold where logarithmic compression starts to have significant effect
+        compression_threshold = 0.95  # 95% of max amplitude
         
         # Apply sign-preserving logarithmic compression
-        # Uses log(1 + x) curve which naturally compresses higher values more
         normalized_audio = np.zeros_like(audio)
         
         for i in range(len(audio)):
             # Normalize to 0-1 range (preserving sign)
             normalized_sample = audio[i] / max_amplitude
+            abs_normalized = abs(normalized_sample)
             
-            # Apply logarithmic compression while preserving sign
-            if normalized_sample >= 0:
-                compressed_sample = np.log(1 + normalized_sample * compression_factor) / np.log(1 + compression_factor)
+            if abs_normalized <= compression_threshold:
+                # Below threshold: minimal compression (nearly linear)
+                # Use a very gentle curve that's almost 1:1
+                compressed_abs = abs_normalized * (1.0 + 0.05 * abs_normalized)  # Very slight boost
             else:
-                compressed_sample = -np.log(1 + (-normalized_sample) * compression_factor) / np.log(1 + compression_factor)
+                # Above threshold: strong logarithmic compression
+                # Map the range [compression_threshold, 1.0] to [compression_threshold, target_max]
+                excess = abs_normalized - compression_threshold
+                excess_range = 1.0 - compression_threshold  # 0.05 for 95% threshold
+                
+                # Apply logarithmic compression to the excess
+                # Use log(1 + x) curve scaled to compress the top 5% significantly
+                compression_factor = 8.0  # Higher = more aggressive compression of peaks
+                compressed_excess = (np.log(1 + excess * compression_factor) / 
+                                   np.log(1 + excess_range * compression_factor)) * excess_range * 0.6
+                
+                compressed_abs = compression_threshold + compressed_excess
             
-            # Scale back to appropriate amplitude range
-            normalized_audio[i] = compressed_sample * 0.8  # Leave headroom for subsequent processing
+            # Restore original sign and scale back to appropriate amplitude range
+            if normalized_sample >= 0:
+                compressed_sample = compressed_abs
+            else:
+                compressed_sample = -compressed_abs
+                
+            normalized_audio[i] = compressed_sample * 0.8 * max_amplitude  # Leave headroom for subsequent processing
         
         return normalized_audio
         
