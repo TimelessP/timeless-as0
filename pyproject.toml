@@ -1,6 +1,6 @@
 [project]
 name = "airshipzero"
-version = "0.2.75"
+version = "0.2.77"
 description = "Realistic airship flight simulator with complex systems management"
 authors = [{name = "Timeless Prototype"}]
 requires-python = ">=3.12"
@@ -29,7 +29,10 @@ build-backend = "hatchling.build"
 packages = ["."]
 include = [
     "*.py",
-    "assets/",
+    "assets/**/*",
+    "assets/books/*.md",
+    "assets/fonts/**/*", 
+    "assets/png/*",
     "LICENSE",
     "README.md",
     "pyproject.toml",

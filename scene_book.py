@@ -4,6 +4,7 @@ Book Reading Scene - Display markdown books with simple formatting
 import pygame
 import os
 from typing import Optional, List, Dict, Any, Tuple
+from core_simulator import get_assets_path
 
 # Colors
 BACKGROUND_COLOR = (20, 20, 30)
@@ -56,7 +57,7 @@ class BookScene:
 
     def _load_book(self):
         """Load and parse the book content"""
-        book_path = os.path.join("assets", "books", self.book_filename)
+        book_path = os.path.join(get_assets_path("books"), self.book_filename)
         
         try:
             with open(book_path, 'r', encoding='utf-8') as f:

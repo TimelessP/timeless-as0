@@ -8,10 +8,73 @@ import math
 import os
 import platform
 from pathlib import Path
+import sys
 from typing import Dict, Any, Optional, Tuple, List
 
 # Cargo grid pixel size (must match scene_cargo.GRID_SIZE)
 CARGO_GRID_PX = 8
+
+
+def get_assets_path(subdir: str = "") -> str:
+    """
+    Get the correct path to assets directory, whether running from source or installed package.
+    
+    Args:
+        subdir: Subdirectory within assets (e.g., "books", "fonts", "png")
+    
+    Returns:
+        Path to the assets directory or subdirectory
+    """
+    # Try multiple possible locations for assets
+    possible_locations = [
+        # Development/source directory (relative to this file)
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets"),
+        # Current working directory
+        os.path.join(os.getcwd(), "assets"),
+        # Package installation directory (same directory as this file)
+        os.path.join(os.path.dirname(__file__), "assets"),
+    ]
+    
+    # Try to find Python package installation paths
+    try:
+        import site
+        # Check site-packages directories
+        for site_dir in site.getsitepackages():
+            possible_locations.append(os.path.join(site_dir, "assets"))
+            possible_locations.append(os.path.join(site_dir, "airshipzero", "assets"))
+        
+        # Check user site directory
+        user_site = site.getusersitepackages()
+        if user_site:
+            possible_locations.append(os.path.join(user_site, "assets"))
+            possible_locations.append(os.path.join(user_site, "airshipzero", "assets"))
+    except:
+        pass
+    
+    # For uv tool installs, check relative to Python executable
+    try:
+        exe_dir = os.path.dirname(sys.executable)
+        possible_locations.append(os.path.join(exe_dir, "assets"))
+        # uv might install in a lib subdirectory
+        possible_locations.append(os.path.join(exe_dir, "lib", "assets"))
+    except:
+        pass
+    
+    # Check each possible location
+    for base_path in possible_locations:
+        if subdir:
+            full_path = os.path.join(base_path, subdir)
+        else:
+            full_path = base_path
+            
+        if os.path.exists(full_path):
+            return full_path
+    
+    # Fallback to relative path
+    if subdir:
+        return os.path.join("assets", subdir)
+    else:
+        return "assets"
 
 
 class CoreSimulator:
@@ -1997,7 +2060,7 @@ class CoreSimulator:
         current_books = set(library.get("books", []))
         
         # Get all available books from assets/books/*.md
-        books_dir = os.path.join("assets", "books")
+        books_dir = get_assets_path("books")
         if not os.path.exists(books_dir):
             return False
         
