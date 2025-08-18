@@ -1516,17 +1516,26 @@ class CoreSimulator:
             if settle:
                 area_name, position = settle
                 
-                # Remove from any list and add to target area
+                # Get the crate data (either from attachedCrateData or from areas)
                 crate = None
-                for area in ["cargoHold", "loadingBay"]:
-                    for i, c in enumerate(cargo.get(area, [])):
-                        if c.get("id") == crate_id:
-                            crate = cargo[area].pop(i)
+                attached_crate_data = cargo.get("attachedCrateData", {})
+                
+                if crate_id in attached_crate_data:
+                    # It's an attached crate (like books from library)
+                    crate = attached_crate_data.pop(crate_id)
+                else:
+                    # Remove from any existing area
+                    for area in ["cargoHold", "loadingBay"]:
+                        for i, c in enumerate(cargo.get(area, [])):
+                            if c.get("id") == crate_id:
+                                crate = cargo[area].pop(i)
+                                break
+                        if crate:
                             break
-                    if crate:
-                        break
+                
                 if crate is None:
                     return False
+                    
                 crate["position"] = position
                 cargo.setdefault(area_name, []).append(crate)
                 winch["attachedCrate"] = None
@@ -1741,8 +1750,15 @@ class CoreSimulator:
         return None
     
     def _find_crate_by_id(self, crate_id: str):
-        """Find crate by ID in any area"""
+        """Find crate by ID in any area or attached to winch"""
         cargo = self.game_state.get("cargo", {})
+        
+        # First check if it's an attached crate
+        attached_crate_data = cargo.get("attachedCrateData", {})
+        if crate_id in attached_crate_data:
+            return attached_crate_data[crate_id]
+        
+        # Then check normal areas
         for area_name in ["cargoHold", "loadingBay"]:
             for crate in cargo.get(area_name, []):
                 if crate.get("id") == crate_id:
@@ -2089,7 +2105,7 @@ class CoreSimulator:
         return self.game_state["library"].get("books", [])
     
     def remove_book_from_library(self, book_filename: str) -> bool:
-        """Remove a book from the library and add a generic book crate to cargo hold"""
+        """Remove a book from the library and attach a book crate to winch (if winch is free)"""
         # Ensure library section exists
         if "library" not in self.game_state:
             self.game_state["library"] = {"books": []}
@@ -2100,42 +2116,37 @@ class CoreSimulator:
         if book_filename not in books:
             return False
         
+        # Check if winch is already busy
+        cargo = self.game_state.get("cargo", {})
+        winch = cargo.get("winch", {})
+        if winch.get("attachedCrate"):
+            # Winch is busy - cannot move book to cargo
+            return False
+        
         # Remove the book from library
         books.remove(book_filename)
         
-        # Add a generic book crate to cargo hold
-        cargo = self.game_state.get("cargo", {})
-        cargo_hold = cargo.get("cargoHold", [])
-        
-        # Find a valid position for the new book crate
-        import random
+        # Create a book crate and attach it to the winch
         import uuid
         
-        # Try to find an empty spot in the cargo hold
-        for attempt in range(10):  # Limit attempts to avoid infinite loop
-            x = random.randint(0, 18) * 8  # Grid-aligned position
-            y = random.randint(0, 20) * 8
-            
-            # Check if position is available
-            position_available = True
-            for existing_crate in cargo_hold:
-                ex, ey = existing_crate["position"]["x"], existing_crate["position"]["y"]
-                if abs(x - ex) < 16 and abs(y - ey) < 24:  # Book dimensions are 2x3 grid = 16x24 pixels
-                    position_available = False
-                    break
-            
-            if position_available:
-                new_crate = {
-                    "id": str(uuid.uuid4()),
-                    "type": "books",
-                    "position": {"x": x, "y": y}
-                }
-                cargo_hold.append(new_crate)
-                self._update_cargo_physics()
-                return True
+        new_crate = {
+            "id": str(uuid.uuid4()),
+            "type": "books",
+            "position": {"x": 0, "y": 0}  # Position doesn't matter when attached to winch
+        }
         
-        # If no space found, still remove from library but warn
-        return True  # Book was removed from library, even if cargo placement failed
+        # Attach the crate to the winch (attached crates don't exist in cargoHold or loadingBay)
+        winch["attachedCrate"] = new_crate["id"]
+        
+        # Set winch position to center and extend cable slightly so it's visible
+        winch["position"] = {"x": 160, "y": 50}
+        winch["cableLength"] = max(20, winch.get("cableLength", 0))  # Ensure some cable is extended
+        
+        # Store the attached crate data in a special field for attached crates
+        cargo.setdefault("attachedCrateData", {})[new_crate["id"]] = new_crate
+        
+        self._update_cargo_physics()
+        return True
 
     # Bookmark management methods
     def set_bookmark(self, book_filename: str, page_number: int):

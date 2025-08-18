@@ -1,6 +1,6 @@
 [project]
 name = "airshipzero"
-version = "0.2.79"
+version = "0.2.81"
 description = "Realistic airship flight simulator with complex systems management"
 authors = [{name = "Timeless Prototype"}]
 requires-python = ">=3.12"

@@ -295,7 +295,7 @@ class CargoScene:
             pygame.draw.line(surface, GRID_COLOR, (area["x"], y), (area["x"] + area["width"], y), 1)
 
     def _render_crates(self, surface):
-        """Draw all crates in both areas"""
+        """Draw all crates in both areas and attached to winch"""
         cargo_state = self.simulator.get_cargo_state()
         crate_types = cargo_state.get("crateTypes", {})
         
@@ -306,6 +306,33 @@ class CargoScene:
         # Draw loading bay crates
         for crate in cargo_state.get("loadingBay", []):
             self._render_single_crate(surface, crate, crate_types, "loadingBay")
+            
+        # Draw attached crate hanging from winch
+        winch = cargo_state.get("winch", {})
+        attached_crate_id = winch.get("attachedCrate")
+        if attached_crate_id:
+            attached_crate_data = cargo_state.get("attachedCrateData", {})
+            if attached_crate_id in attached_crate_data:
+                attached_crate = attached_crate_data[attached_crate_id]
+                # Calculate position at end of winch cable
+                winch_pos = winch.get("position", {"x": 160, "y": 50})
+                cable_length = winch.get("cableLength", 0)
+                winch_x = int(winch_pos["x"])
+                hook_y = WINCH_RAIL_Y + cable_length
+                
+                # Create a temporary crate dict with calculated position for rendering
+                crate_type = crate_types.get(attached_crate["type"], {})
+                dims = crate_type.get("dimensions", {"width": 1, "height": 1})
+                crate_width = dims["width"] * GRID_SIZE
+                
+                # Position crate centered horizontally on the hook
+                temp_crate = attached_crate.copy()
+                temp_crate["position"] = {
+                    "x": winch_x - crate_width // 2,
+                    "y": hook_y
+                }
+                
+                self._render_single_crate(surface, temp_crate, crate_types, "attached")
 
     def _render_single_crate(self, surface, crate, crate_types, area):
         """Render an individual crate"""
@@ -374,10 +401,18 @@ class CargoScene:
             if attached_crate_id:
                 crate = None
                 crate_types = cargo_state.get("crateTypes", {})
-                for c in cargo_state.get("cargoHold", []) + cargo_state.get("loadingBay", []):
-                    if c["id"] == attached_crate_id:
-                        crate = c
-                        break
+                
+                # First check attachedCrateData for crates that are currently attached
+                attached_crate_data = cargo_state.get("attachedCrateData", {})
+                if attached_crate_id in attached_crate_data:
+                    crate = attached_crate_data[attached_crate_id]
+                else:
+                    # Fallback: check physical areas (for backwards compatibility)
+                    for c in cargo_state.get("cargoHold", []) + cargo_state.get("loadingBay", []):
+                        if c["id"] == attached_crate_id:
+                            crate = c
+                            break
+                            
                 if crate:
                     cinfo = crate_types.get(crate["type"], {})
                     dims = cinfo.get("dimensions", {"width": 1, "height": 1})

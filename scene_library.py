@@ -117,7 +117,9 @@ class LibraryScene:
                 elif event.key == pygame.K_RETURN:
                     return self._read_selected_book()
                 elif event.key == pygame.K_SPACE:
-                    self._move_book_to_cargo()
+                    # Only allow if move to cargo is available
+                    if self._is_move_to_cargo_available():
+                        self._move_book_to_cargo()
                 elif event.key == pygame.K_TAB:
                     self.focus_index = 0
                     self._update_focus()
@@ -194,13 +196,21 @@ class LibraryScene:
             return self._read_selected_book()
         
         widget = self.widgets[self.focus_index]
-        if widget["id"] == "prev_scene":
+        widget_id = widget["id"]
+        
+        # Check if button is enabled before activating
+        if widget_id == "move_to_cargo" and not self._is_move_to_cargo_available():
+            return None
+        elif widget_id == "read_book" and not self.books:
+            return None
+        
+        if widget_id == "prev_scene":
             return self._get_prev_scene()
-        elif widget["id"] == "next_scene":
+        elif widget_id == "next_scene":
             return self._get_next_scene()
-        elif widget["id"] == "read_book":
+        elif widget_id == "read_book":
             return self._read_selected_book()
-        elif widget["id"] == "move_to_cargo":
+        elif widget_id == "move_to_cargo":
             self._move_book_to_cargo()
         return None
 
@@ -213,9 +223,29 @@ class LibraryScene:
     def _move_book_to_cargo(self):
         if not self.books or self.selected_book_index >= len(self.books):
             return
+        
+        # Check if winch is busy before attempting to move
+        cargo_state = self.simulator.get_cargo_state()
+        winch = cargo_state.get("winch", {})
+        if winch.get("attachedCrate"):
+            # Winch is busy - cannot move book
+            return False
+            
         selected_book = self.books[self.selected_book_index]
         if self.simulator.remove_book_from_library(selected_book):
             self._refresh_book_list()
+            return True
+        return False
+
+    def _is_move_to_cargo_available(self) -> bool:
+        """Check if move to cargo is available (winch is free and books exist)"""
+        if not self.books:
+            return False
+        
+        # Check if winch is busy
+        cargo_state = self.simulator.get_cargo_state()
+        winch = cargo_state.get("winch", {})
+        return not winch.get("attachedCrate")
 
     def _get_prev_scene(self) -> str:
         return "scene_cargo"
@@ -307,7 +337,10 @@ class LibraryScene:
         # Instructions
         if self.books:
             if self.focus_index >= len(self.widgets):
-                instr_text = "Up/Down: Select book  Enter: Read  Space: Move to Cargo  Tab: Buttons"
+                if self._is_move_to_cargo_available():
+                    instr_text = "Up/Down: Select book  Enter: Read  Space: Move to Cargo  Tab: Buttons"
+                else:
+                    instr_text = "Up/Down: Select book  Enter: Read  Tab: Buttons  (Winch busy - free it first)"
             else:
                 instr_text = "Up/Down: Navigate buttons  Enter: Activate  Tab: Book list"
         else:
@@ -322,12 +355,25 @@ class LibraryScene:
         x, y = widget["position"]
         w, h = widget["size"]
         
+        # Check if button should be enabled
+        enabled = True
+        if widget["id"] == "move_to_cargo":
+            enabled = self._is_move_to_cargo_available()
+        elif widget["id"] == "read_book":
+            enabled = bool(self.books)
+        
         # Button background
-        color = BUTTON_FOCUSED if widget.get("focused") else BUTTON_COLOR
+        if enabled:
+            color = BUTTON_FOCUSED if widget.get("focused") else BUTTON_COLOR
+            text_color = TEXT_COLOR
+        else:
+            color = (40, 40, 50)  # Darker for disabled
+            text_color = (120, 120, 120)  # Grayed out text
+            
         pygame.draw.rect(screen, color, (x, y, w, h))
-        pygame.draw.rect(screen, TEXT_COLOR, (x, y, w, h), 1)
+        pygame.draw.rect(screen, text_color, (x, y, w, h), 1)
         
         # Button text
-        text_surface = self.font.render(widget["text"], self.is_text_antialiased, TEXT_COLOR)
+        text_surface = self.font.render(widget["text"], self.is_text_antialiased, text_color)
         text_rect = text_surface.get_rect(center=(x + w // 2, y + h // 2))
         screen.blit(text_surface, text_rect)
