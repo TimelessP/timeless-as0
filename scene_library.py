@@ -169,10 +169,16 @@ class LibraryScene:
     def _focus_next(self):
         # Cycle through buttons first, then book list (if books exist)
         if self.focus_index < len(self.widgets) - 1:
+            # Move to next button
             self.focus_index += 1
-        elif self.books:  # Move to book list if books exist
-            self.focus_index = len(self.widgets)
-        else:  # No books, wrap to first button
+        elif self.focus_index == len(self.widgets) - 1:
+            # On last button, move to book list if books exist, otherwise wrap to first button
+            if self.books:
+                self.focus_index = len(self.widgets)  # Move to book list
+            else:
+                self.focus_index = 0  # No books, wrap to first button
+        else:
+            # In book list, wrap back to first button
             self.focus_index = 0
         self._update_focus()
 
