@@ -367,22 +367,6 @@ class LibraryScene:
         for widget in self.widgets:
             self._render_button(screen, widget)
 
-        # Instructions
-        if self.books:
-            if self.focus_index >= len(self.widgets):
-                if self._is_move_to_cargo_available():
-                    instr_text = "Up/Down/Wheel: Select  Enter/R: Read  M: Move to Cargo  Tab: Buttons"
-                else:
-                    instr_text = "Up/Down/Wheel: Select  Enter/R: Read  Tab: Buttons  (Winch busy - free it first)"
-            else:
-                instr_text = "Up/Down: Navigate buttons  Enter: Activate  Tab: Book list  Wheel: Scroll books"
-        else:
-            instr_text = "Collect book crates and use them to add books to your library"
-        
-        instr_surface = self.font.render(instr_text, self.is_text_antialiased, TEXT_COLOR)
-        instr_rect = instr_surface.get_rect(center=(160, 275))
-        screen.blit(instr_surface, instr_rect)
-
     def _render_button(self, screen, widget):
         """Render a button widget"""
         x, y = widget["position"]
