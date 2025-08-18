@@ -411,6 +411,13 @@ class AirshipApp:
             print("Auto-saving game state...")
             self.simulator.save_game()
         
+        # Clean up image cache
+        try:
+            from scene_book import cleanup_image_cache
+            cleanup_image_cache()
+        except ImportError:
+            pass  # scene_book might not be imported
+        
         pygame.quit()
         print("Airship Zero shutdown complete.")
 
@@ -445,6 +452,12 @@ Examples:
         import traceback
         traceback.print_exc()
     finally:
+        # Clean up image cache
+        try:
+            from scene_book import cleanup_image_cache
+            cleanup_image_cache()
+        except ImportError:
+            pass  # scene_book might not be imported
         pygame.quit()
         sys.exit()
 

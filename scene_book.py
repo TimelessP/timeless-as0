@@ -1,8 +1,13 @@
 """
-Book Reading Scene - Display markdown books with simple formatting
+Book Reading Scene - Display markdown books with simple formatting and images
 """
 import pygame
 import os
+import tempfile
+import shutil
+import base64
+import urllib.request
+import urllib.parse
 from typing import Optional, List, Dict, Any, Tuple
 from core_simulator import get_assets_path
 
@@ -17,6 +22,24 @@ BUTTON_FOCUSED = (90, 90, 130)
 BUTTON_TEXT_COLOR = (230, 230, 240)
 BOOKMARK_COLOR = (70, 130, 255)  # Brighter blue bookmark color
 BOOKMARK_PLACEHOLDER_COLOR = (100, 100, 100)  # Grey placeholder
+
+# Global image cache for cleanup on exit
+_image_cache_dir = None
+_cached_images = {}
+
+def cleanup_image_cache():
+    """Clean up temporary image cache directory"""
+    global _image_cache_dir
+    if _image_cache_dir and os.path.exists(_image_cache_dir):
+        shutil.rmtree(_image_cache_dir, ignore_errors=True)
+        _image_cache_dir = None
+
+def get_image_cache_dir():
+    """Get or create temporary image cache directory"""
+    global _image_cache_dir
+    if _image_cache_dir is None or not os.path.exists(_image_cache_dir):
+        _image_cache_dir = tempfile.mkdtemp(prefix="airship_book_images_")
+    return _image_cache_dir
 
 class BookScene:
     def __init__(self, simulator, book_filename: str):
@@ -124,8 +147,30 @@ class BookScene:
             
             if not line:
                 # Empty line creates paragraph break
-                words.append({"text": "\n\n", "is_bold": False, "is_heading": False})
+                words.append({"text": "\n\n", "is_bold": False, "is_heading": False, "is_image": False})
                 continue
+            
+            # Check for image syntax: ![alt text](image_path)
+            if line.startswith('![') and '](' in line and line.endswith(')'):
+                # Parse image markdown
+                alt_start = line.find('[') + 1
+                alt_end = line.find(']')
+                url_start = line.find('(') + 1
+                url_end = line.find(')')
+                
+                if alt_start < alt_end and url_start < url_end:
+                    alt_text = line[alt_start:alt_end]
+                    image_url = line[url_start:url_end]
+                    
+                    # Add image as special word type
+                    words.append({
+                        "text": alt_text,
+                        "is_bold": False,
+                        "is_heading": False,
+                        "is_image": True,
+                        "image_url": image_url
+                    })
+                    continue
             
             is_heading = line.startswith('#')
             if is_heading:
@@ -141,7 +186,8 @@ class BookScene:
                 words.append({
                     "text": word,
                     "is_bold": is_bold,
-                    "is_heading": is_heading
+                    "is_heading": is_heading,
+                    "is_image": False
                 })
                 
                 # Add space after word (except last word in line)
@@ -149,18 +195,150 @@ class BookScene:
                     words.append({
                         "text": " ",
                         "is_bold": is_bold,
-                        "is_heading": is_heading
+                        "is_heading": is_heading,
+                        "is_image": False
                     })
             
             # Add line break after each line (except headings which get extra space)
             if is_heading:
-                words.append({"text": "\n\n", "is_bold": False, "is_heading": False})
+                words.append({"text": "\n\n", "is_bold": False, "is_heading": False, "is_image": False})
             else:
-                words.append({"text": "\n", "is_bold": False, "is_heading": False})
+                words.append({"text": "\n", "is_bold": False, "is_heading": False, "is_image": False})
         
         return words
 
+    def _fetch_image(self, image_url: str) -> Optional[pygame.Surface]:
+        """Fetch and cache an image from URL or data URI"""
+        global _cached_images
+        
+        # Check cache first
+        if image_url in _cached_images:
+            return _cached_images[image_url]
+        
+        try:
+            if image_url.startswith('data:'):
+                # Handle data URI
+                surface = self._load_data_uri_image(image_url)
+            else:
+                # Handle file path or URL
+                surface = self._load_file_image(image_url)
+            
+            # Cache the result (even if None)
+            _cached_images[image_url] = surface
+            return surface
+            
+        except Exception as e:
+            print(f"Error loading image {image_url}: {e}")
+            _cached_images[image_url] = None
+            return None
+
+    def _load_data_uri_image(self, data_uri: str) -> Optional[pygame.Surface]:
+        """Load image from data URI"""
+        try:
+            # Parse data URI: data:image/png;base64,iVBORw0KGgoAAAANSUhEUg...
+            if ';base64,' not in data_uri:
+                return None
+            
+            header, data = data_uri.split(';base64,', 1)
+            image_data = base64.b64decode(data)
+            
+            # Create temporary file
+            cache_dir = get_image_cache_dir()
+            temp_file = tempfile.NamedTemporaryFile(delete=False, dir=cache_dir, suffix='.png')
+            temp_file.write(image_data)
+            temp_file.close()
+            
+            # Load with pygame
+            surface = pygame.image.load(temp_file.name)
+            return surface.convert_alpha()
+            
+        except Exception as e:
+            print(f"Error loading data URI image: {e}")
+            return None
+
+    def _load_file_image(self, image_path: str) -> Optional[pygame.Surface]:
+        """Load image from file path or URL"""
+        try:
+            if image_path.startswith('http://') or image_path.startswith('https://'):
+                # Download from URL
+                cache_dir = get_image_cache_dir()
+                filename = os.path.basename(urllib.parse.urlparse(image_path).path) or 'image.png'
+                local_path = os.path.join(cache_dir, filename)
+                
+                urllib.request.urlretrieve(image_path, local_path)
+                surface = pygame.image.load(local_path)
+                return surface.convert_alpha()
+            else:
+                # Local file path - resolve relative to the markdown file
+                if not os.path.isabs(image_path):
+                    # Get the directory containing the markdown file
+                    book_path = os.path.join(get_assets_path("books"), self.book_filename)
+                    book_dir = os.path.dirname(book_path)
+                    
+                    # Resolve the relative path
+                    full_path = os.path.normpath(os.path.join(book_dir, image_path))
+                    
+                    # Security check: ensure the resolved path is within the assets directory
+                    assets_root = os.path.normpath(os.path.dirname(get_assets_path("")))
+                    try:
+                        # Check if the resolved path is within assets directory
+                        os.path.relpath(full_path, assets_root)
+                        if not full_path.startswith(assets_root):
+                            print(f"Security error: Image path '{image_path}' resolves outside assets directory")
+                            return None
+                    except ValueError:
+                        # os.path.relpath raises ValueError if paths are on different drives (Windows)
+                        print(f"Security error: Image path '{image_path}' is invalid")
+                        return None
+                else:
+                    # Absolute paths are not allowed for security
+                    print(f"Security error: Absolute image paths not allowed: {image_path}")
+                    return None
+                
+                if os.path.exists(full_path):
+                    surface = pygame.image.load(full_path)
+                    return surface.convert_alpha()
+                else:
+                    print(f"Image file not found: {full_path}")
+                    return None
+                    
+        except Exception as e:
+            print(f"Error loading file image {image_path}: {e}")
+            return None
+
     def _get_word_dimensions(self, word_data: Dict[str, Any]) -> Tuple[int, int]:
+        """Get width and height of a word or image when rendered"""
+        if word_data.get("is_image", False):
+            # Handle image dimensions
+            image_surface = self._fetch_image(word_data.get("image_url", ""))
+            if image_surface:
+                # Calculate scaled dimensions to fit page
+                img_w, img_h = image_surface.get_size()
+                max_width = self.page_width - 2 * self.page_margin
+                max_height = self.page_height - 2 * self.page_margin
+                
+                # Scale proportionally to fit
+                scale_w = max_width / img_w if img_w > max_width else 1
+                scale_h = max_height / img_h if img_h > max_height else 1
+                scale = min(scale_w, scale_h)
+                
+                return int(img_w * scale), int(img_h * scale)
+            else:
+                # Fallback for failed image load
+                return 200, 20  # Placeholder dimensions
+        else:
+            # Handle text dimensions
+            text = word_data["text"]
+            
+            # Create a temporary surface to measure text
+            if word_data.get("is_bold") or word_data.get("is_heading"):
+                # For bold text, we'll render it normally but return slightly larger dimensions
+                surface = self.font.render(text, self.is_text_antialiased, TEXT_COLOR)
+                w, h = surface.get_size()
+                return w, h
+            else:
+                surface = self.font.render(text, self.is_text_antialiased, TEXT_COLOR)
+                return surface.get_size()
         """Get width and height of a word when rendered"""
         text = word_data["text"]
         
@@ -174,7 +352,7 @@ class BookScene:
             surface = self.font.render(text, self.is_text_antialiased, TEXT_COLOR)
             return surface.get_size()
 
-    def _layout_pages(self, words: List[Dict[str, Any]]) -> List[List[Tuple[str, int, int, bool]]]:
+    def _layout_pages(self, words: List[Dict[str, Any]]) -> List[List[Tuple[str, int, int, bool, bool, str]]]:
         """Layout words into pages"""
         if not words:
             return []
@@ -191,6 +369,8 @@ class BookScene:
             text = word_data["text"]
             is_bold = word_data.get("is_bold", False)
             is_heading = word_data.get("is_heading", False)
+            is_image = word_data.get("is_image", False)
+            image_url = word_data.get("image_url", "")
             
             # Handle special characters
             if text == "\n":
@@ -204,35 +384,58 @@ class BookScene:
                 y += self.line_height * 2
                 continue
             
-            # Get word dimensions
+            # Get word/image dimensions
             word_width, word_height = self._get_word_dimensions(word_data)
             
-            # Check if word fits on current line
-            if x + word_width > max_width and x > self.page_margin:
-                # Wrap to next line
+            if is_image:
+                # Images always start on a new line and take full width
+                if x > self.page_margin:  # If not at start of line, go to next line
+                    x = self.page_margin
+                    y += self.line_height
+                
+                # Check if image fits on current page
+                if y + word_height > max_height:
+                    # Start new page for image
+                    if current_page:
+                        pages.append(current_page)
+                    current_page = []
+                    x = self.page_margin
+                    y = self.page_margin
+                
+                # Add image to current page
+                current_page.append((text, x, y, is_bold, is_image, image_url))
+                
+                # Move to next line after image
                 x = self.page_margin
-                y += self.line_height
-            
-            # Check if we need a new page
-            if y + word_height > max_height:
-                # Start new page
-                if current_page:
-                    pages.append(current_page)
-                current_page = []
-                x = self.page_margin
-                y = self.page_margin
-            
-            # Add word to current page
-            current_page.append((text, x, y, is_bold))
-            
-            # Move x position for next word
-            x += word_width
+                y += word_height + self.line_height  # Add some space after image
+            else:
+                # Handle text
+                # Check if word fits on current line
+                if x + word_width > max_width and x > self.page_margin:
+                    # Wrap to next line
+                    x = self.page_margin
+                    y += self.line_height
+                
+                # Check if we need a new page
+                if y + word_height > max_height:
+                    # Start new page
+                    if current_page:
+                        pages.append(current_page)
+                    current_page = []
+                    x = self.page_margin
+                    y = self.page_margin
+                
+                # Add word to current page
+                current_page.append((text, x, y, is_bold, is_image, image_url))
+                
+                # Move x position for next word
+                x += word_width
         
         # Add final page if it has content
         if current_page:
             pages.append(current_page)
         
-        return pages if pages else [[("No content", self.page_margin, self.page_margin, False)]]
+        return pages if pages else [[("No content", self.page_margin, self.page_margin, False, False, "")]]
 
     def handle_event(self, event) -> Optional[str]:
         if not pygame:
@@ -387,17 +590,54 @@ class BookScene:
         if self.pages and 0 <= self.current_page < len(self.pages):
             current_page_words = self.pages[self.current_page]
             
-            for text, x, y, is_bold in current_page_words:
-                if text.strip():  # Skip empty strings
-                    # Render text (we'll simulate bold by rendering slightly offset)
-                    if is_bold:
-                        # Render bold by drawing text twice with slight offset
-                        text_surface = self.font.render(text, self.is_text_antialiased, TEXT_COLOR)
-                        screen.blit(text_surface, (self.page_x + x, self.page_y + y))
-                        screen.blit(text_surface, (self.page_x + x + 1, self.page_y + y))
+            for item in current_page_words:
+                if len(item) == 6:
+                    text, x, y, is_bold, is_image, image_url = item
+                else:
+                    # Backwards compatibility with old tuple format
+                    text, x, y, is_bold = item
+                    is_image, image_url = False, ""
+                
+                if is_image:
+                    # Render image
+                    image_surface = self._fetch_image(image_url)
+                    if image_surface:
+                        # Scale image to fit
+                        img_w, img_h = image_surface.get_size()
+                        max_width = self.page_width - 2 * self.page_margin
+                        max_height = self.page_height - 2 * self.page_margin
+                        
+                        # Calculate scale
+                        scale_w = max_width / img_w if img_w > max_width else 1
+                        scale_h = max_height / img_h if img_h > max_height else 1
+                        scale = min(scale_w, scale_h)
+                        
+                        if scale < 1:
+                            # Scale down the image
+                            new_w = int(img_w * scale)
+                            new_h = int(img_h * scale)
+                            scaled_surface = pygame.transform.scale(image_surface, (new_w, new_h))
+                        else:
+                            scaled_surface = image_surface
+                        
+                        screen.blit(scaled_surface, (self.page_x + x, self.page_y + y))
                     else:
-                        text_surface = self.font.render(text, self.is_text_antialiased, TEXT_COLOR)
+                        # Render placeholder for failed images
+                        placeholder_text = f"[Image: {text}]"
+                        text_surface = self.font.render(placeholder_text, self.is_text_antialiased, TEXT_COLOR)
                         screen.blit(text_surface, (self.page_x + x, self.page_y + y))
+                else:
+                    # Render text
+                    if text.strip():  # Skip empty strings
+                        # Render text (we'll simulate bold by rendering slightly offset)
+                        if is_bold:
+                            # Render bold by drawing text twice with slight offset
+                            text_surface = self.font.render(text, self.is_text_antialiased, TEXT_COLOR)
+                            screen.blit(text_surface, (self.page_x + x, self.page_y + y))
+                            screen.blit(text_surface, (self.page_x + x + 1, self.page_y + y))
+                        else:
+                            text_surface = self.font.render(text, self.is_text_antialiased, TEXT_COLOR)
+                            screen.blit(text_surface, (self.page_x + x, self.page_y + y))
 
         # Page number
         if self.pages:
