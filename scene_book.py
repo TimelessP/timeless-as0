@@ -11,6 +11,7 @@ BACKGROUND_COLOR = (20, 20, 30)
 TEXT_COLOR = (60, 50, 40)  # Dark brown text for readability
 PAPER_COLOR = (250, 245, 235)  # Old paper color
 PAGE_BORDER_COLOR = (139, 69, 19)  # Saddle brown border
+HEADER_COLOR = (80, 60, 40)  # Brown header box for book scene
 BUTTON_COLOR = (60, 60, 80)
 BUTTON_FOCUSED = (90, 90, 130)
 BUTTON_TEXT_COLOR = (230, 230, 240)
@@ -32,12 +33,12 @@ class BookScene:
         self.current_page = 0
         
         # Page layout settings
-        self.page_margin = 20
+        self.page_margin = 8  # Reduced from 20 to ~1 character width
         self.line_height = 18
         self.page_width = 280
-        self.page_height = 200
+        self.page_height = 225  # Increased from 200 to use more available space
         self.page_x = 20
-        self.page_y = 50
+        self.page_y = 30  # Adjusted for header box
         
         self._init_widgets()
         self._load_book()
@@ -52,10 +53,10 @@ class BookScene:
     def _init_widgets(self):
         """Initialize widgets"""
         self.widgets = [
-            {"id": "close", "type": "button", "position": [20, 20], "size": [60, 20], "text": "Close", "focused": True},
+            {"id": "close", "type": "button", "position": [8, 290], "size": [60, 20], "text": "Close", "focused": True},
             {"id": "prev_page", "type": "button", "position": [100, 260], "size": [80, 20], "text": "< Previous", "focused": False},
             {"id": "next_page", "type": "button", "position": [200, 260], "size": [80, 20], "text": "Next >", "focused": False},
-            {"id": "bookmark", "type": "bookmark", "position": [285, 40], "size": [12, 20], "text": "", "focused": False},
+            {"id": "bookmark", "type": "bookmark", "position": [285, 25], "size": [12, 20], "text": "", "focused": False},
         ]
 
     def _load_book(self):
@@ -368,9 +369,13 @@ class BookScene:
         # Clear screen
         screen.fill(BACKGROUND_COLOR)
 
-        # Title
+        # Header background box (like other scenes)
+        pygame.draw.rect(screen, HEADER_COLOR, (0, 0, 320, 24))
+        pygame.draw.rect(screen, BUTTON_TEXT_COLOR, (0, 0, 320, 24), 1)
+
+        # Title in header box
         title_surface = self.font.render(self.book_title, self.is_text_antialiased, BUTTON_TEXT_COLOR)
-        title_rect = title_surface.get_rect(center=(160, 10))
+        title_rect = title_surface.get_rect(center=(160, 12))
         screen.blit(title_surface, title_rect)
 
         # Page background
@@ -408,20 +413,6 @@ class BookScene:
         for widget in self.widgets:
             if widget["id"] != "bookmark":  # Don't render bookmark as regular button
                 self._render_button(screen, widget)
-
-        # Instructions
-        bookmark_page = self.simulator.get_bookmark(self.book_filename)
-        if bookmark_page is not None:
-            if bookmark_page == self.current_page:
-                instr_text = "Left/Right: Turn pages  B: Remove bookmark  G: Go to bookmark  Esc: Close"
-            else:
-                instr_text = "Left/Right: Turn pages  B: Set bookmark  Click bookmark to go  Esc: Close"
-        else:
-            instr_text = "Left/Right: Turn pages  B: Set bookmark  Click grey tab  Esc: Close"
-        
-        instr_surface = self.font.render(instr_text, self.is_text_antialiased, BUTTON_TEXT_COLOR)
-        instr_rect = instr_surface.get_rect(center=(160, 300))
-        screen.blit(instr_surface, instr_rect)
 
     def _render_button(self, screen, widget):
         """Render a button widget"""
