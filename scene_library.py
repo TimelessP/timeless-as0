@@ -11,7 +11,8 @@ TEXT_COLOR = (230, 230, 240)
 FOCUS_COLOR = (255, 200, 50)
 HEADER_COLOR = (80, 60, 40)  # Brown for library theme
 BOOK_LIST_COLOR = (40, 40, 50)
-SELECTED_BOOK_COLOR = (120, 100, 60)
+SELECTED_BOOK_COLOR = (100, 80, 50)  # Muted brown, readable with white text
+BOOK_LIST_FOCUSED_COLOR = (120, 100, 60)  # Brighter brown when book list has focus
 BUTTON_COLOR = (60, 60, 80)
 BUTTON_FOCUSED = (90, 90, 130)
 
@@ -114,12 +115,13 @@ class LibraryScene:
                     self._select_prev_book(5)
                 elif event.key == pygame.K_PAGEDOWN:
                     self._select_next_book(5)
-                elif event.key == pygame.K_RETURN:
+                elif event.key == pygame.K_RETURN or event.key == pygame.K_r:
                     return self._read_selected_book()
-                elif event.key == pygame.K_SPACE:
+                elif event.key == pygame.K_m:
                     # Only allow if move to cargo is available
                     if self._is_move_to_cargo_available():
                         self._move_book_to_cargo()
+                # Note: Space key removed - no longer moves books
                 elif event.key == pygame.K_TAB:
                     self.focus_index = 0
                     self._update_focus()
@@ -132,6 +134,14 @@ class LibraryScene:
                 elif event.key == pygame.K_RETURN:
                     return self._activate_focused()
 
+        elif event.type == pygame.MOUSEWHEEL:
+            # Mousewheel scrolling for book list
+            if self.books:
+                if event.y > 0:  # Scroll up
+                    self._select_prev_book()
+                elif event.y < 0:  # Scroll down
+                    self._select_next_book()
+
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             # Check button clicks
             for i, widget in enumerate(self.widgets):
@@ -142,9 +152,9 @@ class LibraryScene:
                     self._update_focus()
                     return self._activate_focused()
             
-            # Check book list clicks
-            list_area_y = 60
-            list_area_height = 180
+            # Check book list clicks (adjusted for header)
+            list_area_y = 50
+            list_area_height = 190
             if 20 <= event.pos[0] <= 300 and list_area_y <= event.pos[1] <= list_area_y + list_area_height:
                 # Click in book list area
                 relative_y = event.pos[1] - list_area_y
@@ -157,18 +167,26 @@ class LibraryScene:
         return None
 
     def _focus_next(self):
-        # If in book list, move to first button
-        if self.focus_index >= len(self.widgets):
+        # Cycle through buttons first, then book list (if books exist)
+        if self.focus_index < len(self.widgets) - 1:
+            self.focus_index += 1
+        elif self.books:  # Move to book list if books exist
+            self.focus_index = len(self.widgets)
+        else:  # No books, wrap to first button
             self.focus_index = 0
-        else:
-            self.focus_index = (self.focus_index + 1) % len(self.widgets)
         self._update_focus()
 
     def _focus_prev(self):
+        # Reverse of _focus_next logic
         if self.focus_index == 0:
-            # Move to book list if there are books
-            self.focus_index = len(self.widgets) if self.books else len(self.widgets) - 1
-        else:
+            # Move to book list if there are books, otherwise to last button
+            if self.books:
+                self.focus_index = len(self.widgets)
+            else:
+                self.focus_index = len(self.widgets) - 1
+        elif self.focus_index > len(self.widgets):  # In book list
+            self.focus_index = len(self.widgets) - 1  # Last button
+        else:  # In buttons
             self.focus_index -= 1
         self._update_focus()
 
@@ -269,21 +287,32 @@ class LibraryScene:
         # Clear screen
         screen.fill(BACKGROUND_COLOR)
 
-        # Header
+        # Header background box (like other scenes)
+        pygame.draw.rect(screen, HEADER_COLOR, (0, 0, 320, 24))
+        pygame.draw.rect(screen, TEXT_COLOR, (0, 0, 320, 24), 1)
+
+        # Header text
         header_text = "SHIP'S LIBRARY"
         header_surface = self.font.render(header_text, self.is_text_antialiased, TEXT_COLOR)
-        header_rect = header_surface.get_rect(center=(160, 20))
+        header_rect = header_surface.get_rect(center=(160, 12))
         screen.blit(header_surface, header_rect)
 
         # Book count
         count_text = f"Books: {len(self.books)}"
         count_surface = self.font.render(count_text, self.is_text_antialiased, TEXT_COLOR)
-        screen.blit(count_surface, (20, 40))
+        screen.blit(count_surface, (20, 30))
 
-        # Book list area
-        list_area = pygame.Rect(20, 60, 280, 180)
+        # Book list area (adjusted for header)
+        list_area = pygame.Rect(20, 50, 280, 190)
         pygame.draw.rect(screen, BOOK_LIST_COLOR, list_area)
-        pygame.draw.rect(screen, TEXT_COLOR, list_area, 1)
+        
+        # Show focus indicator when book list is focused
+        if self.focus_index >= len(self.widgets):
+            # Draw focused border in focus color
+            pygame.draw.rect(screen, FOCUS_COLOR, list_area, 2)
+        else:
+            # Normal border
+            pygame.draw.rect(screen, TEXT_COLOR, list_area, 1)
 
         # Render visible books
         if self.books:
@@ -292,14 +321,18 @@ class LibraryScene:
                 if book_index >= len(self.books):
                     break
                 
-                y = 60 + i * 20
+                y = 50 + i * 20  # Adjusted for header
                 book_filename = self.books[book_index]
                 book_name = self._get_book_display_name(book_filename)
                 
-                # Highlight selected book
+                # Highlight selected book with better colors
                 if book_index == self.selected_book_index:
                     highlight_rect = pygame.Rect(22, y + 2, 276, 16)
-                    color = FOCUS_COLOR if self.focus_index >= len(self.widgets) else SELECTED_BOOK_COLOR
+                    # Use brighter color when book list has focus
+                    if self.focus_index >= len(self.widgets):
+                        color = BOOK_LIST_FOCUSED_COLOR
+                    else:
+                        color = SELECTED_BOOK_COLOR
                     pygame.draw.rect(screen, color, highlight_rect)
                 
                 # Render book name (truncate if too long)
@@ -309,26 +342,26 @@ class LibraryScene:
                 text_surface = self.font.render(book_name, self.is_text_antialiased, TEXT_COLOR)
                 screen.blit(text_surface, (25, y + 3))
         else:
-            # No books message
+            # No books message (adjusted for header)
             no_books_text = "No books in library."
             no_books_surface = self.font.render(no_books_text, self.is_text_antialiased, TEXT_COLOR)
-            text_rect = no_books_surface.get_rect(center=(160, 150))
+            text_rect = no_books_surface.get_rect(center=(160, 140))
             screen.blit(no_books_surface, text_rect)
             
             help_text = "Use book crates in cargo to add books."
             help_surface = self.font.render(help_text, self.is_text_antialiased, TEXT_COLOR)
-            help_rect = help_surface.get_rect(center=(160, 170))
+            help_rect = help_surface.get_rect(center=(160, 160))
             screen.blit(help_surface, help_rect)
 
-        # Scroll indicators
+        # Scroll indicators (adjusted for header)
         if self.books and len(self.books) > self.max_visible_books:
             # Up arrow
             if self.scroll_offset > 0:
-                pygame.draw.polygon(screen, TEXT_COLOR, [(310, 70), (315, 60), (320, 70)])
+                pygame.draw.polygon(screen, TEXT_COLOR, [(310, 60), (315, 50), (320, 60)])
             
             # Down arrow
             if self.scroll_offset + self.max_visible_books < len(self.books):
-                pygame.draw.polygon(screen, TEXT_COLOR, [(310, 230), (315, 240), (320, 230)])
+                pygame.draw.polygon(screen, TEXT_COLOR, [(310, 220), (315, 230), (320, 220)])
 
         # Render buttons
         for widget in self.widgets:
@@ -338,11 +371,11 @@ class LibraryScene:
         if self.books:
             if self.focus_index >= len(self.widgets):
                 if self._is_move_to_cargo_available():
-                    instr_text = "Up/Down: Select book  Enter: Read  Space: Move to Cargo  Tab: Buttons"
+                    instr_text = "Up/Down/Wheel: Select  Enter/R: Read  M: Move to Cargo  Tab: Buttons"
                 else:
-                    instr_text = "Up/Down: Select book  Enter: Read  Tab: Buttons  (Winch busy - free it first)"
+                    instr_text = "Up/Down/Wheel: Select  Enter/R: Read  Tab: Buttons  (Winch busy - free it first)"
             else:
-                instr_text = "Up/Down: Navigate buttons  Enter: Activate  Tab: Book list"
+                instr_text = "Up/Down: Navigate buttons  Enter: Activate  Tab: Book list  Wheel: Scroll books"
         else:
             instr_text = "Collect book crates and use them to add books to your library"
         
