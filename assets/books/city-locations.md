@@ -10,7 +10,7 @@ My dear colleagues and fellow aeronauts, these notes represent three years of ca
 
 The world map below shows the extent of our known territories, marked with the steam routes and aerial highways that connect our great civilization:
 
-![World Map](../png/world-map.png)
+![World Map](../png/airship-map.png)
 
 ## Port Aetherton
 **Coordinates:** 51°30'N, 0°05'W  
