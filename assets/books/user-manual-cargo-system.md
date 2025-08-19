@@ -183,10 +183,10 @@ The cargo management interface provides complete control over freight operations
 
 The cargo system supports six distinct crate types, each with unique properties and uses:
 
-### Fuel Canister (Usable)
+### Fuel Drum (Usable)
 **Dimensions**: 2x3 grid cells (16x24 pixels)
-**Weight**: 8.0 lbs per canister
-**Contents**: 1.0 gallon aviation fuel
+**Weight**: 162.0 kg per drum
+**Contents**: 44 gallons aviation fuel
 **Colors**: White outline, Red fill
 **Usage**: Transfer fuel to aircraft tanks
 
@@ -361,13 +361,13 @@ The cargo system supports six distinct crate types, each with unique properties 
 
 ### Usable Cargo Types
 
-**Fuel Canisters**
-- **Location**: Must be in cargo hold
-- **Condition**: Not attached to winch
-- **Action**: Select crate and press [Use]
-- **Effect**: Transfers 1.0 gallon to fuel tanks
-- **Priority**: Aft tank filled first, then forward
-- **Result**: Crate disappears after use
+**Fuel Drums**
+**Location**: Must be in cargo hold
+**Condition**: Not attached to winch
+**Action**: Select crate and press [Use]
+**Effect**: Transfers 44 gallons to fuel tanks
+**Priority**: Aft tank filled first, then forward
+**Result**: Crate disappears after use
 
 **Medical Supplies**
 - **Location**: Must be in cargo hold
@@ -437,7 +437,7 @@ The cargo system supports six distinct crate types, each with unique properties 
 ### Weight Calculations
 
 **Individual Crate Weights:**
-- **Fuel Canister**: 8.0 lbs
+- **Fuel Drum**: 162.0 kg
 - **Books**: 2.0 lbs  
 - **Medical Supplies**: 5.0 lbs
 - **Food Rations**: 12.0 lbs
@@ -496,7 +496,7 @@ The cargo system supports six distinct crate types, each with unique properties 
 
 ### Hazardous Cargo Situations
 
-**Fuel Canister Leak:**
+**Fuel Drum Leak:**
 1. **Immediate Isolation**: Remove from other cargo
 2. **Ventilation**: Ensure good air circulation
 3. **Fire Prevention**: Eliminate ignition sources

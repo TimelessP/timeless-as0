@@ -57,19 +57,15 @@ The cargo management system is a physics-based mini-game that simulates loading 
 ### 3. Crate System
 
 **Crate Properties:**
-- **Type**: Defines contents and behavior (e.g., "fuel_canister", "books", "supplies")
-- **Dimensions**: 2D grid size (width x height in grid units)
-- **Contents**: Amount and unit of measure
-- **Visual**: Outline color, fill color, optional icon
-- **Usable**: Some crates can be "used" to transfer contents
+**Type**: Defines contents and behavior (e.g., "fuel_drum", "books", "supplies")
 
 **Crate Types:**
 ```json
 "crateTypes": {
-  "fuel_canister": {
-    "name": "Fuel Canister",
+  "fuel_drum": {
+    "name": "Fuel Drum",
     "dimensions": {"width": 2, "height": 3},
-    "contents": {"amount": 1, "unit": "gallon"},
+    "contents": {"amount": 44, "unit": "gallons"},
     "colors": {"outline": "#FFFFFF", "fill": "#FF4444"},
     "usable": true,
     "useAction": "transfer_fuel"
@@ -118,10 +114,10 @@ The cargo management system is a physics-based mini-game that simulates loading 
 ```json
 "crate": {
   "id": "crate_001",
-  "type": "fuel_canister",
+  "type": "fuel_drum",
   "position": {"x": 10, "y": 100},
   "area": "loadingBay",
-  "contents": {"amount": 1.0, "unit": "gallon"}
+  "contents": {"amount": 44.0, "unit": "gallons"}
 }
 ```
 
@@ -204,7 +200,7 @@ The cargo management system is a physics-based mini-game that simulates loading 
 │                                             │
 │ [Attach] [Detach] [Use] [Refresh]           │
 │                                             │
-│ Selected: Fuel Canister, 2x3, 1 gallon     │
+│ Selected: Fuel Drum, 2x3, 44 gallons     │
 ├─────────────────────────────────────────────┤
 │ < [                           ] >           │
 └─────────────────────────────────────────────┘
@@ -256,7 +252,7 @@ The cargo management system is a physics-based mini-game that simulates loading 
 **Cargo Usage:**
 - Select crate (click or focus with Tab)
 - Press "Use" button if available for that crate type
-- Fuel canisters: Transfer contents to fuel tanks (aft first, then forward)
+- Fuel drums: Transfer contents to fuel tanks (aft first, then forward)
 - Medical supplies: Add to ship's medical inventory
 - Food rations: Extend crew supply duration
 
