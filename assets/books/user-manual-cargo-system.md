@@ -60,7 +60,7 @@ The cargo management interface provides complete control over freight operations
 │                                                 │
 │ [Attach] [Detach] [Use] [Refresh]               │
 │                                                 │
-│ Selected: Fuel Canister, 2x3, 1.0 gallon       │
+│ Selected: Fuel Drum, 2x3, 44.0 gallons          │
 │ [< [                                  ] >]      │
 └─────────────────────────────────────────────────┘
 ```

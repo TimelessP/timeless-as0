@@ -153,9 +153,9 @@ The cargo management system is a physics-based mini-game that simulates loading 
   "cargoHold": [
     {
       "id": "crate_001",
-      "type": "fuel_canister",
+      "type": "fuel_drum",
       "position": {"x": 20, "y": 200},
-      "contents": {"amount": 1.0, "unit": "gallon"}
+      "contents": {"amount": 44.0, "unit": "gallon"}
     }
   ],
   "loadingBay": [
