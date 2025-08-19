@@ -7,6 +7,9 @@
 
 ---
 
+![Cargo loading](../png/airship-cargo.png)
+
+
 ## A Pilot's Reverie: The Song of Steam and Sky
 
 *18th October, 1887*  
