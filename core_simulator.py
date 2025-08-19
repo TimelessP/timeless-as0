@@ -282,14 +282,14 @@ class CoreSimulator:
                 "maxCapacity": 500.0,
                 "refreshAvailable": True,
                 "crateTypes": {
-                    "fuel_canister": {
-                        "name": "Fuel Canister",
+                    "fuel_drum": {
+                        "name": "Fuel Drum",
                         "dimensions": {"width": 4, "height": 6},
-                        "contents": {"amount": 10, "unit": "gallons"},
+                        "contents": {"amount": 44, "unit": "gallons"},
                         "colors": {"outline": "#FFFFFF", "fill": "#FF4444"},
                         "usable": True,
                         "useAction": "transfer_fuel",
-                        "weight": 8.0
+                        "weight": 162.0  # kg (drum + fuel)
                     },
                     "books": {
                         "name": "Books",
