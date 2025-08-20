@@ -13,19 +13,20 @@ try:
     import pygame  # type: ignore
 except Exception:  # pragma: no cover
     pygame = None  # type: ignore
-
-BACKGROUND_COLOR = (20, 20, 30)
-TEXT_COLOR = (230, 230, 240)
-FOCUS_COLOR = (255, 200, 50)
-HEADER_COLOR = (40, 80, 120)
+from theme import (
+    BACKGROUND_COLOR,
+    TEXT_COLOR,
+    FOCUS_COLOR,
+    FUEL_HEADER_COLOR,
+    BAR_BG,
+    FUEL_COLOR,
+    SLIDER_TRACK,
+    SLIDER_FILL,
+    DUMP_FILL,
+    BUTTON_COLOR,
+    BUTTON_FOCUSED_COLOR
+)
 HEADER_HEIGHT = 24
-BAR_BG = (40, 40, 55)
-FUEL_COLOR = (200, 120, 40)
-SLIDER_TRACK = (70, 70, 90)
-SLIDER_FILL = (120, 180, 255)
-DUMP_FILL = (255, 100, 100)
-BUTTON_COLOR = (60, 60, 80)
-BUTTON_FOCUSED = (90, 90, 130)
 
 
 class FuelScene:
@@ -450,8 +451,8 @@ class FuelScene:
         if not pygame:
             return
         surface.fill(BACKGROUND_COLOR)
-        # Header bar (match bridge style)
-        pygame.draw.rect(surface, HEADER_COLOR, (0, 0, 320, HEADER_HEIGHT))
+        # Header bar (distinctive for fuel scene)
+        pygame.draw.rect(surface, FUEL_HEADER_COLOR, (0, 0, 320, HEADER_HEIGHT))
         pygame.draw.rect(surface, TEXT_COLOR, (0, 0, 320, HEADER_HEIGHT), 1)
         self._draw_text(surface, "FUEL", 160, 4, center=True)
         self._render_tanks(surface)
@@ -505,7 +506,7 @@ class FuelScene:
         x, y = widget["position"]; w, h = widget["size"]
         focused = widget.get("focused", False)
         # Match bridge scene palette
-        bg_color = (80, 100, 120) if focused else (60, 80, 100)
+        bg_color = (80, 100, 120) if focused else (60, 80, 100)  # Custom blue for sliders
         border_color = FOCUS_COLOR if focused else (120, 120, 120)
         text_color = FOCUS_COLOR if focused else TEXT_COLOR
         # Square corners (no rounding) to match bridge style
@@ -522,7 +523,7 @@ class FuelScene:
     def _render_toggle(self, surface, widget):
         x, y = widget["position"]; w, h = widget["size"]
         on = widget.get("value", False)
-        base_color = (80, 140, 80) if on else (120, 70, 70)
+        base_color = (80, 140, 80) if on else (120, 70, 70)  # Green/red for toggles
         if widget.get("focused"):
             base_color = tuple(min(c + 40, 255) for c in base_color)
         pygame.draw.rect(surface, base_color, (x, y, w, h))

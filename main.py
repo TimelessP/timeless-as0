@@ -18,10 +18,6 @@ from scene_fuel import FuelScene
 from scene_cargo import CargoScene
 from scene_library import LibraryScene
 from scene_book import BookScene
-from scene_communications import CommunicationsScene
-from scene_camera import CameraScene
-from scene_crew import CrewScene
-from scene_missions import MissionsScene
 from scene_update import SceneUpdate
 from core_simulator import get_simulator
 from sound import AirshipSoundEngine
@@ -174,10 +170,6 @@ class AirshipApp:
         self.scenes["scene_fuel"] = FuelScene(self.simulator)
         self.scenes["scene_cargo"] = CargoScene(self.simulator)
         self.scenes["scene_library"] = LibraryScene(self.simulator)
-        self.scenes["scene_communications"] = CommunicationsScene(self.simulator)
-        self.scenes["scene_camera"] = CameraScene(self.simulator)
-        self.scenes["scene_crew"] = CrewScene(self.simulator)
-        self.scenes["scene_missions"] = MissionsScene(self.simulator)
         self.scenes["scene_update"] = SceneUpdate(self.font)
         
         # Set up cross-references

@@ -5,16 +5,32 @@ The primary flight interface showing critical flight instruments and controls
 import pygame
 import math
 from typing import List, Dict, Any, Optional
-
-# Constants
-LOGICAL_SIZE = 320
-BACKGROUND_COLOR = (15, 25, 35)  # Dark navy
-TEXT_COLOR = (255, 255, 255)
-FOCUS_COLOR = (255, 200, 50)
-INSTRUMENT_COLOR = (40, 60, 80)
-WARNING_COLOR = (220, 60, 60)
-GOOD_COLOR = (60, 180, 60)
-BRIDGE_HEADER_COLOR = (40, 80, 120)  # Blue for bridge scene
+from theme import (
+    LOGICAL_SIZE,
+    BACKGROUND_COLOR,
+    TEXT_COLOR,
+    FOCUS_COLOR,
+    WARNING_COLOR,
+    GOOD_COLOR,
+    BRIDGE_HEADER_COLOR,
+    INSTRUMENT_BG_COLOR,
+    INSTRUMENT_BORDER_COLOR,
+    SKY_COLOR,
+    GROUND_COLOR,
+    HORIZON_LINE_COLOR,
+    PITCH_TICK_COLOR,
+    PITCH_LABEL_COLOR,
+    PITCH_TEXT_COLOR,
+    WIDGET_BG_COLOR,
+    WIDGET_BORDER_DISABLED_COLOR,
+    BUTTON_BG_FOCUSED,
+    BUTTON_BG,
+    TEXTBOX_BG_ACTIVE,
+    TEXTBOX_BG_FOCUSED,
+    TEXTBOX_BG_DISABLED,
+    TEXTBOX_BORDER_DISABLED,
+    TEXTBOX_TEXT_DISABLED
+)
 
 class BridgeScene:
     def __init__(self, simulator):
@@ -359,8 +375,8 @@ class BridgeScene:
         
     def _get_prev_scene(self) -> str:
         """Get the previous scene in circular order"""
-        return "scene_missions"
-    
+        return "scene_library"
+
     def _get_next_scene(self) -> str:
         """Get the next scene in circular order"""
         return "scene_engine_room"
@@ -479,8 +495,8 @@ class BridgeScene:
         display_pitch = max(-15.0, min(15.0, pitch))
 
         # Base rectangle
-        pygame.draw.rect(surface, (30, 50, 70), (x, y, w, h))
-        pygame.draw.rect(surface, (255, 255, 255), (x, y, w, h), 1)
+        pygame.draw.rect(surface, INSTRUMENT_BG_COLOR, (x, y, w, h))
+        pygame.draw.rect(surface, INSTRUMENT_BORDER_COLOR, (x, y, w, h), 1)
 
         center_x = x + w // 2
         center_y = y + h // 2
@@ -491,16 +507,16 @@ class BridgeScene:
         if horizon_y > y:
             sky_h = min(horizon_y - y, h)
             if sky_h > 0:
-                pygame.draw.rect(surface, (70, 120, 190), (x + 1, y + 1, w - 2, sky_h - 1))
+                pygame.draw.rect(surface, SKY_COLOR, (x + 1, y + 1, w - 2, sky_h - 1))
         # Ground (lower)
         if horizon_y < y + h:
             ground_y = max(horizon_y, y + 1)
             ground_h = (y + h - 1) - ground_y
             if ground_h > 0:
-                pygame.draw.rect(surface, (110, 80, 50), (x + 1, ground_y, w - 2, ground_h))
+                pygame.draw.rect(surface, GROUND_COLOR, (x + 1, ground_y, w - 2, ground_h))
 
         # Horizon line (shortened) with brighter contrast
-        pygame.draw.line(surface, (255, 255, 255), (x + 8, horizon_y), (x + w - 8, horizon_y), 2)
+        pygame.draw.line(surface, HORIZON_LINE_COLOR, (x + 8, horizon_y), (x + w - 8, horizon_y), 2)
 
         # Pitch ladder (every 5°)
         font = self.font
@@ -511,21 +527,22 @@ class BridgeScene:
                 line_y = center_y + int(deg * pixels_per_deg) - int(display_pitch * pixels_per_deg) + (horizon_y - center_y)
                 if y + 4 <= line_y <= y + h - 4:
                     tick_len = 10 if deg % 10 == 0 else 6
-                    pygame.draw.line(surface, (230, 230, 230), (center_x - tick_len, line_y), (center_x + tick_len, line_y), 1)
+                    pygame.draw.line(surface, PITCH_TICK_COLOR, (center_x - tick_len, line_y), (center_x + tick_len, line_y), 1)
                     if deg % 10 == 0:
                         label = f"{abs(deg)}"
-                        txt = font.render(label, self.is_text_antialiased, (240, 240, 240))
+                        txt = font.render(label, self.is_text_antialiased, PITCH_LABEL_COLOR)
                         surface.blit(txt, (center_x - tick_len - txt.get_width() - 2, line_y - txt.get_height() // 2))
                         surface.blit(txt, (center_x + tick_len + 2, line_y - txt.get_height() // 2))
 
         # Aircraft reference symbol
         wing_span = 24
-        pygame.draw.line(surface, (255, 200, 50), (center_x - wing_span//2, center_y), (center_x + wing_span//2, center_y), 3)
-        pygame.draw.line(surface, (255, 200, 50), (center_x, center_y - 6), (center_x, center_y + 6), 3)
+        from theme import FOCUS_COLOR
+        pygame.draw.line(surface, FOCUS_COLOR, (center_x - wing_span//2, center_y), (center_x + wing_span//2, center_y), 3)
+        pygame.draw.line(surface, FOCUS_COLOR, (center_x, center_y - 6), (center_x, center_y + 6), 3)
 
         # Numeric pitch indicator bottom-left of instrument
         if font:
-            pitch_text = font.render(f"P:{pitch:+.1f}°", self.is_text_antialiased, (255, 255, 255))
+            pitch_text = font.render(f"P:{pitch:+.1f}°", self.is_text_antialiased, PITCH_TEXT_COLOR)
             surface.blit(pitch_text, (x + 6, y + h - pitch_text.get_height() - 4))
             
     def _render_widget(self, surface, widget):
@@ -548,9 +565,9 @@ class BridgeScene:
         label = widget.get("label", "")
 
         # Colors
-        bg_color = (40, 40, 60)
+        bg_color = WIDGET_BG_COLOR
         fill_color = FOCUS_COLOR if focused else GOOD_COLOR
-        border_color = FOCUS_COLOR if focused else (120, 120, 120)
+        border_color = FOCUS_COLOR if focused else WIDGET_BORDER_DISABLED_COLOR
 
         # Draw background
         pygame.draw.rect(surface, bg_color, (x, y, w, h))
@@ -591,8 +608,8 @@ class BridgeScene:
         focused = widget.get("focused", False)
         
         # Button colors
-        bg_color = (80, 100, 120) if focused else (60, 80, 100)
-        border_color = FOCUS_COLOR if focused else (120, 120, 120)
+        bg_color = BUTTON_BG_FOCUSED if focused else BUTTON_BG
+        border_color = FOCUS_COLOR if focused else WIDGET_BORDER_DISABLED_COLOR
         text_color = FOCUS_COLOR if focused else TEXT_COLOR
         
         # Draw button
@@ -616,17 +633,17 @@ class BridgeScene:
         
         # Textbox colors
         if active:
-            bg_color = (40, 60, 40)
+            bg_color = TEXTBOX_BG_ACTIVE
             border_color = GOOD_COLOR
             text_color = TEXT_COLOR
         elif focused:
-            bg_color = (50, 50, 80)
+            bg_color = TEXTBOX_BG_FOCUSED
             border_color = FOCUS_COLOR
             text_color = TEXT_COLOR
         else:
-            bg_color = (30, 30, 50)
-            border_color = (100, 100, 100)
-            text_color = (180, 180, 180)
+            bg_color = TEXTBOX_BG_DISABLED
+            border_color = TEXTBOX_BORDER_DISABLED
+            text_color = TEXTBOX_TEXT_DISABLED
             
         # Draw textbox
         pygame.draw.rect(surface, bg_color, (x, y, w, h))

@@ -19,15 +19,18 @@ except ImportError:
     urllib = None
     tomllib = None
 
-# UI Constants (matching main menu style)
-BACKGROUND_COLOR = (20, 20, 30)
-TEXT_COLOR = (255, 255, 255)
-FOCUS_COLOR = (255, 200, 50)
-BUTTON_COLOR = (60, 60, 80)
-BUTTON_FOCUSED_COLOR = (80, 80, 120)
-WARNING_COLOR = (255, 100, 100)
-CAUTION_COLOR = (255, 200, 100)
-GOOD_COLOR = (100, 255, 100)
+from theme import (
+    BACKGROUND_COLOR,
+    TEXT_COLOR,
+    FOCUS_COLOR,
+    BUTTON_COLOR,
+    BUTTON_FOCUSED_COLOR,
+    BUTTON_DISABLED_COLOR,
+    DISABLED_TEXT_COLOR,
+    WARNING_COLOR,
+    CAUTION_COLOR,
+    GOOD_COLOR
+)
 
 class SceneUpdate:
     def __init__(self, font):
@@ -458,8 +461,8 @@ class SceneUpdate:
                 bg_color = BUTTON_FOCUSED_COLOR if widget["focused"] else BUTTON_COLOR
                 text_color = FOCUS_COLOR if widget["focused"] else TEXT_COLOR
             else:
-                bg_color = (40, 40, 50)  # Darker for disabled
-                text_color = (120, 120, 120)  # Greyed out
+                bg_color = BUTTON_DISABLED_COLOR
+                text_color = DISABLED_TEXT_COLOR
             
             # Draw button background
             pygame.draw.rect(surface, bg_color, (x, y, w, h))

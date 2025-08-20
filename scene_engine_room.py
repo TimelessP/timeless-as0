@@ -5,16 +5,21 @@ Engine monitoring and control interface
 import pygame
 import math
 from typing import List, Dict, Any, Optional
-
-# Constants
-LOGICAL_SIZE = 320
-BACKGROUND_COLOR = (25, 15, 15)  # Dark red tint
-TEXT_COLOR = (255, 255, 255)
-FOCUS_COLOR = (255, 200, 50)
-WARNING_COLOR = (220, 60, 60)
-GOOD_COLOR = (60, 180, 60)
-CAUTION_COLOR = (220, 180, 60)
-ENGINE_HEADER_COLOR = (100, 40, 40)  # Red for engine room
+from theme import (
+    LOGICAL_SIZE,
+    BACKGROUND_COLOR,
+    TEXT_COLOR,
+    FOCUS_COLOR,
+    WARNING_COLOR,
+    GOOD_COLOR,
+    CAUTION_COLOR,
+    ENGINE_HEADER_COLOR,
+    ENGINE_BUTTON_BG_FOCUSED,
+    ENGINE_BUTTON_BG,
+    ENGINE_BUTTON_BORDER_DISABLED,
+    ENGINE_BUTTON_EMERGENCY_BG,
+    ENGINE_SLIDER_BG
+)
 
 class EngineRoomScene:
     def __init__(self, simulator):
@@ -340,7 +345,7 @@ class EngineRoomScene:
     def _get_prev_scene(self) -> str:
         """Get the previous scene in circular order"""
         return "scene_bridge"
-    
+
     def _get_next_scene(self) -> str:
         """Get the next scene in circular order"""
         return "scene_navigation"
@@ -524,13 +529,13 @@ class EngineRoomScene:
         
         # Special coloring for emergency stop
         if widget["id"] == "emergency_stop":
-            bg_color = WARNING_COLOR if focused else (120, 40, 40)
+            bg_color = WARNING_COLOR if focused else ENGINE_BUTTON_EMERGENCY_BG
             text_color = TEXT_COLOR
+            border_color = FOCUS_COLOR if focused else ENGINE_BUTTON_BORDER_DISABLED
         else:
-            bg_color = (80, 100, 120) if focused else (60, 80, 100)
+            bg_color = ENGINE_BUTTON_BG_FOCUSED if focused else ENGINE_BUTTON_BG
             text_color = FOCUS_COLOR if focused else TEXT_COLOR
-            
-        border_color = FOCUS_COLOR if focused else (120, 120, 120)
+            border_color = FOCUS_COLOR if focused else ENGINE_BUTTON_BORDER_DISABLED
         
         # Draw button
         pygame.draw.rect(surface, bg_color, (x, y, w, h))
@@ -553,7 +558,7 @@ class EngineRoomScene:
         label = widget.get("label", "")
         
         # Colors
-        bg_color = (40, 40, 60)
+        bg_color = ENGINE_SLIDER_BG
         fill_color = FOCUS_COLOR if focused else GOOD_COLOR
         border_color = FOCUS_COLOR if focused else (120, 120, 120)
         

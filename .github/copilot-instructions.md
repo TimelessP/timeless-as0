@@ -29,10 +29,6 @@ Airship Zero is a retro-inspired airship simulation game built with Python and P
 ├── scene_navigation.py        # World map and navigation
 ├── scene_fuel.py              # Fuel system management
 ├── scene_cargo.py             # Physics-based cargo management mini-game
-├── scene_communications.py    # Radio and communications
-├── scene_camera.py            # External view camera
-├── scene_crew.py              # Crew management
-├── scene_missions.py          # Mission system
 ├── assets/
 │   ├── fonts/                 # Pixelify Sans and other font files
 │   ├── png/                   # World map and other images
@@ -57,10 +53,6 @@ The game uses a modular scene-based architecture with the following scenes:
 - **`scene_navigation.py`**: World map with zoom/pan, position tracking, waypoints
 - **`scene_fuel.py`**: Fuel system management, tank levels, pump controls, transfers
 - **`scene_cargo.py`**: Physics-based cargo management with winch mechanics
-- **`scene_communications.py`**: Radio communications, messaging
-- **`scene_camera.py`**: External view camera system
-- **`scene_crew.py`**: Crew management and assignments
-- **`scene_missions.py`**: Mission system and objectives
 
 ### Scene Responsibilities
 

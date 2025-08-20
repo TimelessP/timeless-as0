@@ -11,17 +11,19 @@ import urllib.parse
 from typing import Optional, List, Dict, Any, Tuple
 from core_simulator import get_assets_path
 
-# Colors
-BACKGROUND_COLOR = (20, 20, 30)
-TEXT_COLOR = (60, 50, 40)  # Dark brown text for readability
-PAPER_COLOR = (250, 245, 235)  # Old paper color
-PAGE_BORDER_COLOR = (139, 69, 19)  # Saddle brown border
-HEADER_COLOR = (80, 60, 40)  # Brown header box for book scene
-BUTTON_COLOR = (60, 60, 80)
-BUTTON_FOCUSED = (90, 90, 130)
-BUTTON_TEXT_COLOR = (230, 230, 240)
-BOOKMARK_COLOR = (70, 130, 255)  # Brighter blue bookmark color
-BOOKMARK_PLACEHOLDER_COLOR = (100, 100, 100)  # Grey placeholder
+# Colors (import from theme, but keep book ink and paper as is)
+from theme import (
+    BACKGROUND_COLOR,
+    BUTTON_COLOR,
+    BUTTON_FOCUSED_COLOR,
+    BUTTON_DISABLED_COLOR,
+    BUTTON_TEXT_COLOR,
+    BOOKMARK_COLOR,
+    BOOKMARK_PLACEHOLDER_COLOR,
+    PAGE_BORDER_COLOR,
+    PAPER_COLOR
+)
+TEXT_COLOR = (60, 50, 40)  # Book ink (keep as is)
 
 # Global image cache for cleanup on exit
 _image_cache_dir = None
@@ -573,7 +575,7 @@ class BookScene:
         screen.fill(BACKGROUND_COLOR)
 
         # Header background box (like other scenes)
-        pygame.draw.rect(screen, HEADER_COLOR, (0, 0, 320, 24))
+        pygame.draw.rect(screen, BACKGROUND_COLOR, (0, 0, 320, 24))
         pygame.draw.rect(screen, BUTTON_TEXT_COLOR, (0, 0, 320, 24), 1)
 
         # Title in header box
@@ -660,7 +662,7 @@ class BookScene:
         w, h = widget["size"]
         
         # Button background
-        color = BUTTON_FOCUSED if widget.get("focused") else BUTTON_COLOR
+        color = BUTTON_FOCUSED_COLOR if widget.get("focused") else BUTTON_COLOR
         pygame.draw.rect(screen, color, (x, y, w, h))
         pygame.draw.rect(screen, BUTTON_TEXT_COLOR, (x, y, w, h), 1)
         
@@ -702,7 +704,7 @@ class BookScene:
             
             # Use proper bookmark color regardless of focus
             bookmark_color = BOOKMARK_COLOR
-            border_color = BUTTON_FOCUSED if focused else BUTTON_TEXT_COLOR
+            border_color = BUTTON_FOCUSED_COLOR if focused else BUTTON_TEXT_COLOR
             border_width = 2 if focused else 1
             
             # If we're on the bookmarked page, show the full bookmark with ribbon end
@@ -723,7 +725,7 @@ class BookScene:
         else:
             # Show grey placeholder bookmark (just the rectangle part)
             placeholder_color = BOOKMARK_PLACEHOLDER_COLOR
-            border_color = BUTTON_FOCUSED if focused else BUTTON_TEXT_COLOR
+            border_color = BUTTON_FOCUSED_COLOR if focused else BUTTON_TEXT_COLOR
             border_width = 2 if focused else 1
             
             rect_points = [

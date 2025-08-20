@@ -8,18 +8,25 @@ import os
 import time
 import datetime
 from typing import List, Dict, Any, Optional
-
-# Constants
-LOGICAL_SIZE = 320
-BACKGROUND_COLOR = (10, 20, 30)  # Dark blue
-TEXT_COLOR = (255, 255, 255)
-FOCUS_COLOR = (255, 200, 50)
-POSITION_COLOR = (255, 100, 100)  # Red for current position (legacy)
-AIRSHIP_COLOR = (120, 30, 30)     # Dark red for airship position marker
-AIRSHIP_RANGE_COLOR = (120, 30, 30)  # Dark red for range ring (same base color)
-ROUTE_COLOR = (100, 255, 100)     # Green for route
-WAYPOINT_TEXT_COLOR = (90, 60, 40)  # Desaturated dark brown for waypoint text
-NAV_HEADER_COLOR = (40, 60, 100)  # Blue for navigation scene
+from theme import (
+    LOGICAL_SIZE,
+    FOCUS_COLOR,
+    NAV_HEADER_COLOR,
+    NAV_BACKGROUND_COLOR,
+    NAV_TEXT_COLOR,
+    NAV_POSITION_COLOR,
+    NAV_AIRSHIP_COLOR,
+    NAV_AIRSHIP_RANGE_COLOR,
+    NAV_ROUTE_COLOR,
+    NAV_WAYPOINT_TEXT_COLOR,
+    NAV_OCEAN_COLOR,
+    NAV_LAND_COLOR,
+    NAV_NIGHT_MASK_COLOR,
+    NAV_DAYLIGHT_MASK_COLOR,
+    NAV_WIDGET_BG,
+    NAV_WIDGET_BG_FOCUSED,
+    NAV_WIDGET_BORDER_DISABLED
+)
 
 class NavigationScene:
     def __init__(self, simulator):
@@ -144,10 +151,10 @@ class NavigationScene:
             print(f"❌ Failed to load world map: {e}")
             # Create a simple placeholder map
             self.world_map = pygame.Surface((640, 320))
-            self.world_map.fill((0, 50, 100))  # Dark blue ocean
+            self.world_map.fill(NAV_OCEAN_COLOR)
             # Draw simple continents
-            pygame.draw.rect(self.world_map, (50, 80, 50), (100, 80, 200, 120))  # North America
-            pygame.draw.rect(self.world_map, (50, 80, 50), (350, 100, 150, 100))  # Europe
+            pygame.draw.rect(self.world_map, NAV_LAND_COLOR, (100, 80, 200, 120))  # North America
+            pygame.draw.rect(self.world_map, NAV_LAND_COLOR, (350, 100, 150, 100))  # Europe
             
     def _lat_lon_to_map_coords(self, lat: float, lon: float) -> tuple:
         """Convert latitude/longitude to map pixel coordinates"""
@@ -521,7 +528,7 @@ class NavigationScene:
     def _get_prev_scene(self) -> str:
         """Get the previous scene in circular order"""
         return "scene_engine_room"
-    
+
     def _get_next_scene(self) -> str:
         """Get the next scene in circular order"""
         return "scene_fuel"
@@ -922,7 +929,7 @@ class NavigationScene:
         
         # Create a binary mask for day/night areas (grayscale for blurring)
         mask = pygame.Surface((map_w, map_h))
-        mask.fill((0, 0, 0))  # Start with black (night areas)
+        mask.fill(NAV_NIGHT_MASK_COLOR)
         
         # Calculate solar illumination circle with proper subsolar point
         subsolar_lat, subsolar_lon, terminator_points = self._calculate_solar_illumination_circle(utc_hours, utc_date)
@@ -940,7 +947,7 @@ class NavigationScene:
                         if self._is_point_illuminated(lat, lon, subsolar_lat, subsolar_lon):
                             # This point is in daylight - mark as white in mask
                             daylight_rect = pygame.Rect(x, y, sample_step, sample_step)
-                            pygame.draw.rect(mask, (255, 255, 255), daylight_rect)
+                            pygame.draw.rect(mask, NAV_DAYLIGHT_MASK_COLOR, daylight_rect)
                             
                     except Exception:
                         # Skip points that can't be converted (edge cases)
@@ -1039,15 +1046,15 @@ class NavigationScene:
                 
     def render(self, surface):
         """Render the navigation scene"""
-        surface.fill(BACKGROUND_COLOR)
+        surface.fill(NAV_BACKGROUND_COLOR)
         
         # Draw colored title header
         pygame.draw.rect(surface, NAV_HEADER_COLOR, (0, 0, 320, 24))
-        pygame.draw.rect(surface, TEXT_COLOR, (0, 0, 320, 24), 1)
+        pygame.draw.rect(surface, NAV_TEXT_COLOR, (0, 0, 320, 24), 1)
         
         # Centered title
         if self.font:
-            title_text = self.font.render("NAVIGATION", self.is_text_antialiased, TEXT_COLOR)
+            title_text = self.font.render("NAVIGATION", self.is_text_antialiased, NAV_TEXT_COLOR)
             title_x = (320 - title_text.get_width()) // 2
             surface.blit(title_text, (title_x, 4))
         
@@ -1083,7 +1090,7 @@ class NavigationScene:
             # Handle edge case where rect is outside map bounds or invalid
             # Create a fallback surface
             map_section = pygame.Surface((max(1, map_rect.width), max(1, map_rect.height)))
-            map_section.fill((0, 50, 100))  # Ocean blue
+            map_section.fill(NAV_OCEAN_COLOR)
             
         # Scale to fit the display area
         display_w = LOGICAL_SIZE - 16   # 304 pixels
@@ -1132,20 +1139,20 @@ class NavigationScene:
         if travel_distance_nm > 0:
             # Draw spherical range ring using interpolated points
             range_ring_points = self._generate_range_ring_points(current_lat, current_lon, travel_distance_nm, 72)
-            self._draw_spherical_line_segments(overlay, AIRSHIP_RANGE_COLOR, range_ring_points, 
+            self._draw_spherical_line_segments(overlay, NAV_AIRSHIP_RANGE_COLOR, range_ring_points, 
                                              1, 64, map_rect, display_w, display_h, max_range)  # 25% opacity
             
             # Draw great circle heading line using interpolated points
             end_lat, end_lon = self._calculate_destination(current_lat, current_lon, bearing, travel_distance_nm)
             heading_line_points = self._generate_great_circle_arc(current_lat, current_lon, end_lat, end_lon, 25)
-            self._draw_spherical_line_segments(overlay, AIRSHIP_RANGE_COLOR, heading_line_points,
+            self._draw_spherical_line_segments(overlay, NAV_AIRSHIP_RANGE_COLOR, heading_line_points,
                                              1, 64, map_rect, display_w, display_h, max_range)  # 25% opacity
         
         # Draw position marker (centered on ship position)
         marker_radius = 3  # 7 pixel diameter (odd number)
-        self._draw_transparent_circle(overlay, AIRSHIP_COLOR, 
-                                    (int(overlay_ship_x), int(overlay_ship_y)), 
-                                    marker_radius, 191)  # 75% opacity (191/255)
+        self._draw_transparent_circle(overlay, NAV_AIRSHIP_COLOR, 
+                    (int(overlay_ship_x), int(overlay_ship_y)), 
+                    marker_radius, 191)  # 75% opacity (191/255)
         
         # Blit only the visible portion of the overlay onto the main surface
         # Extract the display-sized portion from the center of the larger overlay
@@ -1191,19 +1198,19 @@ class NavigationScene:
         
         # Draw great circle dashed line from ship to waypoint using interpolated points
         great_circle_points = self._generate_great_circle_arc(ship_lat, ship_lon, waypoint_lat, waypoint_lon, 30)
-        self._draw_spherical_dashed_line(overlay, AIRSHIP_RANGE_COLOR, great_circle_points,
-                                       1, 64, map_rect, display_w, display_h, max_range, dash_length=8)  # 25% opacity
+        self._draw_spherical_dashed_line(overlay, NAV_AIRSHIP_RANGE_COLOR, great_circle_points,
+                       1, 64, map_rect, display_w, display_h, max_range, dash_length=8)  # 25% opacity
         
         # Draw waypoint marker using consistent dark red colors
         # Outer circle with transparency (same as range ring)
-        self._draw_transparent_circle(overlay, AIRSHIP_RANGE_COLOR, 
-                                    (int(overlay_waypoint_x), int(overlay_waypoint_y)), 
-                                    5, 64)  # 25% opacity (same as range elements)
+        self._draw_transparent_circle(overlay, NAV_AIRSHIP_RANGE_COLOR, 
+                        (int(overlay_waypoint_x), int(overlay_waypoint_y)), 
+                        5, 64)  # 25% opacity (same as range elements)
         
         # Inner circle with higher opacity (same as ship dot)
-        self._draw_transparent_circle(overlay, AIRSHIP_COLOR, 
-                                    (int(overlay_waypoint_x), int(overlay_waypoint_y)), 
-                                    3, 191)  # 75% opacity (same as ship dot)
+        self._draw_transparent_circle(overlay, NAV_AIRSHIP_COLOR, 
+                        (int(overlay_waypoint_x), int(overlay_waypoint_y)), 
+                        3, 191)  # 75% opacity (same as ship dot)
         
         # Draw waypoint information with semi-transparent dark brown text
         if self.font:
@@ -1215,7 +1222,7 @@ class NavigationScene:
                 label_above = f"{distance:.1f}nm {bearing:03.0f}°"
                 self._render_transparent_text(overlay, label_above, 
                                             (int(overlay_waypoint_x), int(overlay_waypoint_y - 20)), 
-                                            WAYPOINT_TEXT_COLOR, 128, centered=True)
+                                            NAV_WAYPOINT_TEXT_COLOR, 128, centered=True)
             
             # Lat/lon below the waypoint
             lat_str = f"{abs(waypoint['latitude']):.3f}°{'N' if waypoint['latitude'] >= 0 else 'S'}"
@@ -1223,7 +1230,7 @@ class NavigationScene:
             label_below = f"{lat_str} {lon_str}"
             self._render_transparent_text(overlay, label_below, 
                                         (int(overlay_waypoint_x), int(overlay_waypoint_y + 8)), 
-                                        WAYPOINT_TEXT_COLOR, 128, centered=True)
+                                        NAV_WAYPOINT_TEXT_COLOR, 128, centered=True)
         
         # Blit only the visible portion of the overlay onto the main surface
         # Extract the display-sized portion from the center of the larger overlay
@@ -1418,7 +1425,7 @@ class NavigationScene:
     def _render_label(self, surface, widget):
         """Render a label widget"""
         if self.font:
-            color = FOCUS_COLOR if widget.get("focused", False) else TEXT_COLOR
+            color = FOCUS_COLOR if widget.get("focused", False) else NAV_TEXT_COLOR
             text_surface = self.font.render(widget["text"], self.is_text_antialiased, color)
             surface.blit(text_surface, widget["position"])
             
@@ -1429,9 +1436,9 @@ class NavigationScene:
         focused = widget.get("focused", False)
         
         # Button colors
-        bg_color = (60, 60, 80) if not focused else (80, 80, 120)
-        border_color = FOCUS_COLOR if focused else (128, 128, 128)
-        text_color = FOCUS_COLOR if focused else TEXT_COLOR
+        bg_color = NAV_WIDGET_BG if not focused else NAV_WIDGET_BG_FOCUSED
+        border_color = FOCUS_COLOR if focused else NAV_WIDGET_BORDER_DISABLED
+        text_color = FOCUS_COLOR if focused else NAV_TEXT_COLOR
         
         # Draw button
         pygame.draw.rect(surface, bg_color, (x, y, w, h))

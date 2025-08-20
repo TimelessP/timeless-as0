@@ -4,17 +4,19 @@ Library Scene - Manage and read collected books
 import pygame
 import os
 from typing import Optional, List, Dict, Any
-
-# Colors
-BACKGROUND_COLOR = (20, 20, 30)
-TEXT_COLOR = (230, 230, 240)
-FOCUS_COLOR = (255, 200, 50)
-HEADER_COLOR = (80, 60, 40)  # Brown for library theme
-BOOK_LIST_COLOR = (40, 40, 50)
-SELECTED_BOOK_COLOR = (100, 80, 50)  # Muted brown, readable with white text
-BOOK_LIST_FOCUSED_COLOR = (120, 100, 60)  # Brighter brown when book list has focus
-BUTTON_COLOR = (60, 60, 80)
-BUTTON_FOCUSED = (90, 90, 130)
+from theme import (
+    BACKGROUND_COLOR,
+    TEXT_COLOR,
+    FOCUS_COLOR,
+    LIBRARY_HEADER_COLOR,
+    BOOK_LIST_COLOR,
+    SELECTED_BOOK_COLOR,
+    BOOK_LIST_FOCUSED_COLOR,
+    BUTTON_COLOR,
+    BUTTON_FOCUSED_COLOR,
+    BUTTON_DISABLED_COLOR,
+    DISABLED_TEXT_COLOR
+)
 
 class LibraryScene:
     def __init__(self, simulator):
@@ -273,9 +275,9 @@ class LibraryScene:
 
     def _get_prev_scene(self) -> str:
         return "scene_cargo"
-    
+
     def _get_next_scene(self) -> str:
-        return "scene_communications"
+        return "scene_bridge"
 
     def update(self, dt: float):
         """Update the scene"""
@@ -294,7 +296,7 @@ class LibraryScene:
         screen.fill(BACKGROUND_COLOR)
 
         # Header background box (like other scenes)
-        pygame.draw.rect(screen, HEADER_COLOR, (0, 0, 320, 24))
+        pygame.draw.rect(screen, LIBRARY_HEADER_COLOR, (0, 0, 320, 24))
         pygame.draw.rect(screen, TEXT_COLOR, (0, 0, 320, 24), 1)
 
         # Header text
@@ -387,11 +389,11 @@ class LibraryScene:
         
         # Button background
         if enabled:
-            color = BUTTON_FOCUSED if widget.get("focused") else BUTTON_COLOR
+            color = BUTTON_FOCUSED_COLOR if widget.get("focused") else BUTTON_COLOR
             text_color = TEXT_COLOR
         else:
-            color = (40, 40, 50)  # Darker for disabled
-            text_color = (120, 120, 120)  # Grayed out text
+            color = BUTTON_DISABLED_COLOR
+            text_color = DISABLED_TEXT_COLOR
             
         pygame.draw.rect(screen, color, (x, y, w, h))
         pygame.draw.rect(screen, text_color, (x, y, w, h), 1)

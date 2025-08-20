@@ -2,17 +2,22 @@
 Main Menu Scene for Airship Zero
 Brutally simple 320x320 UI system
 """
+
 import pygame
 import sys
 from typing import List, Dict, Any, Optional
-
-# Constants
-LOGICAL_SIZE = 320
-BACKGROUND_COLOR = (20, 20, 30)  # Dark blue-grey
-TEXT_COLOR = (255, 255, 255)
-FOCUS_COLOR = (255, 200, 50)  # Golden highlight
-BUTTON_COLOR = (60, 60, 80)
-BUTTON_FOCUSED_COLOR = (80, 80, 120)
+from theme import (
+    LOGICAL_SIZE,
+    BACKGROUND_COLOR,
+    TEXT_COLOR,
+    FOCUS_COLOR,
+    BUTTON_COLOR,
+    BUTTON_FOCUSED_COLOR,
+    BUTTON_DISABLED_COLOR,
+    SUBTITLE_COLOR,
+    DISABLED_TEXT_COLOR,
+    CAUTION_COLOR
+)
 
 class MainMenuScene:
     def __init__(self):
@@ -193,58 +198,58 @@ class MainMenuScene:
         """Render the main menu to the logical surface"""
         # Clear background
         surface.fill(BACKGROUND_COLOR)
-        
-                # Draw title and subtitle
+
+        # Draw title and subtitle
         if self.font:
             title_text = self.font.render("AIRSHIP ZERO", self.is_text_antialiased, TEXT_COLOR)
             title_x = (LOGICAL_SIZE - title_text.get_width()) // 2
             surface.blit(title_text, (title_x, 80))
-            
-            subtitle_text = self.font.render("Steam & Copper Dreams", self.is_text_antialiased, (180, 180, 180))
+
+            subtitle_text = self.font.render("Steam & Copper Dreams", self.is_text_antialiased, SUBTITLE_COLOR)  # Subtitle is intentionally silver-grey
             subtitle_x = (LOGICAL_SIZE - subtitle_text.get_width()) // 2
             surface.blit(subtitle_text, (subtitle_x, 100))
-            
+
             # Draw update notification if available
             if self.update_available and self.latest_version:
                 update_text = f"Update v{self.latest_version} available!"
-                update_surface = self.font.render(update_text, self.is_text_antialiased, (255, 200, 100))
+                update_surface = self.font.render(update_text, self.is_text_antialiased, CAUTION_COLOR)
                 update_x = (LOGICAL_SIZE - update_surface.get_width()) // 2
                 surface.blit(update_surface, (update_x, 260))
-        
+
         # Draw widgets
         for widget in self.widgets:
             self._render_widget(surface, widget)
-            
+
     def _render_widget(self, surface, widget):
         """Render a single widget"""
         if widget["type"] == "button":
             self._render_button(surface, widget)
-            
+
     def _render_button(self, surface, widget):
         """Render a button widget"""
         x, y = widget["position"]
         w, h = widget["size"]
         enabled = widget.get("enabled", True)
         focused = widget.get("focused", False)
-        
+
         # Choose colors
         if not enabled:
-            bg_color = (40, 40, 50)
-            text_color = (100, 100, 100)
+            bg_color = BUTTON_DISABLED_COLOR
+            text_color = DISABLED_TEXT_COLOR
         elif focused:
             bg_color = BUTTON_FOCUSED_COLOR
             text_color = FOCUS_COLOR
         else:
             bg_color = BUTTON_COLOR
             text_color = TEXT_COLOR
-            
+
         # Draw button background
         pygame.draw.rect(surface, bg_color, (x, y, w, h))
-        
+
         # Draw button border
-        border_color = FOCUS_COLOR if focused else (100, 100, 100)
+        border_color = FOCUS_COLOR if focused else DISABLED_TEXT_COLOR
         pygame.draw.rect(surface, border_color, (x, y, w, h), 1)
-        
+
         # Draw button text
         if self.font and enabled:
             text_surface = self.font.render(widget["text"], self.is_text_antialiased, text_color)

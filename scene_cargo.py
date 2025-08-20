@@ -6,21 +6,27 @@ import random
 import math
 import time
 from typing import Optional, Dict, List, Tuple
-
-# Colors
-BACKGROUND_COLOR = (20, 20, 30)
-TEXT_COLOR = (255, 255, 255)
-FOCUS_COLOR = (255, 200, 50)
-CARGO_HEADER_COLOR = (120, 100, 60)  # Beige-brown for cargo scene
-GRID_COLOR = (40, 40, 50)  # Subtle grid lines
-WINCH_COLOR = (150, 150, 150)
-CABLE_COLOR = (120, 120, 120)
-CARGO_HOLD_COLOR = (30, 50, 40)  # Dark green tint
-LOADING_BAY_COLOR = (50, 40, 30)  # Dark brown tint
-AREA_BORDER_COLOR = (80, 80, 80)
-SELECTED_CRATE_COLOR = (255, 255, 100)  # Yellow highlight
-VALID_PLACEMENT_COLOR = (100, 255, 100)  # Green for valid placement
-INVALID_PLACEMENT_COLOR = (255, 100, 100)  # Red for invalid placement
+from theme import (
+    BACKGROUND_COLOR,
+    TEXT_COLOR,
+    FOCUS_COLOR,
+    CARGO_HEADER_COLOR,
+    GRID_COLOR,
+    WINCH_COLOR,
+    CABLE_COLOR,
+    CARGO_HOLD_COLOR,
+    LOADING_BAY_COLOR,
+    AREA_BORDER_COLOR,
+    SELECTED_CRATE_COLOR,
+    VALID_PLACEMENT_COLOR,
+    INVALID_PLACEMENT_COLOR,
+    BUTTON_BG_FOCUSED,
+    BUTTON_BG,
+    BUTTON_BORDER_DISABLED,
+    BUTTON_TEXT_DISABLED,
+    DEFAULT_GRAY,
+    BUTTON_DISABLED_COLOR
+)
 
 # Layout constants
 # Reduced grid size to create vertical space for top title and bottom margins
@@ -33,6 +39,11 @@ WINCH_RAIL_START_X = 8
 WINCH_RAIL_END_X = 312
 
 class CargoScene:
+    def _get_prev_scene(self) -> str:
+        return "scene_fuel"
+
+    def _get_next_scene(self) -> str:
+        return "scene_library"
     def __init__(self, simulator):
         self.font = None
         self.is_text_antialiased = False
@@ -474,13 +485,13 @@ class CargoScene:
 
         # Button colors - disabled buttons are darker
         if enabled:
-            bg_color = (80, 100, 120) if focused else (60, 80, 100)
-            border_color = FOCUS_COLOR if focused else (120, 120, 120)
+            bg_color = BUTTON_BG_FOCUSED if focused else BUTTON_BG
+            border_color = FOCUS_COLOR if focused else BUTTON_BORDER_DISABLED
             text_color = FOCUS_COLOR if focused else TEXT_COLOR
         else:
-            bg_color = (40, 40, 50)
-            border_color = (60, 60, 60)
-            text_color = (100, 100, 100)
+            bg_color = BUTTON_DISABLED_COLOR
+            border_color = BUTTON_BORDER_DISABLED
+            text_color = BUTTON_TEXT_DISABLED
 
         # Draw button background
         pygame.draw.rect(surface, bg_color, (x, y, w, h))
@@ -763,7 +774,7 @@ class CargoScene:
         try:
             return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
         except (ValueError, IndexError):
-            return (128, 128, 128)  # Default gray
+            return DEFAULT_GRAY  # Default gray
 
     def update(self, dt: float):
         """Update the scene with game state"""
