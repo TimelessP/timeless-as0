@@ -88,8 +88,8 @@ BOOKMARK_PLACEHOLDER_COLOR = (100, 100, 100)
 
 # Library scene book list colors
 BOOK_LIST_COLOR = BUTTON_COLOR              # Use standard button color for book list background
-SELECTED_BOOK_COLOR = (180, 140, 40)        # Deep gold for selected book (matches BUTTON_FOCUSED_COLOR)
-BOOK_LIST_FOCUSED_COLOR = (255, 200, 60)    # Saturated brass for focused selection
+SELECTED_BOOK_COLOR = BUTTON_FOCUSED_COLOR        # Deep gold for selected book (matches BUTTON_FOCUSED_COLOR)
+BOOK_LIST_FOCUSED_COLOR = (180, 140, 40)    # Saturated brass for focused selection
 
 # Navigation map (keep as is for ink look)
 MAP_BACKGROUND_COLOR = (10, 20, 30)
