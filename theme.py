@@ -1,3 +1,14 @@
+# Crate type color palette for cargo scene (wood/paint/ink inspired, not bright)
+# Map: crate_type_id -> {"outline": hex, "fill": hex}
+# Example usage: CRATE_TYPE_COLORS["fuel_drum"]["fill"]
+CRATE_TYPE_COLORS = {
+	"fuel_drum":     {"outline": "#B97A56", "fill": "#8B5C2A"},   # Oiled wood barrel
+	"books":         {"outline": "#6B4F2B", "fill": "#C2B280"},   # Old book crate
+	"medical_supplies": {"outline": "#A89C94", "fill": "#E5D8C0"}, # Canvas/linen
+	"food_rations":  {"outline": "#7A6A4F", "fill": "#B7A16A"},   # Burlap sack
+	"spare_parts":   {"outline": "#5C5C5C", "fill": "#A0A0A0"},   # Metal crate
+	"luxury_goods":  {"outline": "#C2B280", "fill": "#E6D8AD"},   # Fancy wood
+}
 # Navigation map color filter parameters
 # NAV_MAP_FILTER_PARAMS controls the color transformation applied to the navigation map image on load.
 # To disable filtering (no color change), set to (1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0):

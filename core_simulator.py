@@ -6,6 +6,7 @@ import json
 import time
 import math
 import os
+from theme import CRATE_TYPE_COLORS
 import platform
 from pathlib import Path
 import sys
@@ -166,7 +167,7 @@ class CoreSimulator:
                 },
                 "controls": {
                     "rudder": 0.0,  # -30 to +30 degrees
-                    "elevator": 0.0,  # -20 to +20 degrees  
+                    "elevator": 0.0,  # -20 to +20 degrees
                     "ailerons": 0.0   # -25 to +25 degrees
                 },
                 "targets": {
@@ -286,7 +287,7 @@ class CoreSimulator:
                         "name": "Fuel Drum",
                         "dimensions": {"width": 4, "height": 6},
                         "contents": {"amount": 44, "unit": "gallons"},
-                        "colors": {"outline": "#FFFFFF", "fill": "#FF4444"},
+                        "colors": CRATE_TYPE_COLORS.get("fuel_drum", {"outline": "#B97A56", "fill": "#8B5C2A"}),
                         "usable": True,
                         "useAction": "transfer_fuel",
                         "weight": 162.0  # kg (drum + fuel)
@@ -295,7 +296,7 @@ class CoreSimulator:
                         "name": "Books",
                         "dimensions": {"width": 2, "height": 3},
                         "contents": {"amount": 1, "unit": "book"},
-                        "colors": {"outline": "#8B4513", "fill": "#DEB887"},
+                        "colors": CRATE_TYPE_COLORS.get("books", {"outline": "#6B4F2B", "fill": "#C2B280"}),
                         "usable": True,
                         "useAction": "add_to_library",
                         "weight": 2.0
@@ -304,7 +305,7 @@ class CoreSimulator:
                         "name": "Medical Kit",
                         "dimensions": {"width": 4, "height": 3},
                         "contents": {"amount": 1, "unit": "kit"},
-                        "colors": {"outline": "#FF0000", "fill": "#FFE4E1"},
+                        "colors": CRATE_TYPE_COLORS.get("medical_supplies", {"outline": "#A89C94", "fill": "#E5D8C0"}),
                         "usable": True,
                         "useAction": "add_medical_supplies",
                         "weight": 5.0
@@ -313,7 +314,7 @@ class CoreSimulator:
                         "name": "Food Rations",
                         "dimensions": {"width": 6, "height": 2},
                         "contents": {"amount": 7, "unit": "days"},
-                        "colors": {"outline": "#228B22", "fill": "#90EE90"},
+                        "colors": CRATE_TYPE_COLORS.get("food_rations", {"outline": "#7A6A4F", "fill": "#B7A16A"}),
                         "usable": True,
                         "useAction": "add_food",
                         "weight": 12.0
@@ -322,7 +323,7 @@ class CoreSimulator:
                         "name": "Engine Parts",
                         "dimensions": {"width": 5, "height": 3},
                         "contents": {"amount": 1, "unit": "set"},
-                        "colors": {"outline": "#696969", "fill": "#D3D3D3"},
+                        "colors": CRATE_TYPE_COLORS.get("spare_parts", {"outline": "#5C5C5C", "fill": "#A0A0A0"}),
                         "usable": False,
                         "weight": 15.0
                     },
@@ -330,7 +331,7 @@ class CoreSimulator:
                         "name": "Luxury Items",
                         "dimensions": {"width": 3, "height": 4},
                         "contents": {"amount": 1, "unit": "crate"},
-                        "colors": {"outline": "#FFD700", "fill": "#FFFACD"},
+                        "colors": CRATE_TYPE_COLORS.get("luxury_goods", {"outline": "#C2B280", "fill": "#E6D8AD"}),
                         "usable": False,
                         "weight": 3.0
                     }
