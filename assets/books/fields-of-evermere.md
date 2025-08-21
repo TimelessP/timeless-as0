@@ -3,6 +3,8 @@
 By Captain Seraphine Drax, Aboard the Hallowthorn
 Year of the Æthercurrents 128 (Alternative Calendar of the Brass League)
 
+![Fields of Evermere](../png/evermere.png)
+
 The *Hallowthorn* exhaled steam as she settled, her great gasbag creaking like the lungs of an old giant finally at rest. Ropes hissed down from the gondola, thick hemp braids biting into the grass of Evermere’s wide plain. The crew leapt to their work, boots sinking slightly in the loam.
 
 “Mind the crates, lads, careful!” barked Bosun Ketteridge, his monocle fogged from the descent. His orders snapped like the rigging in high winds. The men—greased with soot, smelling of iron and tar—lowered down boxes stenciled in faded lettering: Lamps, Distilled Spirits, Copper Wares. Each crate groaned against their shoulders, wood rough and splintered, bound with tarnished brass straps.
