@@ -12,7 +12,11 @@ from theme import (
     LOGICAL_SIZE,
     FOCUS_COLOR,
     NAV_HEADER_COLOR,
-    NAV_BACKGROUND_COLOR,
+    BACKGROUND_COLOR,
+    TEXT_COLOR,
+    BUTTON_BG,
+    BUTTON_BG_FOCUSED,
+    BUTTON_BORDER_DISABLED,
     NAV_TEXT_COLOR,
     NAV_POSITION_COLOR,
     NAV_AIRSHIP_COLOR,
@@ -1046,15 +1050,15 @@ class NavigationScene:
                 
     def render(self, surface):
         """Render the navigation scene"""
-        surface.fill(NAV_BACKGROUND_COLOR)
+        surface.fill(BACKGROUND_COLOR)
         
         # Draw colored title header
         pygame.draw.rect(surface, NAV_HEADER_COLOR, (0, 0, 320, 24))
-        pygame.draw.rect(surface, NAV_TEXT_COLOR, (0, 0, 320, 24), 1)
+        pygame.draw.rect(surface, TEXT_COLOR, (0, 0, 320, 24), 1)
         
         # Centered title
         if self.font:
-            title_text = self.font.render("NAVIGATION", self.is_text_antialiased, NAV_TEXT_COLOR)
+            title_text = self.font.render("NAVIGATION", self.is_text_antialiased, TEXT_COLOR)
             title_x = (320 - title_text.get_width()) // 2
             surface.blit(title_text, (title_x, 4))
         
@@ -1425,7 +1429,8 @@ class NavigationScene:
     def _render_label(self, surface, widget):
         """Render a label widget"""
         if self.font:
-            color = FOCUS_COLOR if widget.get("focused", False) else NAV_TEXT_COLOR
+            # Standardize all labels above the map to use TEXT_COLOR
+            color = TEXT_COLOR
             text_surface = self.font.render(widget["text"], self.is_text_antialiased, color)
             surface.blit(text_surface, widget["position"])
             
@@ -1435,10 +1440,10 @@ class NavigationScene:
         w, h = widget["size"]
         focused = widget.get("focused", False)
         
-        # Button colors
-        bg_color = NAV_WIDGET_BG if not focused else NAV_WIDGET_BG_FOCUSED
-        border_color = FOCUS_COLOR if focused else NAV_WIDGET_BORDER_DISABLED
-        text_color = FOCUS_COLOR if focused else NAV_TEXT_COLOR
+        # Button colors (standardized)
+        bg_color = BUTTON_BG_FOCUSED if focused else BUTTON_BG
+        border_color = FOCUS_COLOR if focused else BUTTON_BORDER_DISABLED
+        text_color = FOCUS_COLOR if focused else TEXT_COLOR
         
         # Draw button
         pygame.draw.rect(surface, bg_color, (x, y, w, h))

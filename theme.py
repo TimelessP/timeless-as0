@@ -76,7 +76,7 @@ CARGO_HEADER_COLOR = (120, 100, 60)     # Lighter wood
 CREW_HEADER_COLOR = (60, 80, 60)        # Olive green
 COMMS_HEADER_COLOR = (60, 60, 100)      # Muted blue
 MISSION_HEADER_COLOR = (80, 60, 40)     # Brass/bronze
-NAV_HEADER_COLOR = (40, 60, 100)        # Blue (keep for map)
+NAV_HEADER_COLOR = (36, 48, 80)        # Unique blue, similar tonal range, for nav scene
 LIBRARY_HEADER_COLOR = (60, 40, 60)     # Olive green
 
 # Book/reading scene (keep as is for ink & paper)
