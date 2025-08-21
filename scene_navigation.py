@@ -29,7 +29,8 @@ from theme import (
     NAV_DAYLIGHT_MASK_COLOR,
     NAV_WIDGET_BG,
     NAV_WIDGET_BG_FOCUSED,
-    NAV_WIDGET_BORDER_DISABLED
+    NAV_WIDGET_BORDER_DISABLED,
+    NAV_MAP_FILTER_PARAMS
 )
 
 class NavigationScene:
@@ -142,21 +143,41 @@ class NavigationScene:
         self.is_text_antialiased = is_text_antialiased
         
     def _load_world_map(self):
-        """Load the world map image"""
+        """Load the world map image and apply color filter for sepia/tonal adjustment"""
         try:
-            # Import the global assets directory function
             from main import get_assets_dir
             assets_dir = get_assets_dir()
             map_path = os.path.join(assets_dir, "png", "world-map.png")
-            
-            self.world_map = pygame.image.load(map_path)
-            print(f"✅ Loaded world map: {self.world_map.get_size()}")
+            loaded_map = pygame.image.load(map_path).convert_alpha()
+            print(f"✅ Loaded world map: {loaded_map.get_size()}")
+
+            # Apply color filter to loaded_map using NAV_MAP_FILTER_PARAMS
+            r_mult, g_mult, b_mult, r_add, g_add, b_add, sepia_strength = NAV_MAP_FILTER_PARAMS
+            arr = pygame.surfarray.pixels3d(loaded_map)
+            # Normalize to float for math
+            arrf = arr.astype('float32')
+            # Per-channel adjustments
+            arrf[..., 0] = arrf[..., 0] * r_mult + r_add
+            arrf[..., 1] = arrf[..., 1] * g_mult + g_add
+            arrf[..., 2] = arrf[..., 2] * b_mult + b_add
+            # Sepia blend (optional)
+            if sepia_strength > 0.0:
+                tr = arrf[..., 0] * 0.393 + arrf[..., 1] * 0.769 + arrf[..., 2] * 0.189
+                tg = arrf[..., 0] * 0.349 + arrf[..., 1] * 0.686 + arrf[..., 2] * 0.168
+                tb = arrf[..., 0] * 0.272 + arrf[..., 1] * 0.534 + arrf[..., 2] * 0.131
+                arrf[..., 0] = arrf[..., 0] * (1 - sepia_strength) + tr * sepia_strength
+                arrf[..., 1] = arrf[..., 1] * (1 - sepia_strength) + tg * sepia_strength
+                arrf[..., 2] = arrf[..., 2] * (1 - sepia_strength) + tb * sepia_strength
+            # Clamp to [0,255]
+            arrf = arrf.clip(0, 255)
+            arr[...] = arrf.astype('uint8')
+            del arr, arrf  # Unlock surface
+            self.world_map = loaded_map
         except Exception as e:
             print(f"❌ Failed to load world map: {e}")
             # Create a simple placeholder map
             self.world_map = pygame.Surface((640, 320))
             self.world_map.fill(NAV_OCEAN_COLOR)
-            # Draw simple continents
             pygame.draw.rect(self.world_map, NAV_LAND_COLOR, (100, 80, 200, 120))  # North America
             pygame.draw.rect(self.world_map, NAV_LAND_COLOR, (350, 100, 150, 100))  # Europe
             

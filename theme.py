@@ -1,3 +1,13 @@
+# Navigation map color filter parameters
+# NAV_MAP_FILTER_PARAMS controls the color transformation applied to the navigation map image on load.
+# To disable filtering (no color change), set to (1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0):
+#   (r_mult, g_mult, b_mult, r_add, g_add, b_add, sepia_strength)
+# Example for 50% sepia effect:
+#   r_mult=1.0, g_mult=0.85, b_mult=0.6, r_add=20, g_add=10, b_add=-30, sepia_strength=0.5
+# - r_mult/g_mult/b_mult: Per-channel multipliers (reduce saturation)
+# - r_add/g_add/b_add: Per-channel additive offsets (warm up/cool down)
+# - sepia_strength: 0.0 = no sepia, 1.0 = full sepia, 0.5 = moderate sepia
+NAV_MAP_FILTER_PARAMS = (1.0, 0.85, 0.6, 20, 10, -30, 0.5)
 # Navigation scene extras
 NAV_BACKGROUND_COLOR = (10, 20, 30)
 NAV_TEXT_COLOR = (255, 255, 255)
