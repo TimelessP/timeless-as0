@@ -18,13 +18,20 @@ from theme import (
     TEXT_COLOR,
     FOCUS_COLOR,
     FUEL_HEADER_COLOR,
-    BAR_BG,
     FUEL_COLOR,
-    SLIDER_TRACK,
     SLIDER_FILL,
     DUMP_FILL,
     BUTTON_COLOR,
-    BUTTON_FOCUSED_COLOR
+    BUTTON_FOCUSED_COLOR,
+    BUTTON_DISABLED_COLOR,
+    BUTTON_BORDER_COLOR,
+    BUTTON_BORDER_DISABLED_COLOR,
+    BUTTON_BORDER_FOCUSED_COLOR,
+    BUTTON_TEXT_DISABLED_COLOR,
+    BUTTON_TEXT_COLOR,
+    BUTTON_TEXT_FOCUSED_COLOR,
+    FUEL_TOGGLE_ON_COLOR,
+    FUEL_TOGGLE_OFF_COLOR
 )
 HEADER_HEIGHT = 24
 
@@ -480,14 +487,15 @@ class FuelScene:
         self._draw_tank(surface, aft_rect, aft, "AFT")
 
     def _draw_tank(self, surface, rect, tank, label):
-        pygame.draw.rect(surface, BAR_BG, rect)
+        # Use button color and border for tank background and outline
+        pygame.draw.rect(surface, BUTTON_COLOR, rect)
         level = tank.get("level", 0.0)
         capacity = tank.get("capacity", 1.0) or 1.0
         pct = max(0.0, min(1.0, level / capacity))
         fuel_height = int((rect.height - 4) * pct)
         fuel_rect = pygame.Rect(rect.x + 2, rect.y + rect.height - 2 - fuel_height, rect.width - 4, fuel_height)
         pygame.draw.rect(surface, FUEL_COLOR, fuel_rect)
-        pygame.draw.rect(surface, (110, 110, 130), rect, 1)
+        pygame.draw.rect(surface, BUTTON_BORDER_COLOR, rect, 1)
         self._draw_text(surface, label, rect.centerx, rect.y - 12, center=True)
         # Show two decimals for better perception of change
         self._draw_text(surface, f"{level:.2f}/{capacity:.0f}g", rect.centerx, rect.y + rect.height + 4, center=True)
@@ -502,14 +510,25 @@ class FuelScene:
             self._render_slider(surface, widget)
 
     def _render_button(self, surface, widget):
-        """Render button with bridge-style visuals for consistency."""
-        x, y = widget["position"]; w, h = widget["size"]
+        """Render button using theme button colors."""
+        x, y = widget["position"]
+        w, h = widget["size"]
         focused = widget.get("focused", False)
-        # Match bridge scene palette
-        bg_color = (80, 100, 120) if focused else (60, 80, 100)  # Custom blue for sliders
-        border_color = FOCUS_COLOR if focused else (120, 120, 120)
-        text_color = FOCUS_COLOR if focused else TEXT_COLOR
-        # Square corners (no rounding) to match bridge style
+        enabled = widget.get("enabled", True)
+        # Theme colors
+        if not enabled:
+            bg_color = BUTTON_DISABLED_COLOR
+            border_color = BUTTON_BORDER_DISABLED_COLOR
+            text_color = BUTTON_TEXT_DISABLED_COLOR
+        elif focused:
+            bg_color = BUTTON_FOCUSED_COLOR
+            border_color = BUTTON_BORDER_FOCUSED_COLOR
+            text_color = BUTTON_TEXT_FOCUSED_COLOR
+        else:
+            bg_color = BUTTON_COLOR
+            border_color = BUTTON_BORDER_COLOR
+            text_color = BUTTON_TEXT_COLOR
+        # Draw button
         pygame.draw.rect(surface, bg_color, (x, y, w, h))
         pygame.draw.rect(surface, border_color, (x, y, w, h), 1)
         if self.font:
@@ -521,27 +540,55 @@ class FuelScene:
             surface.blit(img, rect)
 
     def _render_toggle(self, surface, widget):
-        x, y = widget["position"]; w, h = widget["size"]
+        x, y = widget["position"]
+        w, h = widget["size"]
         on = widget.get("value", False)
-        base_color = (80, 140, 80) if on else (120, 70, 70)  # Green/red for toggles
-        if widget.get("focused"):
-            base_color = tuple(min(c + 40, 255) for c in base_color)
-        pygame.draw.rect(surface, base_color, (x, y, w, h))
-        pygame.draw.rect(surface, (20, 20, 25), (x, y, w, h), 1)
+        focused = widget.get("focused", False)
+        enabled = widget.get("enabled", True)
+        # Use button color as base, overlay with green/red for ON/OFF
+        if not enabled:
+            bg_color = BUTTON_DISABLED_COLOR
+            border_color = BUTTON_BORDER_DISABLED_COLOR
+        elif focused:
+            bg_color = BUTTON_FOCUSED_COLOR
+            border_color = BUTTON_BORDER_FOCUSED_COLOR
+        else:
+            bg_color = BUTTON_COLOR
+            border_color = BUTTON_BORDER_COLOR
+        # Overlay with ON/OFF color (multiply for tint effect)
+        toggle_color = FUEL_TOGGLE_ON_COLOR if on else FUEL_TOGGLE_OFF_COLOR
+        # Blend: 60% button bg, 40% toggle color
+        blend = lambda a, b: int(a * 0.6 + b * 0.4)
+        final_color = tuple(blend(bg, tc) for bg, tc in zip(bg_color, toggle_color))
+        pygame.draw.rect(surface, final_color, (x, y, w, h))
+        pygame.draw.rect(surface, border_color, (x, y, w, h), 1)
         txt = widget.get("text", "") + (" ON" if on else " OFF")
         self._draw_text(surface, txt, x + w / 2, y + 2, center=True)
 
     def _render_slider(self, surface, widget):
-        x, y = widget["position"]; w, h = widget["size"]
-        pygame.draw.rect(surface, SLIDER_TRACK, (x, y, w, h))
+        x, y = widget["position"]
+        w, h = widget["size"]
+        focused = widget.get("focused", False)
+        enabled = widget.get("enabled", True)
+        # Use button color and border for slider track
+        if not enabled:
+            track_color = BUTTON_DISABLED_COLOR
+            border_color = BUTTON_BORDER_DISABLED_COLOR
+        elif focused:
+            track_color = BUTTON_FOCUSED_COLOR
+            border_color = BUTTON_BORDER_FOCUSED_COLOR
+        else:
+            track_color = BUTTON_COLOR
+            border_color = BUTTON_BORDER_COLOR
+        pygame.draw.rect(surface, track_color, (x, y, w, h))
         val = widget.get("value", 0.0)
         fill_h = int((h - 4) * val)
         fill_color = DUMP_FILL if widget.get("dump") else SLIDER_FILL
         pygame.draw.rect(surface, fill_color, (x + 2, y + h - 2 - fill_h, w - 4, fill_h))
-        pygame.draw.rect(surface, (30, 30, 40), (x, y, w, h), 1)
+        pygame.draw.rect(surface, border_color, (x, y, w, h), 1)
         self._draw_text(surface, widget.get("label", ""), x + w / 2, y - 12, center=True)
         self._draw_text(surface, f"{val*100: .0f}%", x + w / 2, y + h + 2, center=True)
-        if widget.get("focused"):
+        if focused:
             pygame.draw.rect(surface, FOCUS_COLOR, (x - 2, y - 2, w + 4, h + 4), 1)
 
     def _draw_text(self, surface, text, x, y, center=False):

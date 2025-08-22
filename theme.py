@@ -130,8 +130,10 @@ VALID_PLACEMENT_COLOR = (100, 255, 100)
 INVALID_PLACEMENT_COLOR = (255, 100, 100)
 
 # Sliders, bars, etc.
-BAR_BG = (40, 40, 55)
 FUEL_COLOR = (200, 120, 40)
-SLIDER_TRACK = (70, 70, 90)
 SLIDER_FILL = (120, 180, 255)
 DUMP_FILL = (255, 100, 100)
+
+# Fuel toggle (feed) button colors
+FUEL_TOGGLE_ON_COLOR = (80, 140, 80)   # Green for feed ON
+FUEL_TOGGLE_OFF_COLOR = (120, 70, 70)  # Red for feed OFF
