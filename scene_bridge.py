@@ -23,8 +23,17 @@ from theme import (
     PITCH_TEXT_COLOR,
     WIDGET_BG_COLOR,
     WIDGET_BORDER_DISABLED_COLOR,
-    BUTTON_BG_FOCUSED,
-    BUTTON_BG,
+    BUTTON_COLOR,
+    BUTTON_FOCUSED_COLOR,
+    BUTTON_DISABLED_COLOR,
+    BUTTON_TEXT_DISABLED_COLOR,
+    BUTTON_TEXT_COLOR,
+    BUTTON_TEXT_FOCUSED_COLOR,
+    BUTTON_BORDER_COLOR,
+    BUTTON_BORDER_FOCUSED_COLOR,
+    BUTTON_BORDER_DISABLED_COLOR,
+    # BUTTON_BG_FOCUSED,
+    # BUTTON_BG,
     TEXTBOX_BG_ACTIVE,
     TEXTBOX_BG_FOCUSED,
     TEXTBOX_BG_DISABLED,
@@ -195,6 +204,7 @@ class BridgeScene:
         Returns: scene transition command or None
         """
         if event.type == pygame.KEYDOWN:
+            focused_widget = self.widgets[self.focus_index] if 0 <= self.focus_index < len(self.widgets) else None
             if event.key == pygame.K_ESCAPE:
                 if self.all_widgets_inactive:
                     return "scene_main_menu"
@@ -210,7 +220,12 @@ class BridgeScene:
                 else:
                     self._focus_next()
             elif event.key in [pygame.K_RETURN, pygame.K_SPACE]:
-                return self._activate_focused()
+                # Only activate if not editing a textbox
+                if not (focused_widget and focused_widget["type"] == "textbox" and focused_widget.get("active", False)):
+                    return self._activate_focused()
+                else:
+                    # Call the handler
+                    self._handle_text_input(event)
             elif event.key == pygame.K_LEFT:
                 self._handle_rudder_input("left")
             elif event.key == pygame.K_RIGHT:
@@ -265,13 +280,15 @@ class BridgeScene:
         if focused_widget and focused_widget["type"] == "textbox" and focused_widget.get("active", False):
             if event.key == pygame.K_BACKSPACE:
                 focused_widget["text"] = focused_widget["text"][:-1]
-            elif event.key in [pygame.K_RETURN, pygame.K_ESCAPE]:
-                # Both Enter and Escape deactivate editing but keep focus
+            elif event.key == pygame.K_RETURN:
+                # Enter: apply value and deactivate editing
+                self._apply_textbox_value(focused_widget)
                 focused_widget["active"] = False
                 self._update_all_widgets_inactive_status()
-                # Apply value only on Enter, not Escape
-                if event.key == pygame.K_RETURN:
-                    self._apply_textbox_value(focused_widget)
+            elif event.key == pygame.K_ESCAPE:
+                # Escape: just deactivate editing, do not apply value
+                focused_widget["active"] = False
+                self._update_all_widgets_inactive_status()
             elif event.unicode and event.unicode.isprintable():
                 # Limit text length based on widget size
                 if len(focused_widget["text"]) < 10:  # Reasonable limit
@@ -606,16 +623,26 @@ class BridgeScene:
         x, y = widget["position"]
         w, h = widget["size"]
         focused = widget.get("focused", False)
-        
-        # Button colors
-        bg_color = BUTTON_BG_FOCUSED if focused else BUTTON_BG
-        border_color = FOCUS_COLOR if focused else WIDGET_BORDER_DISABLED_COLOR
-        text_color = FOCUS_COLOR if focused else TEXT_COLOR
-        
+        enabled = True  # All bridge buttons are always enabled for now
+
+        # Button colors using theme
+        if not enabled:
+            bg_color = BUTTON_DISABLED_COLOR
+            text_color = BUTTON_TEXT_DISABLED_COLOR
+            border_color = BUTTON_BORDER_DISABLED_COLOR
+        elif focused:
+            bg_color = BUTTON_FOCUSED_COLOR
+            text_color = BUTTON_TEXT_FOCUSED_COLOR
+            border_color = BUTTON_BORDER_FOCUSED_COLOR
+        else:
+            bg_color = BUTTON_COLOR
+            text_color = BUTTON_TEXT_COLOR
+            border_color = BUTTON_BORDER_COLOR
+
         # Draw button
         pygame.draw.rect(surface, bg_color, (x, y, w, h))
         pygame.draw.rect(surface, border_color, (x, y, w, h), 1)
-        
+
         # Draw text
         if self.font:
             text_surface = self.font.render(widget["text"], self.is_text_antialiased, text_color)
