@@ -14,11 +14,16 @@ from theme import (
     GOOD_COLOR,
     CAUTION_COLOR,
     ENGINE_HEADER_COLOR,
-    ENGINE_BUTTON_BG_FOCUSED,
-    ENGINE_BUTTON_BG,
-    ENGINE_BUTTON_BORDER_DISABLED,
-    ENGINE_BUTTON_EMERGENCY_BG,
-    ENGINE_SLIDER_BG
+    BUTTON_COLOR,
+    BUTTON_FOCUSED_COLOR,
+    BUTTON_DISABLED_COLOR,
+    BUTTON_BORDER_COLOR,
+    BUTTON_BORDER_DISABLED_COLOR,
+    BUTTON_BORDER_FOCUSED_COLOR,
+    BUTTON_TEXT_DISABLED_COLOR,
+    BUTTON_TEXT_COLOR,
+    BUTTON_TEXT_FOCUSED_COLOR,
+    # ENGINE_SLIDER_BG
 )
 
 class EngineRoomScene:
@@ -30,8 +35,13 @@ class EngineRoomScene:
         self.simulator = simulator
         self.all_widgets_inactive = True
         self.dragging_widget: Optional[int] = None  # For mouse drag support
-        
+
         self._init_widgets()
+        # Set initial focus to first interactive widget (button or slider)
+        for i, widget in enumerate(self.widgets):
+            if widget["type"] in ("button", "slider") and widget.get("enabled", True):
+                self._set_focus(i)
+                break
         
     def _init_widgets(self):
         """Initialize engine room widgets"""
@@ -314,16 +324,24 @@ class EngineRoomScene:
                 self.focus_index = widget_index
                 
     def _focus_next(self):
-        """Move focus to next widget"""
-        current = self.focus_index
-        next_index = (current + 1) % len(self.widgets)
-        self._set_focus(next_index)
-        
+        """Move focus to next interactive widget (skip labels)"""
+        n = len(self.widgets)
+        for i in range(1, n+1):
+            next_index = (self.focus_index + i) % n
+            widget = self.widgets[next_index]
+            if widget["type"] in ("button", "slider") and widget.get("enabled", True):
+                self._set_focus(next_index)
+                return
+
     def _focus_previous(self):
-        """Move focus to previous widget"""
-        current = self.focus_index
-        prev_index = (current - 1) % len(self.widgets)
-        self._set_focus(prev_index)
+        """Move focus to previous interactive widget (skip labels)"""
+        n = len(self.widgets)
+        for i in range(1, n+1):
+            prev_index = (self.focus_index - i) % n
+            widget = self.widgets[prev_index]
+            if widget["type"] in ("button", "slider") and widget.get("enabled", True):
+                self._set_focus(prev_index)
+                return
         
     def _activate_focused(self) -> Optional[str]:
         """Activate the currently focused widget"""
@@ -526,21 +544,25 @@ class EngineRoomScene:
         x, y = widget["position"]
         w, h = widget["size"]
         focused = widget.get("focused", False)
-        
-        # Special coloring for emergency stop
-        if widget["id"] == "emergency_stop":
-            bg_color = WARNING_COLOR if focused else ENGINE_BUTTON_EMERGENCY_BG
-            text_color = TEXT_COLOR
-            border_color = FOCUS_COLOR if focused else ENGINE_BUTTON_BORDER_DISABLED
+        enabled = widget.get("enabled", True)  # Default to enabled if not specified
+
+        if not enabled:
+            bg_color = BUTTON_DISABLED_COLOR
+            text_color = BUTTON_TEXT_DISABLED_COLOR
+            border_color = BUTTON_BORDER_DISABLED_COLOR
+        elif focused:
+            bg_color = BUTTON_FOCUSED_COLOR
+            text_color = BUTTON_TEXT_FOCUSED_COLOR
+            border_color = BUTTON_BORDER_FOCUSED_COLOR
         else:
-            bg_color = ENGINE_BUTTON_BG_FOCUSED if focused else ENGINE_BUTTON_BG
-            text_color = FOCUS_COLOR if focused else TEXT_COLOR
-            border_color = FOCUS_COLOR if focused else ENGINE_BUTTON_BORDER_DISABLED
-        
+            bg_color = BUTTON_COLOR
+            text_color = BUTTON_TEXT_COLOR
+            border_color = BUTTON_BORDER_COLOR
+
         # Draw button
         pygame.draw.rect(surface, bg_color, (x, y, w, h))
         pygame.draw.rect(surface, border_color, (x, y, w, h), 1)
-        
+
         # Draw text
         if self.font:
             text_surface = self.font.render(widget["text"], self.is_text_antialiased, text_color)
@@ -556,32 +578,36 @@ class EngineRoomScene:
         value = widget["value"]
         focused = widget.get("focused", False)
         label = widget.get("label", "")
-        
-        # Colors
-        bg_color = ENGINE_SLIDER_BG
+
+        # Use button theme colors for sliders
+        if focused:
+            bg_color = BUTTON_FOCUSED_COLOR
+            border_color = BUTTON_BORDER_FOCUSED_COLOR
+        else:
+            bg_color = BUTTON_COLOR
+            border_color = BUTTON_BORDER_COLOR
         fill_color = FOCUS_COLOR if focused else GOOD_COLOR
-        border_color = FOCUS_COLOR if focused else (120, 120, 120)
-        
+
         # Draw background
         pygame.draw.rect(surface, bg_color, (x, y, w, h))
-        
+
         # Draw filled portion
         fill_width = int(w * value)
         if fill_width > 0:
             pygame.draw.rect(surface, fill_color, (x, y, fill_width, h))
-            
+
         # Draw border
         pygame.draw.rect(surface, border_color, (x, y, w, h), 1)
-        
+
         # Draw label and value
         if self.font:
             text_color = FOCUS_COLOR if focused else TEXT_COLOR
-            
+
             # Label
             if label:
                 label_surface = self.font.render(label, self.is_text_antialiased, text_color)
                 surface.blit(label_surface, (x, y - 14))
-                
+
             # Value percentage
             value_text = f"{value * 100:.0f}%"
             value_surface = self.font.render(value_text, self.is_text_antialiased, text_color)
