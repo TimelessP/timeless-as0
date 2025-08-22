@@ -22,8 +22,7 @@ from theme import (
     BUTTON_BORDER_FOCUSED_COLOR,
     BUTTON_TEXT_DISABLED_COLOR,
     BUTTON_TEXT_COLOR,
-    BUTTON_TEXT_FOCUSED_COLOR,
-    # ENGINE_SLIDER_BG
+    BUTTON_TEXT_FOCUSED_COLOR
 )
 
 class EngineRoomScene:
@@ -453,13 +452,13 @@ class EngineRoomScene:
         surface.fill(BACKGROUND_COLOR)
         
         # Draw colored title header
-        pygame.draw.rect(surface, ENGINE_HEADER_COLOR, (0, 0, 320, 24))
-        pygame.draw.rect(surface, TEXT_COLOR, (0, 0, 320, 24), 1)
-        
+        pygame.draw.rect(surface, ENGINE_HEADER_COLOR, (0, 0, LOGICAL_SIZE, 24))
+        pygame.draw.rect(surface, TEXT_COLOR, (0, 0, LOGICAL_SIZE, 24), 1)
+
         # Centered title
         if self.font:
             title_text = self.font.render("ENGINE ROOM", self.is_text_antialiased, TEXT_COLOR)
-            title_x = (320 - title_text.get_width()) // 2
+            title_x = (LOGICAL_SIZE - title_text.get_width()) // 2
             surface.blit(title_text, (title_x, 4))
             
             # Draw engine schematic (shifted down for header)

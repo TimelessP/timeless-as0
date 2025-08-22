@@ -14,9 +14,18 @@ from theme import (
     NAV_HEADER_COLOR,
     BACKGROUND_COLOR,
     TEXT_COLOR,
-    BUTTON_BG,
-    BUTTON_BG_FOCUSED,
-    BUTTON_BORDER_DISABLED,
+    BUTTON_COLOR,
+    BUTTON_FOCUSED_COLOR,
+    BUTTON_DISABLED_COLOR,
+    BUTTON_BORDER_COLOR,
+    BUTTON_BORDER_DISABLED_COLOR,
+    BUTTON_BORDER_FOCUSED_COLOR,
+    BUTTON_TEXT_DISABLED_COLOR,
+    BUTTON_TEXT_COLOR,
+    BUTTON_TEXT_FOCUSED_COLOR,
+    # BUTTON_BG,
+    # BUTTON_BG_FOCUSED,
+    # BUTTON_BORDER_DISABLED,
     NAV_TEXT_COLOR,
     NAV_POSITION_COLOR,
     NAV_AIRSHIP_COLOR,
@@ -65,6 +74,15 @@ class NavigationScene:
 
         # Initialize widgets
         self._init_widgets()
+        # Set initial focus to first focussable widget (not a label)
+        self._set_focus(self._find_first_focussable_widget())
+
+    def _find_first_focussable_widget(self) -> int:
+        """Return the index of the first focussable (non-label, enabled) widget, or 0 if none found."""
+        for i, widget in enumerate(self.widgets):
+            if widget["type"] != "label" and widget.get("enabled", True):
+                return i
+        return 0
             
     def _init_widgets(self):
         """Initialize navigation widgets"""
@@ -509,27 +527,39 @@ class NavigationScene:
         return None
         
     def _set_focus(self, widget_index: Optional[int]):
-        """Set focus to specific widget"""
-        if widget_index is not None:
+        """Set focus to specific widget (only if not a label and enabled)"""
+        if widget_index is not None and 0 <= widget_index < len(self.widgets):
+            widget = self.widgets[widget_index]
+            if widget["type"] == "label" or not widget.get("enabled", True):
+                return  # Don't focus labels or disabled widgets
             # Clear old focus
-            for widget in self.widgets:
-                widget["focused"] = False
+            for w in self.widgets:
+                w["focused"] = False
             # Set new focus
-            if 0 <= widget_index < len(self.widgets):
-                self.widgets[widget_index]["focused"] = True
-                self.focus_index = widget_index
+            self.widgets[widget_index]["focused"] = True
+            self.focus_index = widget_index
                 
     def _focus_next(self):
-        """Move focus to next widget"""
-        current = self.focus_index
-        next_index = (current + 1) % len(self.widgets)
-        self._set_focus(next_index)
+        """Move focus to next focussable widget (skip labels and disabled)"""
+        n = len(self.widgets)
+        start = self.focus_index
+        for offset in range(1, n+1):
+            idx = (start + offset) % n
+            widget = self.widgets[idx]
+            if widget["type"] != "label" and widget.get("enabled", True):
+                self._set_focus(idx)
+                return
         
     def _focus_previous(self):
-        """Move focus to previous widget"""
-        current = self.focus_index
-        prev_index = (current - 1) % len(self.widgets)
-        self._set_focus(prev_index)
+        """Move focus to previous focussable widget (skip labels and disabled)"""
+        n = len(self.widgets)
+        start = self.focus_index
+        for offset in range(1, n+1):
+            idx = (start - offset) % n
+            widget = self.widgets[idx]
+            if widget["type"] != "label" and widget.get("enabled", True):
+                self._set_focus(idx)
+                return
         
     def _activate_focused(self) -> Optional[str]:
         """Activate the currently focused widget"""
@@ -1460,16 +1490,26 @@ class NavigationScene:
         x, y = widget["position"]
         w, h = widget["size"]
         focused = widget.get("focused", False)
-        
-        # Button colors (standardized)
-        bg_color = BUTTON_BG_FOCUSED if focused else BUTTON_BG
-        border_color = FOCUS_COLOR if focused else BUTTON_BORDER_DISABLED
-        text_color = FOCUS_COLOR if focused else TEXT_COLOR
-        
+        enabled = widget.get("enabled", True)  # Default to enabled if not specified
+
+        # Button colors using theme
+        if not enabled:
+            bg_color = BUTTON_DISABLED_COLOR
+            text_color = BUTTON_TEXT_DISABLED_COLOR
+            border_color = BUTTON_BORDER_DISABLED_COLOR
+        elif focused:
+            bg_color = BUTTON_FOCUSED_COLOR
+            text_color = BUTTON_TEXT_FOCUSED_COLOR
+            border_color = BUTTON_BORDER_FOCUSED_COLOR
+        else:
+            bg_color = BUTTON_COLOR
+            text_color = BUTTON_TEXT_COLOR
+            border_color = BUTTON_BORDER_COLOR
+
         # Draw button
         pygame.draw.rect(surface, bg_color, (x, y, w, h))
         pygame.draw.rect(surface, border_color, (x, y, w, h), 1)
-        
+
         # Draw text
         if self.font:
             text_surface = self.font.render(widget["text"], self.is_text_antialiased, text_color)
