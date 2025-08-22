@@ -14,6 +14,12 @@ from theme import (
     BUTTON_COLOR,
     BUTTON_FOCUSED_COLOR,
     BUTTON_DISABLED_COLOR,
+    BUTTON_TEXT_DISABLED_COLOR,
+    BUTTON_TEXT_COLOR,
+    BUTTON_TEXT_FOCUSED_COLOR,
+    BUTTON_BORDER_COLOR,
+    BUTTON_BORDER_FOCUSED_COLOR,
+    BUTTON_BORDER_DISABLED_COLOR,
     SUBTITLE_COLOR,
     DISABLED_TEXT_COLOR,
     CAUTION_COLOR
@@ -232,26 +238,26 @@ class MainMenuScene:
         enabled = widget.get("enabled", True)
         focused = widget.get("focused", False)
 
-        # Choose colors
+        # Choose theme colors
         if not enabled:
             bg_color = BUTTON_DISABLED_COLOR
-            text_color = DISABLED_TEXT_COLOR
+            text_color = BUTTON_TEXT_DISABLED_COLOR
+            border_color = BUTTON_BORDER_DISABLED_COLOR
         elif focused:
             bg_color = BUTTON_FOCUSED_COLOR
-            text_color = FOCUS_COLOR
+            text_color = BUTTON_TEXT_FOCUSED_COLOR
+            border_color = BUTTON_BORDER_FOCUSED_COLOR
         else:
             bg_color = BUTTON_COLOR
-            text_color = TEXT_COLOR
+            text_color = BUTTON_TEXT_COLOR
+            border_color = BUTTON_BORDER_COLOR
 
         # Draw button background
         pygame.draw.rect(surface, bg_color, (x, y, w, h))
-
-        # Draw button border
-        border_color = FOCUS_COLOR if focused else DISABLED_TEXT_COLOR
         pygame.draw.rect(surface, border_color, (x, y, w, h), 1)
 
         # Draw button text
-        if self.font and enabled:
+        if self.font:
             text_surface = self.font.render(widget["text"], self.is_text_antialiased, text_color)
             text_rect = text_surface.get_rect()
             text_x = x + (w - text_rect.width) // 2
