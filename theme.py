@@ -107,7 +107,7 @@ LIBRARY_HEADER_COLOR = (60, 40, 60)     # Olive green
 
 # Book/reading scene (keep as is for ink & paper)
 BOOK_TEXT_COLOR = (60, 50, 40)
-PAPER_COLOR = (250, 245, 235)
+PAPER_COLOR = (240, 230, 220)  # Slightly dimmed for dark mode
 PAGE_BORDER_COLOR = (139, 69, 19)
 BOOKMARK_COLOR = (70, 130, 200)
 BOOKMARK_PLACEHOLDER_COLOR = (40, 60, 100)
