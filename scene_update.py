@@ -26,6 +26,12 @@ from theme import (
     BUTTON_COLOR,
     BUTTON_FOCUSED_COLOR,
     BUTTON_DISABLED_COLOR,
+    BUTTON_BORDER_COLOR,
+    BUTTON_BORDER_DISABLED_COLOR,
+    BUTTON_BORDER_FOCUSED_COLOR,
+    BUTTON_TEXT_DISABLED_COLOR,
+    BUTTON_TEXT_COLOR,
+    BUTTON_TEXT_FOCUSED_COLOR,
     DISABLED_TEXT_COLOR,
     WARNING_COLOR,
     CAUTION_COLOR,
@@ -454,20 +460,25 @@ class SceneUpdate:
         x, y = widget["position"]
         w, h = widget["size"]
         enabled = widget.get("enabled", True)
+        focused = widget.get("focused", False)
         
         if widget["type"] == "button":
-            # Choose colors based on state
-            if enabled:
-                bg_color = BUTTON_FOCUSED_COLOR if widget["focused"] else BUTTON_COLOR
-                text_color = FOCUS_COLOR if widget["focused"] else TEXT_COLOR
-            else:
+            # Use theme button colors for all states
+            if not enabled:
                 bg_color = BUTTON_DISABLED_COLOR
-                text_color = DISABLED_TEXT_COLOR
-            
-            # Draw button background
+                border_color = BUTTON_BORDER_DISABLED_COLOR
+                text_color = BUTTON_TEXT_DISABLED_COLOR
+            elif focused:
+                bg_color = BUTTON_FOCUSED_COLOR
+                border_color = BUTTON_BORDER_FOCUSED_COLOR
+                text_color = BUTTON_TEXT_FOCUSED_COLOR
+            else:
+                bg_color = BUTTON_COLOR
+                border_color = BUTTON_BORDER_COLOR
+                text_color = BUTTON_TEXT_COLOR
+            # Draw button background and border
             pygame.draw.rect(surface, bg_color, (x, y, w, h))
-            pygame.draw.rect(surface, text_color, (x, y, w, h), 1)
-            
+            pygame.draw.rect(surface, border_color, (x, y, w, h), 1)
             # Render text
             text_surface = self.font.render(widget["text"], True, text_color)
             text_rect = text_surface.get_rect(center=(x + w//2, y + h//2))
