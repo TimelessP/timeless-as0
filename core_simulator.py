@@ -6,6 +6,9 @@ import json
 import time
 import math
 import os
+import uuid
+import site
+import random
 from theme import CRATE_TYPE_COLORS
 import platform
 from pathlib import Path
@@ -38,7 +41,6 @@ def get_assets_path(subdir: str = "") -> str:
     
     # Try to find Python package installation paths
     try:
-        import site
         # Check site-packages directories
         for site_dir in site.getsitepackages():
             possible_locations.append(os.path.join(site_dir, "assets"))
@@ -1648,7 +1650,6 @@ class CoreSimulator:
             cargo["loadingBay"] = []
         
         # Generate 2-4 random crates
-        import random
         crate_types = list(cargo.get("crateTypes", {}).keys())
         
         # Safety check: ensure we have crate types available
@@ -1810,8 +1811,6 @@ class CoreSimulator:
     
     def _find_valid_loading_bay_position(self, dimensions: Dict[str, int]) -> Dict[str, float]:
         """Find a valid position in loading bay for new crate"""
-        import random
-        
         # Loading bay bounds (snap to grid)
         width_px = dimensions.get("width", 1) * CARGO_GRID_PX
         height_px = dimensions.get("height", 1) * CARGO_GRID_PX
@@ -2069,9 +2068,6 @@ class CoreSimulator:
     # Library management methods
     def add_random_book_to_library(self) -> bool:
         """Add a random available book to the library"""
-        import os
-        import random
-        
         # Ensure library section exists
         if "library" not in self.game_state:
             self.game_state["library"] = {"books": []}
@@ -2128,14 +2124,11 @@ class CoreSimulator:
         books.remove(book_filename)
         
         # Create a book crate and attach it to the winch
-        import uuid
-        
-        new_crate = {
-            "id": str(uuid.uuid4()),
-            "type": "books",
-            "position": {"x": 0, "y": 0}  # Position doesn't matter when attached to winch
-        }
-        
+        new_crate = self.game_state["cargo"]["crateTypes"]["books"].copy()
+        new_crate["id"] = str(uuid.uuid4())
+        new_crate["type"] = "books"
+        new_crate["position"] = {"x": 0, "y": 0}  # Position doesn't matter when attached to winch
+
         # Attach the crate to the winch (attached crates don't exist in cargoHold or loadingBay)
         winch["attachedCrate"] = new_crate["id"]
         

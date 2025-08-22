@@ -23,8 +23,9 @@ from theme import (
     BUTTON_COLOR,
     BUTTON_FOCUSED_COLOR,
     BUTTON_DISABLED_COLOR,
-    BUTTON_BORDER_DISABLED_COLOR,
     BUTTON_BORDER_COLOR,
+    BUTTON_BORDER_DISABLED_COLOR,
+    BUTTON_BORDER_FOCUSED_COLOR,
     BUTTON_TEXT_DISABLED_COLOR,
     BUTTON_TEXT_COLOR,
     BUTTON_TEXT_FOCUSED_COLOR,
@@ -471,8 +472,7 @@ class CargoScene:
             # General cargo info
             total_weight = cargo_state.get("totalWeight", 0.0)
             max_capacity = cargo_state.get("maxCapacity", 500.0)
-            refresh_avail = cargo_state.get("refreshAvailable", True)
-            info_text = f"Total Weight: {total_weight:.1f} / {max_capacity:.0f} lbs | Refresh: {'Yes' if refresh_avail else 'No'}"
+            info_text = f"Total Weight: {total_weight:.1f} / {max_capacity:.0f} lbs"
             info_surface = self.font.render(info_text, self.is_text_antialiased, TEXT_COLOR)
             surface.blit(info_surface, (8, info_y))
 
@@ -490,11 +490,15 @@ class CargoScene:
         # Check if widget should be enabled
         enabled = self._is_widget_enabled(widget_id)
 
-        # Button colors - disabled buttons are darker
+        # Button colors using theme
         if enabled:
             bg_color = BUTTON_FOCUSED_COLOR if focused else BUTTON_COLOR
-            border_color = BUTTON_BORDER_COLOR if focused else BUTTON_BORDER_DISABLED_COLOR
-            text_color = BUTTON_TEXT_FOCUSED_COLOR if focused else BUTTON_TEXT_COLOR
+            if focused:
+                border_color = BUTTON_BORDER_FOCUSED_COLOR
+                text_color = BUTTON_TEXT_FOCUSED_COLOR
+            else:
+                border_color = BUTTON_BORDER_COLOR
+                text_color = BUTTON_TEXT_COLOR
         else:
             bg_color = BUTTON_DISABLED_COLOR
             border_color = BUTTON_BORDER_DISABLED_COLOR
@@ -621,15 +625,29 @@ class CargoScene:
         return None
 
     def _set_focus(self, widget_index):
-        """Set focus to specific widget"""
+        """Set focus to specific widget, skipping disabled widgets for buttons"""
         # Clear current focus from all widgets and crates
         for widget in self.widgets:
             widget["focused"] = False
         for crate_widget in self.crate_widgets:
             crate_widget["focused"] = False
 
-        # Set new focus
+        total_items = len(self.widgets) + len(self.crate_widgets)
+        if total_items == 0:
+            self.focused_widget = 0
+            return
+
+        # If focusing a button, skip disabled ones
         if 0 <= widget_index < len(self.widgets):
+            if not self._is_widget_enabled(self.widgets[widget_index]["id"]):
+                # Try to find next enabled widget
+                enabled_indices = [i for i, w in enumerate(self.widgets) if self._is_widget_enabled(w["id"])]
+                if enabled_indices:
+                    self.focused_widget = enabled_indices[0]
+                    self.widgets[self.focused_widget]["focused"] = True
+                else:
+                    self.focused_widget = 0
+                return
             self.focused_widget = widget_index
             self.widgets[widget_index]["focused"] = True
         elif len(self.widgets) <= widget_index < len(self.widgets) + len(self.crate_widgets):
@@ -639,11 +657,28 @@ class CargoScene:
             self.crate_widgets[crate_index]["focused"] = True
 
     def _cycle_focus(self, direction):
-        """Cycle focus through widgets and crates"""
+        """Cycle focus through enabled widgets and crates (Tab/Shift-Tab)"""
         total_items = len(self.widgets) + len(self.crate_widgets)
         if total_items == 0:
             return
-            
+
+        # Build list of focusable indices: enabled widgets and all crates
+        focusable_indices = [i for i, w in enumerate(self.widgets) if self._is_widget_enabled(w["id"])]
+        focusable_indices += list(range(len(self.widgets), total_items))  # All crates always focusable
+        if not focusable_indices:
+            return  # Nothing to focus
+
+        # Find current index in focusable list
+        try:
+            current_focusable_idx = focusable_indices.index(self.focused_widget)
+        except ValueError:
+            # If current focus is not focusable, start at first
+            current_focusable_idx = 0
+
+        # Move to next/previous focusable
+        next_idx = (current_focusable_idx + direction) % len(focusable_indices)
+        new_focus = focusable_indices[next_idx]
+
         # Clear current focus
         if self.focused_widget < len(self.widgets):
             self.widgets[self.focused_widget]["focused"] = False
@@ -651,15 +686,14 @@ class CargoScene:
             crate_index = self.focused_widget - len(self.widgets)
             if 0 <= crate_index < len(self.crate_widgets):
                 self.crate_widgets[crate_index]["focused"] = False
-        
-        # Move to next/previous item
-        self.focused_widget = (self.focused_widget + direction) % total_items
-        
+
         # Set new focus
-        if self.focused_widget < len(self.widgets):
+        if new_focus < len(self.widgets):
+            self.focused_widget = new_focus
             self.widgets[self.focused_widget]["focused"] = True
         else:
-            crate_index = self.focused_widget - len(self.widgets)
+            crate_index = new_focus - len(self.widgets)
+            self.focused_widget = new_focus
             if 0 <= crate_index < len(self.crate_widgets):
                 self.crate_widgets[crate_index]["focused"] = True
 
@@ -788,10 +822,20 @@ class CargoScene:
         import time
         current_time = time.time()
         self.last_update_time = current_time
-        
+
         # Update crate widgets for tab cycling (in case cargo state changed)
         self._update_crate_widgets()
-        
+
+        # If currently focused widget is now disabled, move focus to next enabled widget (if any)
+        if self.focused_widget < len(self.widgets):
+            if not self._is_widget_enabled(self.widgets[self.focused_widget]["id"]):
+                # Only move focus if there is at least one enabled widget or crate
+                total_items = len(self.widgets) + len(self.crate_widgets)
+                focusable_indices = [i for i, w in enumerate(self.widgets) if self._is_widget_enabled(w["id"])]
+                focusable_indices += list(range(len(self.widgets), total_items))
+                if focusable_indices:
+                    self._cycle_focus(1)
+
         # Handle continuous button holds
         if self.mouse_held:
             for button_id, start_time in self.button_hold_times.items():
