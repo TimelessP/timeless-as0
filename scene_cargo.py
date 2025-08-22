@@ -20,12 +20,19 @@ from theme import (
     SELECTED_CRATE_COLOR,
     VALID_PLACEMENT_COLOR,
     INVALID_PLACEMENT_COLOR,
-    BUTTON_BG_FOCUSED,
-    BUTTON_BG,
-    BUTTON_BORDER_DISABLED,
-    BUTTON_TEXT_DISABLED,
-    DEFAULT_GRAY,
-    BUTTON_DISABLED_COLOR
+    BUTTON_COLOR,
+    BUTTON_FOCUSED_COLOR,
+    BUTTON_DISABLED_COLOR,
+    BUTTON_BORDER_DISABLED_COLOR,
+    BUTTON_BORDER_COLOR,
+    BUTTON_TEXT_DISABLED_COLOR,
+    BUTTON_TEXT_COLOR,
+    BUTTON_TEXT_FOCUSED_COLOR,
+    # BUTTON_BG_FOCUSED,
+    # BUTTON_BG,
+    # BUTTON_BORDER_DISABLED,
+    # BUTTON_TEXT_DISABLED,
+    DEFAULT_GRAY
 )
 
 # Layout constants
@@ -485,13 +492,13 @@ class CargoScene:
 
         # Button colors - disabled buttons are darker
         if enabled:
-            bg_color = BUTTON_BG_FOCUSED if focused else BUTTON_BG
-            border_color = FOCUS_COLOR if focused else BUTTON_BORDER_DISABLED
-            text_color = FOCUS_COLOR if focused else TEXT_COLOR
+            bg_color = BUTTON_FOCUSED_COLOR if focused else BUTTON_COLOR
+            border_color = BUTTON_BORDER_COLOR if focused else BUTTON_BORDER_DISABLED_COLOR
+            text_color = BUTTON_TEXT_FOCUSED_COLOR if focused else BUTTON_TEXT_COLOR
         else:
             bg_color = BUTTON_DISABLED_COLOR
-            border_color = BUTTON_BORDER_DISABLED
-            text_color = BUTTON_TEXT_DISABLED
+            border_color = BUTTON_BORDER_DISABLED_COLOR
+            text_color = BUTTON_TEXT_DISABLED_COLOR
 
         # Draw button background
         pygame.draw.rect(surface, bg_color, (x, y, w, h))

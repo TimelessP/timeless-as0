@@ -83,7 +83,12 @@ FOCUS_COLOR = (255, 210, 80)     # Brass/gold highlight
 BUTTON_COLOR = (90, 60, 30)      # Wood button
 BUTTON_FOCUSED_COLOR = (140, 100, 40)  # Brass button
 BUTTON_DISABLED_COLOR = (60, 40, 30)   # Dimmed wood
+BUTTON_BORDER_DISABLED_COLOR = (50, 30, 20)
+BUTTON_BORDER_COLOR = (240, 220, 180)     # Warm parchment/ivory
+BUTTON_BORDER_FOCUSED_COLOR = (255, 210, 80)  # Brass/gold highlight
 BUTTON_TEXT_COLOR = (240, 220, 180)    # Ivory
+BUTTON_TEXT_FOCUSED_COLOR = (240, 220, 180)  # Ivory
+BUTTON_TEXT_DISABLED_COLOR = (150, 130, 100)  # Dimmed parchment
 
 # Alerts and status
 WARNING_COLOR = (220, 100, 60)   # Red-orange warning
@@ -104,8 +109,8 @@ LIBRARY_HEADER_COLOR = (60, 40, 60)     # Olive green
 BOOK_TEXT_COLOR = (60, 50, 40)
 PAPER_COLOR = (250, 245, 235)
 PAGE_BORDER_COLOR = (139, 69, 19)
-BOOKMARK_COLOR = (70, 130, 255)
-BOOKMARK_PLACEHOLDER_COLOR = (100, 100, 100)
+BOOKMARK_COLOR = (70, 130, 200)
+BOOKMARK_PLACEHOLDER_COLOR = (40, 60, 100)
 
 # Library scene book list colors
 BOOK_LIST_COLOR = BUTTON_COLOR              # Use standard button color for book list background

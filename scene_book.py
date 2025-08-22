@@ -14,14 +14,19 @@ from core_simulator import get_assets_path
 # Colors (import from theme, but keep book ink and paper as is)
 from theme import (
     BACKGROUND_COLOR,
+    BOOKMARK_COLOR,
+    BOOKMARK_PLACEHOLDER_COLOR,
+    PAGE_BORDER_COLOR,
+    PAPER_COLOR,
     BUTTON_COLOR,
     BUTTON_FOCUSED_COLOR,
     BUTTON_DISABLED_COLOR,
     BUTTON_TEXT_COLOR,
-    BOOKMARK_COLOR,
-    BOOKMARK_PLACEHOLDER_COLOR,
-    PAGE_BORDER_COLOR,
-    PAPER_COLOR
+    BUTTON_TEXT_FOCUSED_COLOR,
+    BUTTON_TEXT_DISABLED_COLOR,
+    BUTTON_BORDER_COLOR,
+    BUTTON_BORDER_FOCUSED_COLOR,
+    BUTTON_BORDER_DISABLED_COLOR
 )
 TEXT_COLOR = (60, 50, 40)  # Book ink (keep as is)
 
@@ -660,14 +665,30 @@ class BookScene:
         """Render a button widget"""
         x, y = widget["position"]
         w, h = widget["size"]
-        
-        # Button background
-        color = BUTTON_FOCUSED_COLOR if widget.get("focused") else BUTTON_COLOR
+
+        # Determine enabled state (all buttons enabled in book scene for now)
+        enabled = True
+        # If you add disabled logic, set enabled = False as needed
+
+        # Button background and border
+        if enabled:
+            color = BUTTON_FOCUSED_COLOR if widget.get("focused") else BUTTON_COLOR
+            if widget.get("focused"):
+                text_color = BUTTON_TEXT_FOCUSED_COLOR
+                border_color = BUTTON_BORDER_FOCUSED_COLOR
+            else:
+                text_color = BUTTON_TEXT_COLOR
+                border_color = BUTTON_BORDER_COLOR
+        else:
+            color = BUTTON_DISABLED_COLOR
+            text_color = BUTTON_TEXT_DISABLED_COLOR
+            border_color = BUTTON_BORDER_DISABLED_COLOR
+
         pygame.draw.rect(screen, color, (x, y, w, h))
-        pygame.draw.rect(screen, BUTTON_TEXT_COLOR, (x, y, w, h), 1)
-        
+        pygame.draw.rect(screen, border_color, (x, y, w, h), 1)
+
         # Button text
-        text_surface = self.font.render(widget["text"], self.is_text_antialiased, BUTTON_TEXT_COLOR)
+        text_surface = self.font.render(widget["text"], self.is_text_antialiased, text_color)
         text_rect = text_surface.get_rect(center=(x + w // 2, y + h // 2))
         screen.blit(text_surface, text_rect)
 
@@ -703,9 +724,9 @@ class BookScene:
             ]
             
             # Use proper bookmark color regardless of focus
-            bookmark_color = BOOKMARK_COLOR
-            border_color = BUTTON_FOCUSED_COLOR if focused else BUTTON_TEXT_COLOR
-            border_width = 2 if focused else 1
+            bookmark_color = BOOKMARK_COLOR if not focused else BUTTON_FOCUSED_COLOR
+            border_color = BUTTON_BORDER_FOCUSED_COLOR if focused else BUTTON_BORDER_COLOR
+            border_width = 1
             
             # If we're on the bookmarked page, show the full bookmark with ribbon end
             if bookmark_page == self.current_page:
@@ -725,8 +746,8 @@ class BookScene:
         else:
             # Show grey placeholder bookmark (just the rectangle part)
             placeholder_color = BOOKMARK_PLACEHOLDER_COLOR
-            border_color = BUTTON_FOCUSED_COLOR if focused else BUTTON_TEXT_COLOR
-            border_width = 2 if focused else 1
+            border_color = BUTTON_BORDER_FOCUSED_COLOR if focused else BUTTON_BORDER_COLOR
+            border_width = 1
             
             rect_points = [
                 (x, y),

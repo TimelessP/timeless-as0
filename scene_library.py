@@ -15,6 +15,12 @@ from theme import (
     BUTTON_COLOR,
     BUTTON_FOCUSED_COLOR,
     BUTTON_DISABLED_COLOR,
+    BUTTON_TEXT_DISABLED_COLOR,
+    BUTTON_TEXT_COLOR,
+    BUTTON_TEXT_FOCUSED_COLOR,
+    BUTTON_BORDER_COLOR,
+    BUTTON_BORDER_FOCUSED_COLOR,
+    BUTTON_BORDER_DISABLED_COLOR,
     DISABLED_TEXT_COLOR
 )
 
@@ -379,25 +385,31 @@ class LibraryScene:
         """Render a button widget"""
         x, y = widget["position"]
         w, h = widget["size"]
-        
+
         # Check if button should be enabled
         enabled = True
         if widget["id"] == "move_to_cargo":
             enabled = self._is_move_to_cargo_available()
         elif widget["id"] == "read_book":
             enabled = bool(self.books)
-        
-        # Button background
+
+        # Button background and border
         if enabled:
             color = BUTTON_FOCUSED_COLOR if widget.get("focused") else BUTTON_COLOR
-            text_color = TEXT_COLOR
+            if widget.get("focused"):
+                text_color = BUTTON_TEXT_FOCUSED_COLOR
+                border_color = BUTTON_BORDER_FOCUSED_COLOR
+            else:
+                text_color = BUTTON_TEXT_COLOR
+                border_color = BUTTON_BORDER_COLOR
         else:
             color = BUTTON_DISABLED_COLOR
-            text_color = DISABLED_TEXT_COLOR
-            
+            text_color = BUTTON_TEXT_DISABLED_COLOR
+            border_color = BUTTON_BORDER_DISABLED_COLOR
+
         pygame.draw.rect(screen, color, (x, y, w, h))
-        pygame.draw.rect(screen, text_color, (x, y, w, h), 1)
-        
+        pygame.draw.rect(screen, border_color, (x, y, w, h), 1)
+
         # Button text
         text_surface = self.font.render(widget["text"], self.is_text_antialiased, text_color)
         text_rect = text_surface.get_rect(center=(x + w // 2, y + h // 2))
