@@ -38,8 +38,10 @@ class EditBookScene:
         self._init_widgets()
         self._load_book()
         self._update_lines_from_buffer()
-        # Default focus to textarea
+        # Default focus to textarea and cursor at start
         self.focus_index = len(self.widgets)
+        self._update_focus()
+        self.cursor_pos = 0
 
     def set_font(self, font, is_text_antialiased=False):
         self.font = font
@@ -47,7 +49,7 @@ class EditBookScene:
 
     def _init_widgets(self):
         self.widgets = [
-            {"id": "close", "type": "button", "position": [8, 290], "size": [60, 20], "text": "Close", "focused": True},
+            {"id": "close", "type": "button", "position": [8, 290], "size": [60, 20], "text": "Close", "focused": False},
         ]
 
     def _load_book(self):
@@ -230,11 +232,9 @@ class EditBookScene:
         self._update_focus()
 
     def _update_focus(self):
-        for widget in self.widgets:
-            widget["focused"] = False
-        if 0 <= self.focus_index < len(self.widgets):
-            self.widgets[self.focus_index]["focused"] = True
-        # No visual for textarea focus, but logic is correct
+        # Only one widget can be focused at a time, textarea never visually focused
+        for i, widget in enumerate(self.widgets):
+            widget["focused"] = (i == self.focus_index and self.focus_index < len(self.widgets))
 
     def _activate_focused(self) -> Optional[str]:
         if self.focus_index >= len(self.widgets):
