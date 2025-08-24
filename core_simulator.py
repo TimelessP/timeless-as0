@@ -81,6 +81,42 @@ def get_assets_path(subdir: str = "") -> str:
 
 
 class CoreSimulator:
+    def move_book_to_cargo(self, book_id: str) -> bool:
+        """Remove an in-game book from the library, create a crate for it, and attach to winch."""
+        # Remove book from library (by id)
+        state = self.game_state["library"]
+        book = None
+        for b in state.get("in_game_books", []):
+            if b["id"] == book_id:
+                book = b
+                break
+        if not book:
+            return False
+        # Remove from in_game_books and order
+        state["in_game_books"] = [b for b in state.get("in_game_books", []) if b["id"] != book_id]
+        state["order"] = [b for b in state.get("order", []) if b["id"] != book_id]
+        self.refresh_library_books()
+        # Check winch is free
+        cargo = self.game_state.get("cargo", {})
+        winch = cargo.get("winch", {})
+        if winch.get("attachedCrate"):
+            return False
+        # Create a new crate for the book and attach to winch
+        crate_types = cargo.get("crateTypes", {})
+        crate_template = crate_types.get("books", {}).copy()
+        crate_id = book_id  # Use book id for crate id for traceability
+        crate_template["id"] = crate_id
+        crate_template["type"] = "books"
+        crate_template["position"] = {"x": 0, "y": 0}
+        crate_template["book_id"] = book_id
+        crate_template["title"] = book.get("title", "Book")
+        # Attach to winch
+        winch["attachedCrate"] = crate_id
+        winch["position"] = {"x": 160, "y": 50}
+        winch["cableLength"] = max(20, winch.get("cableLength", 0))
+        cargo.setdefault("attachedCrateData", {})[crate_id] = crate_template
+        self._update_cargo_physics()
+        return True
     def _get_user_books_dir(self) -> Path:
         """Return the path to the user's custom books directory, cross-platform."""
         if sys.platform == "win32":
@@ -536,7 +572,7 @@ class CoreSimulator:
         """Load game state from file in OS-appropriate app data directory"""
         try:
             save_path = self._get_save_file_path(filename)
-            if not save_path.exists() or "books" not in self.game_state["library"]:
+            if not save_path.exists():
                 print(f"⚠️ Save file not found: {save_path}")
                 return False
             with open(save_path, 'r') as f:

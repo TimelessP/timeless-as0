@@ -390,13 +390,11 @@ class LibraryScene:
         book = self.books[self.selected_book_index]
         if book["type"] != "in_game":
             return
-        cargo_state = self.simulator.get_cargo_state()
-        winch = cargo_state.get("winch", {})
-        if winch.get("attachedCrate"):
-            return False
-        self.simulator.remove_in_game_book_from_library(book["id"])
-        self._refresh_book_list()
-        return True
+        # Use harmonized simulator method to move book to cargo and attach crate
+        success = self.simulator.move_book_to_cargo(book["id"])
+        if success:
+            self._refresh_book_list()
+        return success
 
     def _is_move_to_cargo_available(self) -> bool:
         if not self.books:
