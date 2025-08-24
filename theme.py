@@ -106,10 +106,16 @@ PAGE_BORDER_COLOR = (139, 69, 19)
 BOOKMARK_COLOR = (70, 130, 200)
 BOOKMARK_PLACEHOLDER_COLOR = (40, 60, 100)
 
+
 # Library scene book list colors
 BOOK_LIST_COLOR = BUTTON_COLOR              # Use standard button color for book list background
 SELECTED_BOOK_COLOR = BUTTON_FOCUSED_COLOR        # Deep gold for selected book (matches BUTTON_FOCUSED_COLOR)
 BOOK_LIST_FOCUSED_COLOR = (180, 140, 40)    # Saturated brass for focused selection
+
+# Editable user book colors (for books in Documents/AirshipZero/books/)
+BOOK_LIST_EDIT_TEXT_COLOR = (180, 200, 140)  # Muted verdigris/olive for editable user book text
+BOOK_LIST_EDIT_TEXT_COLOR_SELECTED = (255, 230, 180)  # Warm parchment for selected editable book
+BOOK_LIST_EDIT_BG_COLOR_SELECTED = (80, 70, 40)  # Deep brass/bronze background for selected editable book
 
 # Navigation map (keep as is for ink look)
 MAP_BACKGROUND_COLOR = (10, 20, 30)

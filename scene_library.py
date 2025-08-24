@@ -50,10 +50,10 @@ class LibraryScene:
             # Navigation buttons
             {"id": "prev_scene", "type": "button", "position": [8, 290], "size": [60, 24], "text": "< [", "focused": True},
             {"id": "next_scene", "type": "button", "position": [252, 290], "size": [60, 24], "text": "] >", "focused": False},
-            
-            # Book management buttons
+            # Book management buttons (order: Read, Edit, Move)
             {"id": "read_book", "type": "button", "position": [20, 250], "size": [80, 24], "text": "Read Book", "focused": False},
-            {"id": "move_to_cargo", "type": "button", "position": [120, 250], "size": [100, 24], "text": "Move to Cargo", "focused": False},
+            {"id": "edit_book", "type": "button", "position": [110, 250], "size": [80, 24], "text": "Edit", "focused": False},
+            {"id": "move_to_cargo", "type": "button", "position": [210, 250], "size": [90, 24], "text": "Move to Cargo", "focused": False},
         ]
 
     def _refresh_book_list(self):
@@ -125,6 +125,8 @@ class LibraryScene:
                     self._select_next_book(5)
                 elif event.key == pygame.K_RETURN or event.key == pygame.K_r:
                     return self._read_selected_book()
+                elif event.key == pygame.K_e:
+                    return self._edit_selected_book()
                 elif event.key == pygame.K_m:
                     # Only allow if move to cargo is available
                     if self._is_move_to_cargo_available():
@@ -235,6 +237,8 @@ class LibraryScene:
             return None
         elif widget_id == "read_book" and not self.books:
             return None
+        elif widget_id == "edit_book" and not self.books:
+            return None
         
         if widget_id == "prev_scene":
             return self._get_prev_scene()
@@ -242,9 +246,20 @@ class LibraryScene:
             return self._get_next_scene()
         elif widget_id == "read_book":
             return self._read_selected_book()
+        elif widget_id == "edit_book":
+            return self._edit_selected_book()
         elif widget_id == "move_to_cargo":
             self._move_book_to_cargo()
         return None
+
+    def _edit_selected_book(self) -> Optional[str]:
+        # TODO: Implement logic to switch to edit scene for selected book
+        # For now, just stub out the handler
+        if not self.books or self.selected_book_index >= len(self.books):
+            return None
+        selected_book = self.books[self.selected_book_index]
+        # Return scene_edit:<filename> for main.py to handle
+        return f"scene_edit:{selected_book}"
 
     def _read_selected_book(self) -> Optional[str]:
         if not self.books or self.selected_book_index >= len(self.books):
