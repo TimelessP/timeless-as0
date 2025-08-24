@@ -93,9 +93,11 @@ class LibraryScene:
                     books.append({"filename": fname, "origin": "user"})
         self.books = books
         self._last_book_count = len(self.books)
-        # Ensure selected index is valid
-        if self.selected_book_index >= len(self.books):
-            self.selected_book_index = max(0, len(self.books) - 1)
+        # Clamp selected index to valid range (prevents empty list bug)
+        if not self.books:
+            self.selected_book_index = 0
+        elif self.selected_book_index >= len(self.books):
+            self.selected_book_index = len(self.books) - 1
         # Adjust scroll if needed
         self._adjust_scroll()
 
