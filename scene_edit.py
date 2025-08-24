@@ -166,9 +166,55 @@ class EditBookScene:
             if text_area.collidepoint(event.pos):
                 self.focus_index = len(self.widgets)  # Focus text area
                 self._update_focus()
+                # Move cursor to click position
+                self._move_cursor_to_mouse(event.pos, text_area)
         elif event.type == pygame.MOUSEWHEEL:
             self._scroll_source(event.y)
         return None
+
+    def _move_cursor_to_mouse(self, mouse_pos, text_area):
+        """Move the cursor to the position in the text buffer closest to the mouse click."""
+        cache = self._wrap_cache
+        wrapped_lines = cache['wrapped_lines']
+        line_map = cache['line_map']
+        font = self.font
+        if not wrapped_lines or not line_map or not font:
+            return
+        x, y = mouse_pos
+        # Calculate which wrapped line was clicked
+        rel_y = y - (text_area.y + 4)
+        line_height = font.get_height() + 2
+        wrap_idx = rel_y // line_height
+        if wrap_idx < 0:
+            wrap_idx = 0
+        if wrap_idx >= len(wrapped_lines):
+            wrap_idx = len(wrapped_lines) - 1
+        # Now, for that wrapped line, find the closest char
+        line_text = wrapped_lines[wrap_idx]
+        line_x0 = text_area.x + 6
+        rel_x = x - line_x0
+        # Find closest char index in line_text
+        min_dist = float('inf')
+        best_col = 0
+        for col in range(len(line_text)+1):
+            char_x = font.size(line_text[:col])[0]
+            dist = abs(char_x - rel_x)
+            if dist < min_dist:
+                min_dist = dist
+                best_col = col
+        # Map back to buffer position
+        orig_idx, start_col, end_col = line_map[wrap_idx]
+        buffer_line = orig_idx
+        buffer_col = start_col + best_col
+        # Clamp to line length
+        if buffer_col > len(self.text_lines[buffer_line]):
+            buffer_col = len(self.text_lines[buffer_line])
+        # Compute buffer position
+        pos = 0
+        for i in range(buffer_line):
+            pos += len(self.text_lines[i]) + 1  # +1 for \n
+        pos += buffer_col
+        self.cursor_pos = pos
 
     def _handle_text_edit_event(self, event):
         mods = pygame.key.get_mods()
