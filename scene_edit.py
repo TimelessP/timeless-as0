@@ -24,6 +24,49 @@ from theme import (
 from scene_book import TEXT_COLOR, PAPER_COLOR, PAGE_BORDER_COLOR
 
 class EditBookScene:
+    def _rebuild_wrap_cache(self):
+        # Rebuild the wrap cache immediately (same logic as in _render_source_view)
+        if not self.font:
+            return
+        text_area_width = 280  # hardcoded from render
+        wrap_width = text_area_width - 16
+        wrapped_lines = []
+        line_map = []
+        surfaces = []
+        for idx, line in enumerate(self.text_lines):
+            start = 0
+            line_len = len(line)
+            while start < line_len:
+                end = line_len
+                if self.font.size(line[start:end])[0] <= wrap_width:
+                    pass
+                else:
+                    lo = start + 1
+                    hi = end
+                    while lo < hi:
+                        mid = (lo + hi) // 2
+                        if self.font.size(line[start:mid])[0] <= wrap_width:
+                            lo = mid + 1
+                        else:
+                            hi = mid
+                    end = lo - 1 if lo > start + 1 else lo
+                if end <= start:
+                    end = start + 1
+                substr = line[start:end]
+                wrapped_lines.append(substr)
+                line_map.append((idx, start, end))
+                surfaces.append(self.font.render(substr, self.is_text_antialiased, TEXT_COLOR))
+                start = end
+            if line_len == 0:
+                wrapped_lines.append("")
+                line_map.append((idx, 0, 0))
+                surfaces.append(self.font.render("", self.is_text_antialiased, TEXT_COLOR))
+        self._wrap_cache['text_buffer'] = self.text_buffer
+        self._wrap_cache['font'] = self.font
+        self._wrap_cache['wrap_width'] = wrap_width
+        self._wrap_cache['wrapped_lines'] = wrapped_lines
+        self._wrap_cache['line_map'] = line_map
+        self._wrap_cache['surfaces'] = surfaces
     def __init__(self, simulator, book: dict):
         self.simulator = simulator
         self.book = book  # Book ref dict: id, type, title, source
@@ -145,11 +188,11 @@ class EditBookScene:
                     self.text_buffer = self.text_buffer[:self.cursor_pos] + "\n" + self.text_buffer[self.cursor_pos:]
                     self.cursor_pos += 1
                     self._update_lines_from_buffer()
+                    self._rebuild_wrap_cache()
                     self._scroll_cursor_into_view()
             elif self.focus_index >= len(self.widgets):
                 # Editing keys only when text area is focused
                 result = self._handle_text_edit_event(event)
-                self._scroll_cursor_into_view()
                 return result
         elif event.type == pygame.KEYUP:
             # Stop key repeat
@@ -257,77 +300,115 @@ class EditBookScene:
 
     def _handle_text_edit_event(self, event):
         mods = pygame.key.get_mods()
-        # Navigation
+        text_or_cursor_changed = False
+        navigation = False
         if event.key == pygame.K_LEFT:
             if mods & pygame.KMOD_CTRL:
-                # Move to previous word start
                 if self.cursor_pos > 0:
                     pos = self.cursor_pos - 1
-                    # Skip any whitespace before the cursor
                     while pos > 0 and self.text_buffer[pos].isspace():
                         pos -= 1
-                    # Move to the start of the word
                     while pos > 0 and not self.text_buffer[pos-1].isspace():
                         pos -= 1
-                    self.cursor_pos = pos
+                    if self.cursor_pos != pos:
+                        self.cursor_pos = pos
+                        text_or_cursor_changed = True
+                        navigation = True
             else:
                 if self.cursor_pos > 0:
                     self.cursor_pos -= 1
+                    text_or_cursor_changed = True
+                    navigation = True
         elif event.key == pygame.K_RIGHT:
             if mods & pygame.KMOD_CTRL:
-                # Move to next word start
                 pos = self.cursor_pos
                 length = len(self.text_buffer)
-                # Skip any whitespace at or after the cursor
                 while pos < length and self.text_buffer[pos].isspace():
                     pos += 1
-                # Move to the end of the current word
                 while pos < length and not self.text_buffer[pos].isspace():
                     pos += 1
-                # Skip whitespace to the start of the next word
                 while pos < length and self.text_buffer[pos].isspace():
                     pos += 1
-                self.cursor_pos = pos
+                if self.cursor_pos != pos:
+                    self.cursor_pos = pos
+                    text_or_cursor_changed = True
+                    navigation = True
             else:
                 if self.cursor_pos < len(self.text_buffer):
                     self.cursor_pos += 1
+                    text_or_cursor_changed = True
+                    navigation = True
         elif event.key == pygame.K_UP:
             self._move_cursor_vertically(-1)
+            text_or_cursor_changed = True
+            navigation = True
         elif event.key == pygame.K_DOWN:
             self._move_cursor_vertically(1)
+            text_or_cursor_changed = True
+            navigation = True
         elif event.key == pygame.K_PAGEUP:
             self._move_cursor_page(-1)
+            text_or_cursor_changed = True
+            navigation = True
         elif event.key == pygame.K_PAGEDOWN:
             self._move_cursor_page(1)
+            text_or_cursor_changed = True
+            navigation = True
         elif event.key == pygame.K_HOME:
             if mods & pygame.KMOD_CTRL:
-                self.cursor_pos = 0
+                if self.cursor_pos != 0:
+                    self.cursor_pos = 0
+                    text_or_cursor_changed = True
+                    navigation = True
             else:
-                self.cursor_pos = self._line_start(self.cursor_pos)
+                new_pos = self._line_start(self.cursor_pos)
+                if self.cursor_pos != new_pos:
+                    self.cursor_pos = new_pos
+                    text_or_cursor_changed = True
+                    navigation = True
         elif event.key == pygame.K_END:
             if mods & pygame.KMOD_CTRL:
-                self.cursor_pos = len(self.text_buffer)
+                if self.cursor_pos != len(self.text_buffer):
+                    self.cursor_pos = len(self.text_buffer)
+                    text_or_cursor_changed = True
+                    navigation = True
             else:
-                self.cursor_pos = self._line_end(self.cursor_pos)
+                new_pos = self._line_end(self.cursor_pos)
+                if self.cursor_pos != new_pos:
+                    self.cursor_pos = new_pos
+                    text_or_cursor_changed = True
+                    navigation = True
         elif event.key == pygame.K_BACKSPACE:
             if self.cursor_pos > 0:
                 self.text_buffer = self.text_buffer[:self.cursor_pos-1] + self.text_buffer[self.cursor_pos:]
                 self.cursor_pos -= 1
                 self._update_lines_from_buffer()
+                text_or_cursor_changed = True
         elif event.key == pygame.K_DELETE:
             if self.cursor_pos < len(self.text_buffer):
                 self.text_buffer = self.text_buffer[:self.cursor_pos] + self.text_buffer[self.cursor_pos+1:]
                 self._update_lines_from_buffer()
+                text_or_cursor_changed = True
         elif event.key == pygame.K_v and mods & pygame.KMOD_CTRL:
             paste = pyperclip.paste()
             if paste:
                 self.text_buffer = self.text_buffer[:self.cursor_pos] + paste + self.text_buffer[self.cursor_pos:]
                 self.cursor_pos += len(paste)
                 self._update_lines_from_buffer()
+                text_or_cursor_changed = True
         elif event.unicode and len(event.unicode) == 1 and not (mods & pygame.KMOD_CTRL):
             self.text_buffer = self.text_buffer[:self.cursor_pos] + event.unicode + self.text_buffer[self.cursor_pos:]
             self.cursor_pos += 1
             self._update_lines_from_buffer()
+            text_or_cursor_changed = True
+        if text_or_cursor_changed:
+            if navigation:
+                # For navigation, just scroll using the existing cache
+                self._scroll_cursor_into_view()
+            else:
+                # For text edits, _update_lines_from_buffer() already invalidates cache
+                self._rebuild_wrap_cache()
+                self._scroll_cursor_into_view()
         return None
 
     def _move_cursor_page(self, direction):
@@ -515,13 +596,23 @@ class EditBookScene:
         wrapped_lines = cache['wrapped_lines']
         line_map = cache['line_map']
         surfaces = cache['surfaces']
-        # Find cursor's wrapped line/col
+        # Find cursor's wrapped line/col (inclusive end)
         cursor_line, cursor_col = self._get_cursor_line_col()
-        cursor_wrap_idx = 0
+        cursor_wrap_idx = None
         for i, (orig_idx, start, end) in enumerate(line_map):
             if orig_idx == cursor_line and start <= cursor_col <= end:
                 cursor_wrap_idx = i
                 break
+        if cursor_wrap_idx is None:
+            # fallback: last for line
+            last_for_line = None
+            for i, (orig_idx, start, end) in enumerate(line_map):
+                if orig_idx == cursor_line:
+                    last_for_line = i
+            if last_for_line is not None:
+                cursor_wrap_idx = last_for_line
+        if cursor_wrap_idx is None:
+            cursor_wrap_idx = len(line_map) - 1 if line_map else 0
         # Draw visible lines
         start_idx = self.scroll_offset
         end_idx = min(len(wrapped_lines), start_idx + lines_visible)
@@ -543,11 +634,20 @@ class EditBookScene:
         wrapped_lines = cache['wrapped_lines']
         line_map = cache['line_map']
         cursor_line, cursor_col = self._get_cursor_line_col()
-        cursor_wrap_idx = 0
+        cursor_wrap_idx = None
         for i, (orig_idx, start, end) in enumerate(line_map):
             if orig_idx == cursor_line and start <= cursor_col <= end:
                 cursor_wrap_idx = i
                 break
+        if cursor_wrap_idx is None:
+            last_for_line = None
+            for i, (orig_idx, start, end) in enumerate(line_map):
+                if orig_idx == cursor_line:
+                    last_for_line = i
+            if last_for_line is not None:
+                cursor_wrap_idx = last_for_line
+        if cursor_wrap_idx is None:
+            cursor_wrap_idx = len(line_map) - 1 if line_map else 0
         lines_visible = 13
         if cursor_wrap_idx < self.scroll_offset:
             self.scroll_offset = cursor_wrap_idx
