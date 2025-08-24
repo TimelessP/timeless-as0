@@ -24,18 +24,17 @@ from theme import (
 from scene_book import TEXT_COLOR, PAPER_COLOR, PAGE_BORDER_COLOR
 
 class EditBookScene:
-    def __init__(self, simulator, book_filename: str):
+    def __init__(self, simulator, book: dict):
         self.simulator = simulator
-        self.book_filename = book_filename
+        self.book = book  # Book ref dict: id, type, title, source
         self.font = None
         self.is_text_antialiased = False
         self.widgets = []
         self.focus_index = 0
-        self.scroll_offset = 0  # Line offset for source view
-        self.cursor_pos = 0  # Offset in text buffer
+        self.scroll_offset = 0
+        self.cursor_pos = 0
         self.text_lines: List[str] = []
         self.text_buffer = ""
-        # Caching for wrapped/rendered lines (must be before any method that uses it)
         self._wrap_cache = {
             'text_buffer': None,
             'font': None,
@@ -44,22 +43,19 @@ class EditBookScene:
             'line_map': [],
             'surfaces': []
         }
-        # Scrollbar drag state
         self._scrollbar_drag = False
         self._scrollbar_drag_offset = 0
         self._init_widgets()
         self._load_book()
         self._update_lines_from_buffer()
-        # Default focus to textarea and cursor at start
         self.focus_index = len(self.widgets)
         self._update_focus()
         self.cursor_pos = 0
-        # Key repeat state
         self._repeat_key = None
         self._repeat_key_down = False
         self._repeat_time = 0
-        self._repeat_interval = 0.05  # seconds between repeats
-        self._repeat_delay = 0.35  # initial delay before repeat
+        self._repeat_interval = 0.05
+        self._repeat_delay = 0.35
 
     def set_font(self, font, is_text_antialiased=False):
         self.font = font
@@ -72,9 +68,8 @@ class EditBookScene:
         ]
 
     def _load_book(self):
-        # Only ever loads from user books dir
-        user_books_dir = self._get_user_books_dir()
-        book_path = os.path.join(user_books_dir, self.book_filename)
+        # Always load from book['source']
+        book_path = self.book["source"]
         if os.path.isfile(book_path):
             with open(book_path, "r", encoding="utf-8") as f:
                 self.text_buffer = f.read()
@@ -83,8 +78,7 @@ class EditBookScene:
         self.cursor_pos = len(self.text_buffer)
 
     def _save_book(self):
-        user_books_dir = self._get_user_books_dir()
-        book_path = os.path.join(user_books_dir, self.book_filename)
+        book_path = self.book["source"]
         with open(book_path, "w", encoding="utf-8") as f:
             f.write(self.text_buffer)
 
@@ -454,7 +448,7 @@ class EditBookScene:
         pygame.draw.rect(screen, EDIT_HEADER_COLOR, (0, 0, 320, 24))
         pygame.draw.rect(screen, BUTTON_TEXT_COLOR, (0, 0, 320, 24), 1)
         # Title in header box
-        title = f"EDITING: {self.book_filename}"
+        title = f"EDITING: {self.book['title']}"
         title_surface = self.font.render(title, self.is_text_antialiased, BUTTON_TEXT_COLOR)
         title_rect = title_surface.get_rect(center=(160, 12))
         screen.blit(title_surface, title_rect)

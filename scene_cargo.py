@@ -764,9 +764,15 @@ class CargoScene:
             self.simulator.detach_crate()
         elif widget_id == "use_crate":
             if self.selected_crate:
+                print(f"[DEBUG] Use button pressed. Selected crate: id={self.selected_crate['id']} type={self.selected_crate.get('type')} usable={self._is_crate_usable(self.selected_crate)}")
                 success = self.simulator.use_crate(self.selected_crate["id"])
+                print(f"[DEBUG] use_crate returned: {success}")
                 if success:
+                    print(f"[DEBUG] Crate {self.selected_crate['id']} used and removed.")
                     self.selected_crate = None  # Clear selection after use
+                    self._update_crate_widgets()  # Refresh crate list/UI
+                else:
+                    print(f"[DEBUG] Crate {self.selected_crate['id']} could not be used.")
         elif widget_id == "refresh":
             self.simulator.refresh_loading_bay()
         elif widget_id in ["winch_left", "winch_right", "winch_up", "winch_down"]:

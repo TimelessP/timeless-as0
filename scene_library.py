@@ -36,12 +36,11 @@ class LibraryScene:
         self.is_text_antialiased = False
         self.widgets = []
         self.focus_index = 0
-        self.books = []  # List of dicts: {"filename": str, "origin": "game"|"user"}
+        self.books = []  # List of book ref dicts from simulator (id, type, title, source)
         self.selected_book_index = 0
         self.scroll_offset = 0
         self.max_visible_books = 8  # Number of books visible in the list
         self._last_book_count = 0  # Track changes to auto-refresh
-        
         self._init_widgets()
         self._refresh_book_list()
 
@@ -64,12 +63,8 @@ class LibraryScene:
     def update(self, dt: float):
         """Update the scene"""
         self.simulator.update(dt)
-        # Check if library has changed (books added/removed from other scenes)
-        current_books = self.simulator.get_library_books()
-        current_books_set = set(current_books)
-        local_books_set = set(b["filename"] for b in self.books if b["origin"] == "game")
-        if current_books_set != local_books_set or len(current_books) != self._last_book_count:
-            self._refresh_book_list()
+        # Always refresh user books from disk on update (or on scene entry)
+        self._refresh_book_list()
 
     def _get_user_books_dir(self):
         """Return the path to the user's custom books directory, cross-platform."""
@@ -87,20 +82,9 @@ class LibraryScene:
         return None
 
     def _refresh_book_list(self):
-        """Refresh the list of books from the simulator and user's custom books dir."""
-        # Get in-game books from simulator
-        game_books = self.simulator.get_library_books()
-        books = []
-        for filename in game_books:
-            books.append({"filename": filename, "origin": "game"})
-
-        # Get user custom books from Documents/AirshipZero/books/
-        user_books_dir = self._get_user_books_dir()
-        if user_books_dir and os.path.isdir(user_books_dir):
-            for fname in sorted(os.listdir(user_books_dir)):
-                if fname.endswith(".md") and os.path.isfile(os.path.join(user_books_dir, fname)):
-                    # Only add if not already present as a user book (allow duplicate names from game)
-                    books.append({"filename": fname, "origin": "user"})
+        """Refresh the list of books from the simulator (user/in-game, ordered)."""
+        books = self.simulator.get_library_books()
+        print(f"[DEBUG] LibraryScene: loaded {len(books)} books: {[b.get('title') for b in books]}")
         self.books = books
         self._last_book_count = len(self.books)
         # Clamp selected index to valid range (prevents empty list bug)
@@ -108,7 +92,6 @@ class LibraryScene:
             self.selected_book_index = 0
         elif self.selected_book_index >= len(self.books):
             self.selected_book_index = len(self.books) - 1
-        # Adjust scroll if needed
         self._adjust_scroll()
 
     def _adjust_scroll(self):
@@ -128,10 +111,9 @@ class LibraryScene:
         # Ensure scroll offset is valid
         self.scroll_offset = max(0, min(self.scroll_offset, max(0, len(self.books) - self.max_visible_books)))
 
-    def _get_book_display_name(self, filename: str) -> str:
-        """Get a display-friendly name for a book filename"""
-        name = filename.replace('.md', '').replace('-', ' ').replace('_', ' ')
-        return ' '.join(word.capitalize() for word in name.split())
+    def _get_book_display_name(self, book) -> str:
+        """Get a display-friendly name for a book ref dict"""
+        return book.get("title", "Untitled Book")
 
     def handle_event(self, event) -> Optional[str]:
         if not pygame:
@@ -286,15 +268,9 @@ class LibraryScene:
         self._adjust_scroll()
 
     def _update_central_book_order(self):
-        # Only update the order for in-game books (not user books)
-        # This keeps the order in the central game state
-        in_game_books = [b["filename"] for b in self.books if b["origin"] == "game"]
-        # Update simulator's library book list to match this order
-        # (User books are not in central state, so only update in-game books)
-        current = self.simulator.get_library_books()
-        # Only update if the set matches (no books added/removed)
-        if set(current) == set(in_game_books):
-            self.simulator.game_state["library"]["books"] = in_game_books
+        # Update the order in the simulator using book ids
+        new_order = [b["id"] for b in self.books]
+        self.simulator.set_library_order(new_order)
 
     def _focus_next(self):
         # Cycle through buttons first, then book list (if books exist)
@@ -373,73 +349,61 @@ class LibraryScene:
         return None
 
     def _edit_selected_book(self) -> Optional[dict]:
-        # Edit handler: if game book, copy to user dir and select new user book; if user book, just open for edit
+        # Edit handler: if user book, just open for edit; if in-game, copy to user dir and open
         if not self.books or self.selected_book_index >= len(self.books):
             return None
         book = self.books[self.selected_book_index]
-        if book["origin"] == "user":
-            # Already a user book, just open for edit
+        if book["type"] == "user":
             return {"scene": "scene_edit", "book": dict(book)}
-        # If game book, copy to user dir
-        user_books_dir = self._get_user_books_dir()
+        # If in-game book, copy to user dir
+        user_books_dir = self.simulator._get_user_books_dir()
         if not user_books_dir:
             return None
         try:
             os.makedirs(user_books_dir, exist_ok=True)
         except Exception:
             return None
-        # Copy the book asset to user dir if not already present
-        src_path = os.path.join(os.path.dirname(__file__), "assets", "books", book["filename"])
-        dst_path = os.path.join(user_books_dir, book["filename"])
-        # If file already exists, don't overwrite
+        src_path = book["source"]
+        dst_path = str(user_books_dir / (book["title"].replace(' ', '_').lower() + ".md"))
         if not os.path.exists(dst_path):
             try:
                 shutil.copyfile(src_path, dst_path)
             except Exception:
                 return None
-        # Refresh book list and select the new user book
         self._refresh_book_list()
         # Find the new user book index
         for idx, b in enumerate(self.books):
-            if b["filename"] == book["filename"] and b["origin"] == "user":
+            if b["type"] == "user" and b["title"] == book["title"]:
                 self.selected_book_index = idx
                 break
-        return {"scene": "scene_edit", "book": {"filename": book["filename"], "origin": "user"}}
+        return {"scene": "scene_edit", "book": dict(self.books[self.selected_book_index])}
 
     def _read_selected_book(self) -> Optional[dict]:
         if not self.books or self.selected_book_index >= len(self.books):
             return None
         book = self.books[self.selected_book_index]
-        # Pass as dict for main.py to handle
         return {"scene": "scene_book", "book": dict(book)}
 
     def _move_book_to_cargo(self):
         if not self.books or self.selected_book_index >= len(self.books):
             return
-        # Only allow moving in-game books (not user books)
         book = self.books[self.selected_book_index]
-        if book["origin"] != "game":
+        if book["type"] != "in_game":
             return
-        # Check if winch is busy before attempting to move
         cargo_state = self.simulator.get_cargo_state()
         winch = cargo_state.get("winch", {})
         if winch.get("attachedCrate"):
-            # Winch is busy - cannot move book
             return False
-        if self.simulator.remove_book_from_library(book["filename"]):
-            self._refresh_book_list()
-            return True
-        return False
+        self.simulator.remove_in_game_book_from_library(book["id"])
+        self._refresh_book_list()
+        return True
 
     def _is_move_to_cargo_available(self) -> bool:
-        """Check if move to cargo is available (winch is free, books exist, and selected book is not a user book)"""
         if not self.books:
             return False
-        # Only allow for in-game books
         book = self.books[self.selected_book_index]
-        if book["origin"] != "game":
+        if book["type"] != "in_game":
             return False
-        # Check if winch is busy
         cargo_state = self.simulator.get_cargo_state()
         winch = cargo_state.get("winch", {})
         return not winch.get("attachedCrate")
@@ -492,25 +456,21 @@ class LibraryScene:
                 book_index = self.scroll_offset + i
                 if book_index >= len(self.books):
                     break
-                y = 50 + i * 20  # Adjusted for header
+                y = 50 + i * 20
                 book = self.books[book_index]
-                book_name = self._get_book_display_name(book["filename"])
-                # Highlight selected book with better colors
+                book_name = self._get_book_display_name(book)
                 if book_index == self.selected_book_index:
                     highlight_rect = pygame.Rect(22, y + 2, 276, 16)
-                    # User book: use custom color, else normal
-                    if book["origin"] == "user":
+                    if book["type"] == "user":
                         color = BOOK_LIST_EDIT_BG_COLOR_SELECTED
                     elif self.focus_index >= len(self.widgets):
                         color = BOOK_LIST_FOCUSED_COLOR
                     else:
                         color = SELECTED_BOOK_COLOR
                     pygame.draw.rect(screen, color, highlight_rect)
-                # Render book name (truncate if too long)
                 if len(book_name) > 35:
                     book_name = book_name[:32] + "..."
-                # User book: use custom text color
-                if book["origin"] == "user":
+                if book["type"] == "user":
                     if book_index == self.selected_book_index:
                         text_color = BOOK_LIST_EDIT_TEXT_COLOR_SELECTED
                     else:

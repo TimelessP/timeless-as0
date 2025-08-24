@@ -50,28 +50,22 @@ def get_image_cache_dir():
     return _image_cache_dir
 
 class BookScene:
-    def __init__(self, simulator, book_filename: str, origin: str = None):
+    def __init__(self, simulator, book: dict):
         self.simulator = simulator
-        self.book_filename = book_filename
-        self.book_origin = origin  # 'user' or 'game' or None
+        self.book = book  # Book ref dict: id, type, title, source
         self.font = None
         self.is_text_antialiased = False
         self.widgets = []
         self.focus_index = 0
-
-        # Book content
-        self.book_title = ""
-        self.pages = []  # List of pages, each page is a list of (text, x, y, is_bold) tuples
+        self.book_title = book.get("title", "Untitled Book")
+        self.pages = []
         self.current_page = 0
-
-        # Page layout settings
-        self.page_margin = 8  # Reduced from 20 to ~1 character width
+        self.page_margin = 8
         self.line_height = 18
         self.page_width = 280
-        self.page_height = 225  # Increased from 200 to use more available space
+        self.page_height = 225
         self.page_x = 20
-        self.page_y = 30  # Adjusted for header box
-
+        self.page_y = 30
         self._init_widgets()
         self._load_book()
 
@@ -91,60 +85,24 @@ class BookScene:
             {"id": "bookmark", "type": "bookmark", "position": [285, 25], "size": [12, 20], "text": "", "focused": False},
         ]
 
-    def _get_user_books_dir(self):
-        import sys, os
-        if sys.platform == "win32":
-            home = os.environ.get("USERPROFILE")
-            docs = os.path.join(home, "Documents") if home else None
-        elif sys.platform == "darwin":
-            home = os.environ.get("HOME")
-            docs = os.path.join(home, "Documents") if home else None
-        else:
-            home = os.environ.get("HOME")
-            docs = os.path.join(home, "Documents") if home else None
-        if docs:
-            return os.path.join(docs, "AirshipZero", "books")
-        return None
+    # No longer needed: always use book['source']
 
     def _load_book(self):
-        """Load and parse the book content from user dir if present, else from assets."""
-        import os
-        user_books_dir = self._get_user_books_dir()
-        user_book_path = None
-        if user_books_dir:
-            candidate = os.path.join(user_books_dir, self.book_filename)
-            if os.path.isfile(candidate):
-                user_book_path = candidate
-        if user_book_path:
-            book_path = user_book_path
-        else:
-            book_path = os.path.join(get_assets_path("books"), self.book_filename)
+        """Load and parse the book content from book['source']."""
         try:
-            with open(book_path, 'r', encoding='utf-8') as f:
+            with open(self.book["source"], 'r', encoding='utf-8') as f:
                 content = f.read()
-            # Extract title from first heading or filename
-            lines = content.split('\n')
-            self.book_title = self._get_book_title(lines)
-            # Parse and layout the book if font is available
+            # Use title from book ref
+            self.book_title = self.book.get("title", "Untitled Book")
             if self.font:
                 self._parse_and_layout_book(content)
             else:
-                # Store content for later parsing
                 self._raw_content = content
         except Exception as e:
             self.book_title = "Error Loading Book"
             self.pages = [[("Could not load book: " + str(e), 0, 0, False)]]
 
-    def _get_book_title(self, lines: List[str]) -> str:
-        """Extract book title from content"""
-        for line in lines:
-            line = line.strip()
-            if line.startswith('# '):
-                return line[2:].strip()
-        
-        # Fallback to filename
-        title = self.book_filename.replace('.md', '').replace('-', ' ').replace('_', ' ')
-        return ' '.join(word.capitalize() for word in title.split())
+    # No longer needed: title comes from book ref
 
     def _parse_and_layout_book(self, content: str = None):
         """Parse markdown content and layout pages"""
@@ -302,12 +260,10 @@ class BookScene:
                 # Local file path - resolve relative to the markdown file
                 if not os.path.isabs(image_path):
                     # Get the directory containing the markdown file
-                    book_path = os.path.join(get_assets_path("books"), self.book_filename)
+                    book_path = self.book["source"]
                     book_dir = os.path.dirname(book_path)
-                    
                     # Resolve the relative path
                     full_path = os.path.normpath(os.path.join(book_dir, image_path))
-                    
                     # Security check: ensure the resolved path is within the assets directory
                     assets_root = os.path.normpath(os.path.dirname(get_assets_path("")))
                     try:
@@ -514,7 +470,7 @@ class BookScene:
                     
                     # Special handling for bookmark
                     if widget["id"] == "bookmark":
-                        current_bookmark = self.simulator.get_bookmark(self.book_filename)
+                        current_bookmark = self.simulator.get_bookmark(self.book["id"])
                         if current_bookmark is not None and current_bookmark != self.current_page:
                             # Go to bookmark if bookmark exists and we're not on bookmarked page
                             self._goto_bookmark()
@@ -546,21 +502,20 @@ class BookScene:
     def _load_book(self):
         """Load and parse the book content from correct location based on origin."""
         book_path = None
-        if self.book_origin == "user":
-            user_books_dir = self._get_user_books_dir()
+        if self.book["type"] == "user":
+            user_books_dir = self.simulator._get_user_books_dir()
             if user_books_dir:
-                candidate = os.path.join(user_books_dir, self.book_filename)
+                candidate = os.path.join(user_books_dir, os.path.basename(self.book["source"]))
                 if os.path.isfile(candidate):
                     book_path = candidate
         if not book_path:
             # Default: load from assets
-            book_path = os.path.join(get_assets_path("books"), self.book_filename)
+            book_path = self.book["source"]
         try:
             with open(book_path, 'r', encoding='utf-8') as f:
                 content = f.read()
-            # Extract title from first heading or filename
-            lines = content.split('\n')
-            self.book_title = self._get_book_title(lines)
+            # Use title from book ref
+            self.book_title = self.book.get("title", "Untitled Book")
             # Parse and layout the book if font is available
             if self.font:
                 self._parse_and_layout_book(content)
@@ -597,18 +552,18 @@ class BookScene:
             self.current_page += 1
     def _toggle_bookmark(self):
         """Toggle bookmark for current page"""
-        current_bookmark = self.simulator.get_bookmark(self.book_filename)
+        current_bookmark = self.simulator.get_bookmark(self.book["id"])
         
         if current_bookmark is not None:
             # Remove bookmark
-            self.simulator.remove_bookmark(self.book_filename)
+            self.simulator.remove_bookmark(self.book["id"])
         else:
             # Add bookmark
-            self.simulator.set_bookmark(self.book_filename, self.current_page)
+            self.simulator.set_bookmark(self.book["id"], self.current_page)
 
     def _goto_bookmark(self):
         """Go to bookmarked page"""
-        bookmark_page = self.simulator.get_bookmark(self.book_filename)
+        bookmark_page = self.simulator.get_bookmark(self.book["id"])
         if bookmark_page is not None and 0 <= bookmark_page < len(self.pages):
             self.current_page = bookmark_page
 
@@ -733,7 +688,7 @@ class BookScene:
 
     def _render_bookmark(self, screen):
         """Render the bookmark"""
-        bookmark_page = self.simulator.get_bookmark(self.book_filename)
+        bookmark_page = self.simulator.get_bookmark(self.book["id"])
         
         # Get bookmark widget position and size
         bookmark_widget = None

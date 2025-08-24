@@ -205,14 +205,14 @@ class AirshipApp:
             scene = scene_info.get("scene")
             book = scene_info.get("book")
             if scene == "scene_book" and book:
-                book_scene = BookScene(self.simulator, book["filename"], book.get("origin"))
+                book_scene = BookScene(self.simulator, book)
                 book_scene.set_font(self.font, self.is_text_antialiased)
                 self.current_scene = book_scene
                 self.scene_name = scene
                 return
             elif scene == "scene_edit" and book:
                 from scene_edit import EditBookScene
-                edit_scene = EditBookScene(self.simulator, book["filename"])
+                edit_scene = EditBookScene(self.simulator, book)
                 edit_scene.set_font(self.font, self.is_text_antialiased)
                 self.current_scene = edit_scene
                 self.scene_name = scene
