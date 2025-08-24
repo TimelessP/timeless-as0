@@ -242,7 +242,6 @@ class FuelScene:
     
     def print_layout_debug(self):
         """Print detailed layout information for debugging"""
-        print("=== Fuel Scene Layout Debug ===")
         overlaps = self.check_layout_overlaps()
         if overlaps:
             print("❌ Overlaps:")

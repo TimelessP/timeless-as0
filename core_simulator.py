@@ -170,13 +170,28 @@ class CoreSimulator:
         # Always reload user books from disk
         user_books = self._scan_user_books()
         user_book_ids = {b["id"] for b in user_books}
-        # Only keep user books that still exist
-        order = [b for b in state.get("order", []) if not (b["type"] == "user" and b["id"] not in user_book_ids)]
-        # Add new user books to the end
-        known_user_ids = {b["id"] for b in order if b["type"] == "user"}
+        prev_order = state.get("order", [])
+        order = []
+        # 1. Add all books from previous order that still exist (user and in-game)
+        prev_ids = set()
+        all_books_by_id = {b["id"]: b for b in user_books}
+        in_game_books = self._scan_in_game_books()
+        all_books_by_id.update({b["id"]: b for b in in_game_books})
+        in_game_book_ids = {b["id"] for b in in_game_books}
+        for b in prev_order:
+            if b["id"] in all_books_by_id:
+                order.append(all_books_by_id[b["id"]])
+                prev_ids.add(b["id"])
+        # 2. Append any new user books not in previous order
         for ub in user_books:
-            if ub["id"] not in known_user_ids:
+            if ub["id"] not in prev_ids:
                 order.append(ub)
+                prev_ids.add(ub["id"])
+        # 3. Append any new in-game books not in previous order
+        for ib in state.get("in_game_books", []):
+            if ib["id"] not in prev_ids:
+                order.append(dict(ib))
+                prev_ids.add(ib["id"])
         # In-game books: only those present in in_game_books list
         in_game_books = self._scan_in_game_books()
         in_game_book_ids = {b["id"] for b in in_game_books}
@@ -193,40 +208,31 @@ class CoreSimulator:
             if ib["id"] not in order_ids:
                 order.append(dict(ib))
         state["order"] = order
-        print(f"[DEBUG] refresh_library_books: final order has {len(order)} books: {[b.get('title') for b in order]}")
 
     def get_library_books(self) -> list:
         """Return the current ordered list of book refs for the library scene."""
-        print("[DEBUG] get_library_books called")
         self.refresh_library_books()
         books = list(self.game_state["library"]["order"])
-        print(f"[DEBUG] get_library_books returning {len(books)} books")
         return books
 
     def add_in_game_book_to_library(self, book_id: str):
         """Add an in-game book to the library (by id)."""
         in_game_books = self._scan_in_game_books()
         book = next((b for b in in_game_books if b["id"] == book_id), None)
-        print(f"[DEBUG] add_in_game_book_to_library: book_id={book_id} found={book is not None}")
         if book:
             state = self.game_state["library"]
             in_game_ids = {b["id"] for b in state.get("in_game_books", [])}
             order_ids = {b["id"] for b in state.get("order", [])}
             if book["id"] not in in_game_ids:
-                print(f"[DEBUG] Adding book {book['id']} to in_game_books")
                 state.setdefault("in_game_books", []).append(book)
-            else:
-                print(f"[DEBUG] Book {book['id']} already in in_game_books")
             # Ensure book is also in the order list
             if book["id"] not in order_ids:
-                print(f"[DEBUG] Adding book {book['id']} to order list")
                 state.setdefault("order", []).append(book)
             self.refresh_library_books()
 
     def remove_in_game_book_from_library(self, book_id: str):
         """Remove an in-game book from the library (by id), e.g. when moved to cargo hold."""
         state = self.game_state["library"]
-        print(f"[DEBUG] refresh_library_books: in_game_books={len(state.get('in_game_books', []))} order={len(state.get('order', []))}")
         state["in_game_books"] = [b for b in state.get("in_game_books", []) if b["id"] != book_id]
         self.refresh_library_books()
 
@@ -554,12 +560,9 @@ class CoreSimulator:
             save_path = self._get_save_file_path(filename)
             if not self.custom_save_path or save_path.parent != Path('.'):
                 save_path.parent.mkdir(parents=True, exist_ok=True)
-            # Only save in_game_books and order for library
+            # Save the full order (including user books) for library
             state_copy = json.loads(json.dumps(self.game_state))
-            lib = state_copy.get("library", {})
-            # Remove user book refs from order before saving
-            lib["order"] = [b for b in lib.get("order", []) if b.get("type") == "in_game"]
-            # User books are always loaded from disk
+            # No filtering: preserve manual order including user books
             with open(save_path, 'w') as f:
                 json.dump(state_copy, f, indent=2)
             print(f"✅ Game saved to {save_path}")

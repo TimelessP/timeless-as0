@@ -84,7 +84,6 @@ class LibraryScene:
     def _refresh_book_list(self):
         """Refresh the list of books from the simulator (user/in-game, ordered)."""
         books = self.simulator.get_library_books()
-        print(f"[DEBUG] LibraryScene: loaded {len(books)} books: {[b.get('title') for b in books]}")
         self.books = books
         self._last_book_count = len(self.books)
         # Clamp selected index to valid range (prevents empty list bug)
