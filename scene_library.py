@@ -61,6 +61,16 @@ class LibraryScene:
             {"id": "move_to_cargo", "type": "button", "position": [210, 250], "size": [90, 24], "text": "Move to Cargo", "focused": False},
         ]
 
+    def update(self, dt: float):
+        """Update the scene"""
+        self.simulator.update(dt)
+        # Check if library has changed (books added/removed from other scenes)
+        current_books = self.simulator.get_library_books()
+        current_books_set = set(current_books)
+        local_books_set = set(b["filename"] for b in self.books if b["origin"] == "game")
+        if current_books_set != local_books_set or len(current_books) != self._last_book_count:
+            self._refresh_book_list()
+
     def _get_user_books_dir(self):
         """Return the path to the user's custom books directory, cross-platform."""
         if sys.platform == "win32":
@@ -126,16 +136,21 @@ class LibraryScene:
     def handle_event(self, event) -> Optional[str]:
         if not pygame:
             return None
-            
+
+        # --- Drag state for mouse drag-and-drop ---
+        if not hasattr(self, '_dragging_book'):
+            self._dragging_book = None  # index
+            self._drag_offset_y = 0
+
         if event.type == pygame.KEYDOWN:
             mods = pygame.key.get_mods()
-            
+
             # Scene navigation & exit
             if event.key == pygame.K_ESCAPE:
                 return "scene_main_menu"
-            elif event.key == pygame.K_LEFTBRACKET:  # '[' previous scene
+            elif event.key == pygame.K_LEFTBRACKET:
                 return self._get_prev_scene()
-            elif event.key == pygame.K_RIGHTBRACKET:  # ']' next scene
+            elif event.key == pygame.K_RIGHTBRACKET:
                 return self._get_next_scene()
 
             # Focus cycling
@@ -147,8 +162,13 @@ class LibraryScene:
                 return None
 
             # Book list navigation (when not focused on buttons)
-            if self.focus_index >= len(self.widgets):  # In book list area
-                if event.key == pygame.K_UP:
+            if self.focus_index >= len(self.widgets):
+                # Book order: Ctrl-Up/Ctrl-Down must be checked before plain Up/Down
+                if event.key == pygame.K_UP and (mods & pygame.KMOD_CTRL):
+                    self._move_selected_book(-1)
+                elif event.key == pygame.K_DOWN and (mods & pygame.KMOD_CTRL):
+                    self._move_selected_book(1)
+                elif event.key == pygame.K_UP:
                     self._select_prev_book()
                 elif event.key == pygame.K_DOWN:
                     self._select_next_book()
@@ -161,10 +181,8 @@ class LibraryScene:
                 elif event.key == pygame.K_e:
                     return self._edit_selected_book()
                 elif event.key == pygame.K_m:
-                    # Only allow if move to cargo is available
                     if self._is_move_to_cargo_available():
                         self._move_book_to_cargo()
-                # Note: Space key removed - no longer moves books
                 elif event.key == pygame.K_TAB:
                     self.focus_index = 0
                     self._update_focus()
@@ -178,11 +196,10 @@ class LibraryScene:
                     return self._activate_focused()
 
         elif event.type == pygame.MOUSEWHEEL:
-            # Mousewheel scrolling for book list
             if self.books:
-                if event.y > 0:  # Scroll up
+                if event.y > 0:
                     self._select_prev_book()
-                elif event.y < 0:  # Scroll down
+                elif event.y < 0:
                     self._select_next_book()
 
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -194,20 +211,90 @@ class LibraryScene:
                     self.focus_index = i
                     self._update_focus()
                     return self._activate_focused()
-            
-            # Check book list clicks (adjusted for header)
+
+            # Book list click/drag start
             list_area_y = 50
             list_area_height = 190
             if 20 <= event.pos[0] <= 300 and list_area_y <= event.pos[1] <= list_area_y + list_area_height:
-                # Click in book list area
                 relative_y = event.pos[1] - list_area_y
                 book_index = self.scroll_offset + relative_y // 20
                 if 0 <= book_index < len(self.books):
                     self.selected_book_index = book_index
-                    self.focus_index = len(self.widgets)  # Focus on book list
+                    self.focus_index = len(self.widgets)
                     self._update_focus()
+                    # Start dragging
+                    self._dragging_book = book_index
+                    self._drag_offset_y = relative_y % 20
+                    self._drag_start_scroll_offset = self.scroll_offset
+
+        elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            # If we were dragging, drop at new position
+            if getattr(self, '_dragging_book', None) is not None:
+                mouse_y = event.pos[1]
+                list_area_y = 50
+                drop_index = self.scroll_offset + max(0, min(self.max_visible_books-1, (mouse_y - list_area_y) // 20))
+                if drop_index >= len(self.books):
+                    drop_index = len(self.books) - 1
+                drag_index = self._dragging_book
+                if drag_index is not None and drop_index != drag_index:
+                    self.selected_book_index = drag_index
+                    self._move_selected_book_to(drop_index)
+                self._dragging_book = None
+                self._drag_offset_y = 0
+                if hasattr(self, '_drag_start_scroll_offset'):
+                    del self._drag_start_scroll_offset
+
+        elif event.type == pygame.MOUSEMOTION:
+            # If dragging, update selected_book_index visually as mouse moves
+            if getattr(self, '_dragging_book', None) is not None:
+                mouse_y = event.pos[1]
+                list_area_y = 50
+                relative_y = mouse_y - list_area_y
+                hover_index = self.scroll_offset + max(0, min(self.max_visible_books-1, relative_y // 20))
+                if 0 <= hover_index < len(self.books):
+                    self.selected_book_index = hover_index
 
         return None
+
+    def _move_selected_book(self, direction: int):
+        # Move selected book up (-1) or down (+1) in the list
+        idx = self.selected_book_index
+        if not self.books or idx < 0 or idx >= len(self.books):
+            return
+        new_idx = idx + direction
+        if new_idx < 0 or new_idx >= len(self.books):
+            return  # Out of bounds
+        # Swap books
+        self.books[idx], self.books[new_idx] = self.books[new_idx], self.books[idx]
+        self.selected_book_index = new_idx
+        self._update_central_book_order()
+        self._adjust_scroll()
+
+    def _move_selected_book_to(self, new_idx: int):
+        # Move selected book to a specific index (for drag-and-drop)
+        idx = self.selected_book_index
+        if not self.books or idx < 0 or idx >= len(self.books):
+            return
+        if new_idx < 0 or new_idx >= len(self.books):
+            return
+        if new_idx == idx:
+            return
+        book = self.books.pop(idx)
+        self.books.insert(new_idx, book)
+        self.selected_book_index = new_idx
+        self._update_central_book_order()
+        self._adjust_scroll()
+
+    def _update_central_book_order(self):
+        # Only update the order for in-game books (not user books)
+        # This keeps the order in the central game state
+        in_game_books = [b["filename"] for b in self.books if b["origin"] == "game"]
+        # Update simulator's library book list to match this order
+        # (User books are not in central state, so only update in-game books)
+        current = self.simulator.get_library_books()
+        # Only update if the set matches (no books added/removed)
+        if set(current) == set(in_game_books):
+            self.simulator.game_state["library"]["books"] = in_game_books
 
     def _focus_next(self):
         # Cycle through buttons first, then book list (if books exist)
@@ -363,14 +450,7 @@ class LibraryScene:
     def _get_next_scene(self) -> str:
         return "scene_bridge"
 
-    def update(self, dt: float):
-        """Update the scene"""
-        self.simulator.update(dt)
-        
-        # Check if library has changed (books added from other scenes)
-        current_book_count = len(self.simulator.get_library_books())
-        if current_book_count != self._last_book_count:
-            self._refresh_book_list()
+    # (Removed duplicate update method at end of file)
 
     def render(self, screen):
         if not pygame or not self.font:
