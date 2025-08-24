@@ -49,19 +49,20 @@ def get_image_cache_dir():
     return _image_cache_dir
 
 class BookScene:
-    def __init__(self, simulator, book_filename: str):
+    def __init__(self, simulator, book_filename: str, origin: str = None):
         self.simulator = simulator
         self.book_filename = book_filename
+        self.book_origin = origin  # 'user' or 'game' or None
         self.font = None
         self.is_text_antialiased = False
         self.widgets = []
         self.focus_index = 0
-        
+
         # Book content
         self.book_title = ""
         self.pages = []  # List of pages, each page is a list of (text, x, y, is_bold) tuples
         self.current_page = 0
-        
+
         # Page layout settings
         self.page_margin = 8  # Reduced from 20 to ~1 character width
         self.line_height = 18
@@ -69,7 +70,7 @@ class BookScene:
         self.page_height = 225  # Increased from 200 to use more available space
         self.page_x = 20
         self.page_y = 30  # Adjusted for header box
-        
+
         self._init_widgets()
         self._load_book()
 
@@ -89,25 +90,46 @@ class BookScene:
             {"id": "bookmark", "type": "bookmark", "position": [285, 25], "size": [12, 20], "text": "", "focused": False},
         ]
 
+    def _get_user_books_dir(self):
+        import sys, os
+        if sys.platform == "win32":
+            home = os.environ.get("USERPROFILE")
+            docs = os.path.join(home, "Documents") if home else None
+        elif sys.platform == "darwin":
+            home = os.environ.get("HOME")
+            docs = os.path.join(home, "Documents") if home else None
+        else:
+            home = os.environ.get("HOME")
+            docs = os.path.join(home, "Documents") if home else None
+        if docs:
+            return os.path.join(docs, "AirshipZero", "books")
+        return None
+
     def _load_book(self):
-        """Load and parse the book content"""
-        book_path = os.path.join(get_assets_path("books"), self.book_filename)
-        
+        """Load and parse the book content from user dir if present, else from assets."""
+        import os
+        user_books_dir = self._get_user_books_dir()
+        user_book_path = None
+        if user_books_dir:
+            candidate = os.path.join(user_books_dir, self.book_filename)
+            if os.path.isfile(candidate):
+                user_book_path = candidate
+        if user_book_path:
+            book_path = user_book_path
+        else:
+            book_path = os.path.join(get_assets_path("books"), self.book_filename)
         try:
             with open(book_path, 'r', encoding='utf-8') as f:
                 content = f.read()
-            
             # Extract title from first heading or filename
             lines = content.split('\n')
             self.book_title = self._get_book_title(lines)
-            
             # Parse and layout the book if font is available
             if self.font:
                 self._parse_and_layout_book(content)
             else:
                 # Store content for later parsing
                 self._raw_content = content
-        
         except Exception as e:
             self.book_title = "Error Loading Book"
             self.pages = [[("Could not load book: " + str(e), 0, 0, False)]]
@@ -524,6 +546,34 @@ class BookScene:
         self.focus_index = (self.focus_index - 1) % len(self.widgets)
         self._update_focus()
 
+    def _load_book(self):
+        """Load and parse the book content from correct location based on origin."""
+        book_path = None
+        if self.book_origin == "user":
+            user_books_dir = self._get_user_books_dir()
+            if user_books_dir:
+                candidate = os.path.join(user_books_dir, self.book_filename)
+                if os.path.isfile(candidate):
+                    book_path = candidate
+        if not book_path:
+            # Default: load from assets
+            book_path = os.path.join(get_assets_path("books"), self.book_filename)
+        try:
+            with open(book_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            # Extract title from first heading or filename
+            lines = content.split('\n')
+            self.book_title = self._get_book_title(lines)
+            # Parse and layout the book if font is available
+            if self.font:
+                self._parse_and_layout_book(content)
+            else:
+                # Store content for later parsing
+                self._raw_content = content
+        except Exception as e:
+            self.book_title = "Error Loading Book"
+            self.pages = [[("Could not load book: " + str(e), 0, 0, False)]]
+
     def _update_focus(self):
         """Update focus state of widgets"""
         for widget in self.widgets:
@@ -542,15 +592,12 @@ class BookScene:
         elif widget["id"] == "bookmark":
             self._toggle_bookmark()
         return None
-
     def _prev_page(self):
         if self.current_page > 0:
             self.current_page -= 1
-
     def _next_page(self):
         if self.current_page < len(self.pages) - 1:
             self.current_page += 1
-
     def _toggle_bookmark(self):
         """Toggle bookmark for current page"""
         current_bookmark = self.simulator.get_bookmark(self.book_filename)

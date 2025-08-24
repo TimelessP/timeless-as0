@@ -198,8 +198,33 @@ class AirshipApp:
         except Exception as e:
             print(f"Error during automatic update check: {e}")
         
-    def _transition_to_scene(self, scene_name: str):
-        """Transition to a new scene"""
+    def _transition_to_scene(self, scene_info):
+        """Transition to a new scene. Accepts either a string or a dict for book scenes."""
+        # Handle dict-based transitions for book and edit scenes
+        if isinstance(scene_info, dict):
+            scene = scene_info.get("scene")
+            book = scene_info.get("book")
+            if scene == "scene_book" and book:
+                book_scene = BookScene(self.simulator, book["filename"], book.get("origin"))
+                book_scene.set_font(self.font, self.is_text_antialiased)
+                self.current_scene = book_scene
+                self.scene_name = scene
+                return
+            elif scene == "scene_edit" and book:
+                from scene_edit import EditBookScene
+                edit_scene = EditBookScene(self.simulator, book["filename"])
+                edit_scene.set_font(self.font, self.is_text_antialiased)
+                self.current_scene = edit_scene
+                self.scene_name = scene
+                return
+            elif scene in self.scenes:
+                self.scene_name = scene
+                self.current_scene = self.scenes[scene]
+                return
+            else:
+                # Fallback: treat as string
+                scene_info = scene
+        scene_name = scene_info
         if scene_name == "quit":
             self.running = False
             return
@@ -223,38 +248,26 @@ class AirshipApp:
                 self.simulator.save_game()
                 self.simulator.pause_simulation()
                 print("🔇 Simulation paused (main menu)")
-                
-        if scene_name.startswith("scene_book:"):
-            # Handle special book scene with book filename
-            book_filename = scene_name[11:]  # Remove "scene_book:" prefix
-            book_scene = BookScene(self.simulator, book_filename)
-            book_scene.set_font(self.font, self.is_text_antialiased)
-            self.current_scene = book_scene
-            self.scene_name = scene_name
-        elif scene_name in self.scenes:
+        if scene_name in self.scenes:
             self.scene_name = scene_name
             self.current_scene = self.scenes[scene_name]
-            
             # Define actual game scenes that should resume simulation
             game_scenes = {
                 "scene_bridge", "scene_engine_room", "scene_navigation", 
                 "scene_fuel", "scene_cargo", "scene_library", "scene_communications", 
                 "scene_camera", "scene_crew", "scene_missions"
             }
-            
             # Resume simulation only when transitioning to actual game scenes
-            is_game_scene = scene_name in game_scenes or scene_name.startswith("scene_book:")
+            is_game_scene = scene_name in game_scenes
             if is_game_scene and self.simulator.running:
                 # Check if simulation is paused and resume it
                 game_state = self.simulator.get_state()
                 if game_state.get("gameInfo", {}).get("paused", False):
                     self.simulator.resume_simulation()
                     print("🔊 Simulation resumed (entering game scene)")
-            
             # Enable resume game button if we've started a game
             if is_game_scene:
                 self.scenes["scene_main_menu"].set_game_exists(True)
-                
     def _screen_to_logical(self, screen_pos) -> tuple:
         """Convert screen coordinates to logical coordinates"""
         screen_w, screen_h = self.window_size
