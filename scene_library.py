@@ -172,7 +172,7 @@ class LibraryScene:
                     self._focus_prev()
                 elif event.key == pygame.K_DOWN:
                     self._focus_next()
-                elif event.key == pygame.K_RETURN:
+                elif event.key == pygame.K_RETURN or event.key == pygame.K_SPACE:
                     return self._activate_focused()
 
         elif event.type == pygame.MOUSEWHEEL:

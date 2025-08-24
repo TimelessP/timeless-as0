@@ -14,6 +14,7 @@ from core_simulator import get_assets_path
 # Colors (import from theme, but keep book ink and paper as is)
 from theme import (
     BACKGROUND_COLOR,
+    BOOK_HEADER_COLOR,
     BOOKMARK_COLOR,
     BOOKMARK_PLACEHOLDER_COLOR,
     PAGE_BORDER_COLOR,
@@ -472,11 +473,9 @@ class BookScene:
             
         if event.type == pygame.KEYDOWN:
             mods = pygame.key.get_mods()
-            
             # Always allow escape to close
             if event.key == pygame.K_ESCAPE:
                 return "scene_library"
-            
             # Page navigation
             if event.key == pygame.K_LEFT or event.key == pygame.K_PAGEUP:
                 self._prev_page()
@@ -486,13 +485,11 @@ class BookScene:
                 self.current_page = 0
             elif event.key == pygame.K_END:
                 self.current_page = max(0, len(self.pages) - 1)
-            
             # Bookmark shortcuts
             elif event.key == pygame.K_b:
                 self._toggle_bookmark()
             elif event.key == pygame.K_g:
                 self._goto_bookmark()
-            
             # Button navigation
             elif event.key == pygame.K_TAB:
                 if mods & pygame.KMOD_SHIFT:
@@ -503,7 +500,7 @@ class BookScene:
                 self._focus_prev()
             elif event.key == pygame.K_DOWN:
                 self._focus_next()
-            elif event.key == pygame.K_RETURN:
+            elif event.key == pygame.K_RETURN or event.key == pygame.K_SPACE:
                 return self._activate_focused()
 
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -626,8 +623,8 @@ class BookScene:
         # Clear screen
         screen.fill(BACKGROUND_COLOR)
 
-        # Header background box (like other scenes)
-        pygame.draw.rect(screen, BACKGROUND_COLOR, (0, 0, 320, 24))
+        # Header background box (scene-specific color)
+        pygame.draw.rect(screen, BOOK_HEADER_COLOR, (0, 0, 320, 24))
         pygame.draw.rect(screen, BUTTON_TEXT_COLOR, (0, 0, 320, 24), 1)
 
         # Title in header box
@@ -643,7 +640,6 @@ class BookScene:
         # Render current page content
         if self.pages and 0 <= self.current_page < len(self.pages):
             current_page_words = self.pages[self.current_page]
-            
             for item in current_page_words:
                 if len(item) == 6:
                     text, x, y, is_bold, is_image, image_url = item
@@ -651,7 +647,6 @@ class BookScene:
                     # Backwards compatibility with old tuple format
                     text, x, y, is_bold = item
                     is_image, image_url = False, ""
-                
                 if is_image:
                     # Render image
                     image_surface = self._fetch_image(image_url)
@@ -660,12 +655,10 @@ class BookScene:
                         img_w, img_h = image_surface.get_size()
                         max_width = self.page_width - 2 * self.page_margin
                         max_height = self.page_height - 2 * self.page_margin
-                        
                         # Calculate scale
                         scale_w = max_width / img_w if img_w > max_width else 1
                         scale_h = max_height / img_h if img_h > max_height else 1
                         scale = min(scale_w, scale_h)
-                        
                         if scale < 1:
                             # Scale down the image
                             new_w = int(img_w * scale)
@@ -673,7 +666,6 @@ class BookScene:
                             scaled_surface = pygame.transform.scale(image_surface, (new_w, new_h))
                         else:
                             scaled_surface = image_surface
-                        
                         screen.blit(scaled_surface, (self.page_x + x, self.page_y + y))
                     else:
                         # Render placeholder for failed images

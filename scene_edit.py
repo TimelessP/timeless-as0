@@ -5,6 +5,7 @@ import pygame
 from typing import Optional
 from theme import (
     BACKGROUND_COLOR,
+    EDIT_HEADER_COLOR,
     BUTTON_COLOR,
     BUTTON_FOCUSED_COLOR,
     BUTTON_DISABLED_COLOR,
@@ -43,7 +44,7 @@ class EditBookScene:
                 return "scene_library"
             elif event.key == pygame.K_TAB:
                 self._focus_next()
-            elif event.key == pygame.K_RETURN:
+            elif event.key == pygame.K_RETURN or event.key == pygame.K_SPACE:
                 return self._activate_focused()
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             for i, widget in enumerate(self.widgets):
@@ -80,8 +81,8 @@ class EditBookScene:
             return
         # Clear screen
         screen.fill(BACKGROUND_COLOR)
-        # Header background box
-        pygame.draw.rect(screen, BACKGROUND_COLOR, (0, 0, 320, 24))
+        # Header background box (scene-specific color)
+        pygame.draw.rect(screen, EDIT_HEADER_COLOR, (0, 0, 320, 24))
         pygame.draw.rect(screen, BUTTON_TEXT_COLOR, (0, 0, 320, 24), 1)
         # Title in header box
         title = f"EDITING: {self.book_filename}"

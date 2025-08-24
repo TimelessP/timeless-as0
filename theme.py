@@ -98,6 +98,8 @@ COMMS_HEADER_COLOR = (60, 60, 100)      # Muted blue
 MISSION_HEADER_COLOR = (80, 60, 40)     # Brass/bronze
 NAV_HEADER_COLOR = (36, 48, 80)        # Unique blue, similar tonal range, for nav scene
 LIBRARY_HEADER_COLOR = (60, 40, 60)     # Olive green
+BOOK_HEADER_COLOR = (38, 32, 60)  # Deep indigo, distinct from library
+EDIT_HEADER_COLOR = (32, 48, 38)  # Muted green, distinct from others
 
 # Book/reading scene (keep as is for ink & paper)
 BOOK_TEXT_COLOR = (60, 50, 40)
