@@ -60,7 +60,10 @@ airshipzero
 
 ## 📸 Screenshots
 
-> _Screenshots coming soon!_
+![Navigation](assets/screenshots/Screenshot%20from%202025-08-24%2019-18-21.png)
+![Book reader](assets/screenshots/Screenshot%20from%202025-08-24%2019-21-23.png)
+
+[More screenshots...](assets/screenshots/)
 
 ---
 
