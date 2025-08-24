@@ -78,7 +78,6 @@ Thumbs.db
 saves/
 cache/
 logs/
-screenshots/
 *.log
 
 # UV
