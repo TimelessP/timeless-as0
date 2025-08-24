@@ -44,6 +44,9 @@ class EditBookScene:
             'line_map': [],
             'surfaces': []
         }
+        # Scrollbar drag state
+        self._scrollbar_drag = False
+        self._scrollbar_drag_offset = 0
         self._init_widgets()
         self._load_book()
         self._update_lines_from_buffer()
@@ -120,11 +123,18 @@ class EditBookScene:
         if event.type == pygame.KEYDOWN:
             mods = pygame.key.get_mods()
             nav_keys = [pygame.K_LEFT, pygame.K_RIGHT, pygame.K_UP, pygame.K_DOWN, pygame.K_PAGEUP, pygame.K_PAGEDOWN, pygame.K_HOME, pygame.K_END]
-            # Start key repeat for navigation keys
-            if event.key in nav_keys and self.focus_index >= len(self.widgets):
-                self._repeat_key = event.key
-                self._repeat_key_down = True
-                self._repeat_time = 0
+            edit_keys = [pygame.K_BACKSPACE, pygame.K_DELETE]
+            # Start key repeat for navigation, edit, and typable keys in text area
+            if self.focus_index >= len(self.widgets):
+                if event.key in nav_keys + edit_keys:
+                    self._repeat_key = event.key
+                    self._repeat_key_down = True
+                    self._repeat_time = 0
+                # Start repeat for typable characters (unicode, not ctrl)
+                elif event.unicode and len(event.unicode) == 1 and not (pygame.key.get_mods() & pygame.KMOD_CTRL):
+                    self._repeat_key = event.key
+                    self._repeat_key_down = True
+                    self._repeat_time = 0
             if event.key == pygame.K_ESCAPE:
                 self._save_book()
                 return "scene_library"
@@ -133,7 +143,7 @@ class EditBookScene:
                     self._focus_prev()
                 else:
                     self._focus_next()
-            elif event.key == pygame.K_RETURN or event.key == pygame.K_SPACE:
+            elif event.key == pygame.K_RETURN or (event.key == pygame.K_SPACE and self.focus_index < len(self.widgets)):
                 if self.focus_index < len(self.widgets):
                     return self._activate_focused()
                 else:
@@ -161,19 +171,54 @@ class EditBookScene:
                     self.focus_index = i
                     self._update_focus()
                     return self._activate_focused()
-            # Click in text area to focus (source mode)
             text_area = pygame.Rect(20, 30, 280, 250)
+            # Check if clicking on scrollbar
+            lines_visible = 13
+            cache = self._wrap_cache
+            total_lines = max(1, len(cache['wrapped_lines']))
+            bar_height = max(20, int(text_area.height * min(1.0, lines_visible / total_lines)))
+            max_scroll = max(0, total_lines - lines_visible)
+            if max_scroll == 0:
+                bar_y = text_area.y
+            else:
+                bar_y = text_area.y + int((self.scroll_offset / max_scroll) * (text_area.height - bar_height))
+            bar_rect = pygame.Rect(text_area.right - 8, bar_y, 6, bar_height)
+            if bar_rect.collidepoint(event.pos):
+                # Start dragging scrollbar
+                self._scrollbar_drag = True
+                self._scrollbar_drag_offset = event.pos[1] - bar_y
+                return None
+            # Click in text area to focus (source mode)
             if text_area.collidepoint(event.pos):
                 self.focus_index = len(self.widgets)  # Focus text area
                 self._update_focus()
                 # Move cursor to click position
                 self._move_cursor_to_mouse(event.pos, text_area)
+                self._scroll_cursor_into_view()
+        elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            self._scrollbar_drag = False
+        elif event.type == pygame.MOUSEMOTION:
+            if self._scrollbar_drag:
+                text_area = pygame.Rect(20, 30, 280, 250)
+                lines_visible = 13
+                cache = self._wrap_cache
+                total_lines = max(1, len(cache['wrapped_lines']))
+                bar_height = max(20, int(text_area.height * min(1.0, lines_visible / total_lines)))
+                max_scroll = max(0, total_lines - lines_visible)
+                mouse_y = event.pos[1] - self._scrollbar_drag_offset
+                bar_track_height = text_area.height - bar_height
+                if bar_track_height > 0:
+                    rel = (mouse_y - text_area.y) / bar_track_height
+                    rel = max(0.0, min(1.0, rel))
+                    self.scroll_offset = int(rel * max_scroll)
+                else:
+                    self.scroll_offset = 0
         elif event.type == pygame.MOUSEWHEEL:
             self._scroll_source(event.y)
         return None
 
     def _move_cursor_to_mouse(self, mouse_pos, text_area):
-        """Move the cursor to the position in the text buffer closest to the mouse click."""
+        """Move the cursor to the position in the text buffer closest to the mouse click, accounting for scroll."""
         cache = self._wrap_cache
         wrapped_lines = cache['wrapped_lines']
         line_map = cache['line_map']
@@ -181,10 +226,10 @@ class EditBookScene:
         if not wrapped_lines or not line_map or not font:
             return
         x, y = mouse_pos
-        # Calculate which wrapped line was clicked
+        # Calculate which wrapped line was clicked, accounting for scroll offset
         rel_y = y - (text_area.y + 4)
         line_height = font.get_height() + 2
-        wrap_idx = rel_y // line_height
+        wrap_idx = rel_y // line_height + self.scroll_offset
         if wrap_idx < 0:
             wrap_idx = 0
         if wrap_idx >= len(wrapped_lines):
@@ -220,11 +265,38 @@ class EditBookScene:
         mods = pygame.key.get_mods()
         # Navigation
         if event.key == pygame.K_LEFT:
-            if self.cursor_pos > 0:
-                self.cursor_pos -= 1
+            if mods & pygame.KMOD_CTRL:
+                # Move to previous word start
+                if self.cursor_pos > 0:
+                    pos = self.cursor_pos - 1
+                    # Skip any whitespace before the cursor
+                    while pos > 0 and self.text_buffer[pos].isspace():
+                        pos -= 1
+                    # Move to the start of the word
+                    while pos > 0 and not self.text_buffer[pos-1].isspace():
+                        pos -= 1
+                    self.cursor_pos = pos
+            else:
+                if self.cursor_pos > 0:
+                    self.cursor_pos -= 1
         elif event.key == pygame.K_RIGHT:
-            if self.cursor_pos < len(self.text_buffer):
-                self.cursor_pos += 1
+            if mods & pygame.KMOD_CTRL:
+                # Move to next word start
+                pos = self.cursor_pos
+                length = len(self.text_buffer)
+                # Skip any whitespace at or after the cursor
+                while pos < length and self.text_buffer[pos].isspace():
+                    pos += 1
+                # Move to the end of the current word
+                while pos < length and not self.text_buffer[pos].isspace():
+                    pos += 1
+                # Skip whitespace to the start of the next word
+                while pos < length and self.text_buffer[pos].isspace():
+                    pos += 1
+                self.cursor_pos = pos
+            else:
+                if self.cursor_pos < len(self.text_buffer):
+                    self.cursor_pos += 1
         elif event.key == pygame.K_UP:
             self._move_cursor_vertically(-1)
         elif event.key == pygame.K_DOWN:
@@ -360,7 +432,15 @@ class EditBookScene:
         if self._repeat_key is not None and self._repeat_key_down and self.focus_index >= len(self.widgets):
             self._repeat_time += dt
             if self._repeat_time >= self._repeat_delay:
-                fake_event = pygame.event.Event(pygame.KEYDOWN, key=self._repeat_key, unicode="", mod=pygame.key.get_mods())
+                # Determine if typable character
+                key = self._repeat_key
+                mods = pygame.key.get_mods()
+                # Try to get unicode for typable keys
+                unicode_char = ""
+                # Only repeat typable char if not ctrl
+                if 32 <= key <= 126 and not (mods & pygame.KMOD_CTRL):
+                    unicode_char = chr(key)
+                fake_event = pygame.event.Event(pygame.KEYDOWN, key=key, unicode=unicode_char, mod=mods)
                 self._handle_text_edit_event(fake_event)
                 self._scroll_cursor_into_view()
                 self._repeat_time -= self._repeat_interval  # allow some drift, but only one repeat per frame
