@@ -65,6 +65,7 @@ LOGICAL_SIZE = 320
 # Main menu and general UI extras
 SUBTITLE_COLOR = (180, 180, 180)  # Silver-grey for subtitle
 DISABLED_TEXT_COLOR = (100, 100, 100)  # For disabled button text and borders
+CURSOR_COLOR = (255, 200, 50)  # Golden highlight, matches FOCUS_COLOR
 """
 Theme and color palette for Airship Zero
 Wood, brass, and ink inspired colors for a unified steampunk look

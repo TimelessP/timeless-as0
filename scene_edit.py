@@ -18,9 +18,9 @@ from theme import (
     BUTTON_TEXT_DISABLED_COLOR,
     BUTTON_BORDER_COLOR,
     BUTTON_BORDER_FOCUSED_COLOR,
-    BUTTON_BORDER_DISABLED_COLOR
+    BUTTON_BORDER_DISABLED_COLOR,
+    CURSOR_COLOR
 )
-
 from scene_book import TEXT_COLOR, PAPER_COLOR, PAGE_BORDER_COLOR
 
 class EditBookScene:
@@ -35,6 +35,15 @@ class EditBookScene:
         self.cursor_pos = 0  # Offset in text buffer
         self.text_lines: List[str] = []
         self.text_buffer = ""
+        # Caching for wrapped/rendered lines (must be before any method that uses it)
+        self._wrap_cache = {
+            'text_buffer': None,
+            'font': None,
+            'wrap_width': None,
+            'wrapped_lines': [],
+            'line_map': [],
+            'surfaces': []
+        }
         self._init_widgets()
         self._load_book()
         self._update_lines_from_buffer()
@@ -42,10 +51,17 @@ class EditBookScene:
         self.focus_index = len(self.widgets)
         self._update_focus()
         self.cursor_pos = 0
+        # Key repeat state
+        self._repeat_key = None
+        self._repeat_key_down = False
+        self._repeat_time = 0
+        self._repeat_interval = 0.05  # seconds between repeats
+        self._repeat_delay = 0.35  # initial delay before repeat
 
     def set_font(self, font, is_text_antialiased=False):
         self.font = font
         self.is_text_antialiased = is_text_antialiased
+        self._invalidate_wrap_cache()
 
     def _init_widgets(self):
         self.widgets = [
@@ -85,6 +101,14 @@ class EditBookScene:
 
     def _update_lines_from_buffer(self):
         self.text_lines = self.text_buffer.split("\n")
+        self._invalidate_wrap_cache()
+    def _invalidate_wrap_cache(self):
+        self._wrap_cache['text_buffer'] = None
+        self._wrap_cache['font'] = None
+        self._wrap_cache['wrap_width'] = None
+        self._wrap_cache['wrapped_lines'] = []
+        self._wrap_cache['line_map'] = []
+        self._wrap_cache['surfaces'] = []
 
     def _update_buffer_from_lines(self):
         self.text_buffer = "\n".join(self.text_lines)
@@ -95,6 +119,12 @@ class EditBookScene:
             return None
         if event.type == pygame.KEYDOWN:
             mods = pygame.key.get_mods()
+            nav_keys = [pygame.K_LEFT, pygame.K_RIGHT, pygame.K_UP, pygame.K_DOWN, pygame.K_PAGEUP, pygame.K_PAGEDOWN, pygame.K_HOME, pygame.K_END]
+            # Start key repeat for navigation keys
+            if event.key in nav_keys and self.focus_index >= len(self.widgets):
+                self._repeat_key = event.key
+                self._repeat_key_down = True
+                self._repeat_time = 0
             if event.key == pygame.K_ESCAPE:
                 self._save_book()
                 return "scene_library"
@@ -104,10 +134,24 @@ class EditBookScene:
                 else:
                     self._focus_next()
             elif event.key == pygame.K_RETURN or event.key == pygame.K_SPACE:
-                return self._activate_focused()
+                if self.focus_index < len(self.widgets):
+                    return self._activate_focused()
+                else:
+                    # Insert newline in textarea
+                    self.text_buffer = self.text_buffer[:self.cursor_pos] + "\n" + self.text_buffer[self.cursor_pos:]
+                    self.cursor_pos += 1
+                    self._update_lines_from_buffer()
+                    self._scroll_cursor_into_view()
             elif self.focus_index >= len(self.widgets):
                 # Editing keys only when text area is focused
-                return self._handle_text_edit_event(event)
+                result = self._handle_text_edit_event(event)
+                self._scroll_cursor_into_view()
+                return result
+        elif event.type == pygame.KEYUP:
+            # Stop key repeat
+            if self._repeat_key == event.key:
+                self._repeat_key_down = False
+                self._repeat_key = None
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             for i, widget in enumerate(self.widgets):
                 x, y = widget["position"]
@@ -139,6 +183,10 @@ class EditBookScene:
             self._move_cursor_vertically(-1)
         elif event.key == pygame.K_DOWN:
             self._move_cursor_vertically(1)
+        elif event.key == pygame.K_PAGEUP:
+            self._move_cursor_page(-1)
+        elif event.key == pygame.K_PAGEDOWN:
+            self._move_cursor_page(1)
         elif event.key == pygame.K_HOME:
             if mods & pygame.KMOD_CTRL:
                 self.cursor_pos = 0
@@ -158,10 +206,6 @@ class EditBookScene:
             if self.cursor_pos < len(self.text_buffer):
                 self.text_buffer = self.text_buffer[:self.cursor_pos] + self.text_buffer[self.cursor_pos+1:]
                 self._update_lines_from_buffer()
-        elif event.key == pygame.K_RETURN:
-            self.text_buffer = self.text_buffer[:self.cursor_pos] + "\n" + self.text_buffer[self.cursor_pos:]
-            self.cursor_pos += 1
-            self._update_lines_from_buffer()
         elif event.key == pygame.K_v and mods & pygame.KMOD_CTRL:
             paste = pyperclip.paste()
             if paste:
@@ -172,8 +216,18 @@ class EditBookScene:
             self.text_buffer = self.text_buffer[:self.cursor_pos] + event.unicode + self.text_buffer[self.cursor_pos:]
             self.cursor_pos += 1
             self._update_lines_from_buffer()
-    # No rendered mode, so no reflow needed
         return None
+
+    def _move_cursor_page(self, direction):
+        # direction: -1 for PgUp, 1 for PgDn
+        lines_visible = 13
+        line, col = self._get_cursor_line_col()
+        new_line = max(0, min(len(self.text_lines)-1, line + direction * lines_visible))
+        new_col = min(col, len(self.text_lines[new_line]))
+        pos = 0
+        for l in range(new_line):
+            pos += len(self.text_lines[l]) + 1
+        self.cursor_pos = pos + new_col
 
     def _move_cursor_vertically(self, direction):
         # Move cursor up/down by line
@@ -256,6 +310,14 @@ class EditBookScene:
 
     def update(self, dt: float):
         self.simulator.update(dt)
+        # Key repeat logic (one repeat per frame, no while loop)
+        if self._repeat_key is not None and self._repeat_key_down and self.focus_index >= len(self.widgets):
+            self._repeat_time += dt
+            if self._repeat_time >= self._repeat_delay:
+                fake_event = pygame.event.Event(pygame.KEYDOWN, key=self._repeat_key, unicode="", mod=pygame.key.get_mods())
+                self._handle_text_edit_event(fake_event)
+                self._scroll_cursor_into_view()
+                self._repeat_time -= self._repeat_interval  # allow some drift, but only one repeat per frame
 
     def render(self, screen):
         if not pygame or not self.font:
@@ -280,26 +342,103 @@ class EditBookScene:
         self._render_source_view(screen, text_area)
 
     def _render_source_view(self, screen, text_area):
-        # Draw text lines with cursor and scrolling
+        # Soft wrap lines for rendering, with caching
         lines_visible = 13
-        start = self.scroll_offset
-        end = min(len(self.text_lines), start + lines_visible)
-        y = text_area.y + 4
+        wrap_width = text_area.width - 16  # 6px left, 8px scrollbar, 2px border
+        cache = self._wrap_cache
+        cache_invalid = (
+            cache['text_buffer'] != self.text_buffer or
+            cache['font'] != self.font or
+            cache['wrap_width'] != wrap_width or
+            not cache['wrapped_lines']
+        )
+        if cache_invalid:
+            wrapped_lines = []
+            line_map = []
+            surfaces = []
+            for idx, line in enumerate(self.text_lines):
+                start = 0
+                line_len = len(line)
+                while start < line_len:
+                    # Find max substring that fits
+                    end = line_len
+                    if self.font.size(line[start:end])[0] <= wrap_width:
+                        pass  # whole rest of line fits
+                    else:
+                        # Binary search for fit
+                        lo = start + 1
+                        hi = end
+                        while lo < hi:
+                            mid = (lo + hi) // 2
+                            if self.font.size(line[start:mid])[0] <= wrap_width:
+                                lo = mid + 1
+                            else:
+                                hi = mid
+                        end = lo - 1 if lo > start + 1 else lo
+                    if end <= start:
+                        end = start + 1  # Always advance at least one char
+                    substr = line[start:end]
+                    wrapped_lines.append(substr)
+                    line_map.append((idx, start, end))
+                    surfaces.append(self.font.render(substr, self.is_text_antialiased, TEXT_COLOR))
+                    start = end
+                if line_len == 0:
+                    wrapped_lines.append("")
+                    line_map.append((idx, 0, 0))
+                    surfaces.append(self.font.render("", self.is_text_antialiased, TEXT_COLOR))
+            cache['text_buffer'] = self.text_buffer
+            cache['font'] = self.font
+            cache['wrap_width'] = wrap_width
+            cache['wrapped_lines'] = wrapped_lines
+            cache['line_map'] = line_map
+            cache['surfaces'] = surfaces
+        wrapped_lines = cache['wrapped_lines']
+        line_map = cache['line_map']
+        surfaces = cache['surfaces']
+        # Find cursor's wrapped line/col
         cursor_line, cursor_col = self._get_cursor_line_col()
-        for i in range(start, end):
-            line = self.text_lines[i]
-            text_surface = self.font.render(line, self.is_text_antialiased, TEXT_COLOR)
-            screen.blit(text_surface, (text_area.x + 6, y))
-            # Draw cursor if on this line and text area is focused
-            if self.focus_index >= len(self.widgets) and i == cursor_line:
-                cursor_x = text_area.x + 6 + self.font.size(line[:cursor_col])[0]
-                pygame.draw.line(screen, (255, 200, 50), (cursor_x, y), (cursor_x, y + self.font.get_height()), 2)
+        cursor_wrap_idx = 0
+        for i, (orig_idx, start, end) in enumerate(line_map):
+            if orig_idx == cursor_line and start <= cursor_col <= end:
+                cursor_wrap_idx = i
+                break
+        # Draw visible lines
+        start_idx = self.scroll_offset
+        end_idx = min(len(wrapped_lines), start_idx + lines_visible)
+        y = text_area.y + 4
+        for i in range(start_idx, end_idx):
+            screen.blit(surfaces[i], (text_area.x + 6, y))
+            # Draw cursor if on this wrapped line and text area is focused
+            if self.focus_index >= len(self.widgets) and i == cursor_wrap_idx:
+                cursor_x = text_area.x + 6 + self.font.size(wrapped_lines[i][:cursor_col - line_map[i][1]])[0]
+                pygame.draw.line(screen, CURSOR_COLOR, (cursor_x, y), (cursor_x, y + self.font.get_height()), 2)
             y += self.font.get_height() + 2
         # Draw scrollbar
-        self._render_scrollbar(screen, text_area, lines_visible)
+        self._render_scrollbar(screen, text_area, lines_visible, total_lines=len(wrapped_lines))
 
-    def _render_scrollbar(self, screen, text_area, lines_visible):
-        total_lines = max(1, len(self.text_lines))
+    def _scroll_cursor_into_view(self):
+        # After moving cursor, scroll so it's visible
+        # Use cached wrap/line_map
+        cache = self._wrap_cache
+        wrapped_lines = cache['wrapped_lines']
+        line_map = cache['line_map']
+        cursor_line, cursor_col = self._get_cursor_line_col()
+        cursor_wrap_idx = 0
+        for i, (orig_idx, start, end) in enumerate(line_map):
+            if orig_idx == cursor_line and start <= cursor_col <= end:
+                cursor_wrap_idx = i
+                break
+        lines_visible = 13
+        if cursor_wrap_idx < self.scroll_offset:
+            self.scroll_offset = cursor_wrap_idx
+        elif cursor_wrap_idx >= self.scroll_offset + lines_visible:
+            self.scroll_offset = cursor_wrap_idx - lines_visible + 1
+
+    def _render_scrollbar(self, screen, text_area, lines_visible, total_lines=None):
+        if total_lines is None:
+            total_lines = max(1, len(self.text_lines))
+        else:
+            total_lines = max(1, total_lines)
         bar_height = max(20, int(text_area.height * min(1.0, lines_visible / total_lines)))
         max_scroll = max(0, total_lines - lines_visible)
         if max_scroll == 0:
