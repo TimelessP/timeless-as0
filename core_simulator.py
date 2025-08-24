@@ -1717,16 +1717,21 @@ class CoreSimulator:
             # No attached crate, clear entire loading bay
             cargo["loadingBay"] = []
         
-        # Generate 2-4 random crates
+        # Generate 2-4 random crates, but only create book crates for in-game books not in library
         crate_types = list(cargo.get("crateTypes", {}).keys())
-        
+
         # Safety check: ensure we have crate types available
         if not crate_types:
             print("⚠️ No crate types available for loading bay refresh")
             return
-            
+
         num_crates = random.randint(2, 4)
-        
+
+        # For book crates, only use in-game books not already in library
+        in_game_books = self._scan_in_game_books()
+        library_in_game_ids = set(b["id"] for b in self.game_state["library"].get("in_game_books", []))
+        available_book_ids = [b["id"] for b in in_game_books if b["id"] not in library_in_game_ids]
+
         for i in range(num_crates):
             crate_type = random.choice(crate_types)
             crate_info = cargo["crateTypes"][crate_type]
@@ -1738,12 +1743,16 @@ class CoreSimulator:
                     "position": position,
                     "contents": crate_info["contents"].copy()
                 }
-                # If this is a book crate, assign a random in-game book_id
                 if crate_type == "books":
-                    in_game_books = self._scan_in_game_books()
-                    if in_game_books:
-                        crate["book_id"] = random.choice(in_game_books)["id"]
-                cargo["loadingBay"].append(crate)
+                    # Only generate a book crate if there are books not in library
+                    if available_book_ids:
+                        crate["book_id"] = random.choice(available_book_ids)
+                        # Remove this id so we don't generate duplicates in this refresh
+                        available_book_ids.remove(crate["book_id"])
+                        cargo["loadingBay"].append(crate)
+                    # else: skip adding a book crate if all are already in library
+                else:
+                    cargo["loadingBay"].append(crate)
     
     def can_place_attached_crate(self) -> bool:
         """Public: can the currently attached crate be placed (after settling)?"""
