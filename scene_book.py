@@ -126,31 +126,24 @@ class BookScene:
             self.current_page = max(0, len(self.pages) - 1)
 
     def _parse_markdown(self, content: str) -> List[Dict[str, Any]]:
-        """Parse simple markdown into word list with formatting"""
+        """Parse simple markdown into word list with formatting, preserving only the breaks present in the markdown."""
         words = []
         lines = content.split('\n')
-        
-        for line in lines:
-            line = line.strip()
-            
+        for idx, line in enumerate(lines):
+            # Do not strip line, preserve empty lines as-is
             if not line:
-                # Empty line creates paragraph break
-                words.append({"text": "\n\n", "is_bold": False, "is_heading": False, "is_image": False})
+                # Preserve explicit blank lines (for paragraph breaks)
+                words.append({"text": "\n", "is_bold": False, "is_heading": False, "is_image": False})
                 continue
-            
             # Check for image syntax: ![alt text](image_path)
             if line.startswith('![') and '](' in line and line.endswith(')'):
-                # Parse image markdown
                 alt_start = line.find('[') + 1
                 alt_end = line.find(']')
                 url_start = line.find('(') + 1
                 url_end = line.find(')')
-                
                 if alt_start < alt_end and url_start < url_end:
                     alt_text = line[alt_start:alt_end]
                     image_url = line[url_start:url_end]
-                    
-                    # Add image as special word type
                     words.append({
                         "text": alt_text,
                         "is_bold": False,
@@ -159,7 +152,6 @@ class BookScene:
                         "image_url": image_url
                     })
                     continue
-            
             is_heading = line.startswith('#')
             if is_heading:
                 # Remove markdown heading syntax
@@ -167,7 +159,6 @@ class BookScene:
                 is_bold = True
             else:
                 is_bold = False
-            
             # Split line into words
             line_words = line.split()
             for i, word in enumerate(line_words):
@@ -177,8 +168,6 @@ class BookScene:
                     "is_heading": is_heading,
                     "is_image": False
                 })
-                
-                # Add space after word (except last word in line)
                 if i < len(line_words) - 1:
                     words.append({
                         "text": " ",
@@ -186,13 +175,8 @@ class BookScene:
                         "is_heading": is_heading,
                         "is_image": False
                     })
-            
-            # Add line break after each line (except headings which get extra space)
-            if is_heading:
-                words.append({"text": "\n\n", "is_bold": False, "is_heading": False, "is_image": False})
-            else:
-                words.append({"text": "\n", "is_bold": False, "is_heading": False, "is_image": False})
-        
+            # At the end of every line (including headings), preserve the line break
+            words.append({"text": "\n", "is_bold": False, "is_heading": False, "is_image": False})
         return words
 
     def _fetch_image(self, image_url: str) -> Optional[pygame.Surface]:
@@ -426,7 +410,7 @@ class BookScene:
     def handle_event(self, event) -> Optional[str]:
         if not pygame:
             return None
-            
+
         if event.type == pygame.KEYDOWN:
             mods = pygame.key.get_mods()
             # Always allow escape to close
@@ -467,20 +451,16 @@ class BookScene:
                 if x <= event.pos[0] <= x + w and y <= event.pos[1] <= y + h:
                     self.focus_index = i
                     self._update_focus()
-                    
                     # Special handling for bookmark
                     if widget["id"] == "bookmark":
                         current_bookmark = self.simulator.get_bookmark(self.book["id"])
                         if current_bookmark is not None and current_bookmark != self.current_page:
-                            # Go to bookmark if bookmark exists and we're not on bookmarked page
                             self._goto_bookmark()
                         else:
-                            # Toggle bookmark if on bookmarked page, or set bookmark if none exists
                             self._toggle_bookmark()
-                        return None  # Don't call _activate_focused for bookmarks
+                        return None
                     else:
                         return self._activate_focused()
-            
             # Page area clicks for navigation
             page_rect = pygame.Rect(self.page_x, self.page_y, self.page_width, self.page_height)
             if page_rect.contains(pygame.Rect(event.pos[0], event.pos[1], 1, 1)):
@@ -488,6 +468,13 @@ class BookScene:
                     self._prev_page()
                 else:
                     self._next_page()
+
+        elif event.type == pygame.MOUSEWHEEL:
+            # Mousewheel up = previous page, down = next page
+            if event.y > 0:
+                self._prev_page()
+            elif event.y < 0:
+                self._next_page()
 
         return None
 

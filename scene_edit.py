@@ -625,7 +625,17 @@ class EditBookScene:
             # Draw cursor if on this wrapped line and text area is focused
             if self.focus_index >= len(self.widgets) and i == cursor_wrap_idx:
                 cursor_x = text_area.x + 6 + self.font.size(wrapped_lines[i][:cursor_col - line_map[i][1]])[0]
-                pygame.draw.line(screen, CURSOR_COLOR, (cursor_x, y), (cursor_x, y + self.font.get_height()), 2)
+                # Draw semi-transparent cursor using a temporary surface
+                from theme import CURSOR_COLOR
+                if len(CURSOR_COLOR) == 4:
+                    r, g, b, a = CURSOR_COLOR
+                else:
+                    r, g, b = CURSOR_COLOR
+                    a = 255
+                cursor_height = self.font.get_height()
+                cursor_surface = pygame.Surface((2, cursor_height), pygame.SRCALPHA)
+                cursor_surface.fill((r, g, b, a))
+                screen.blit(cursor_surface, (cursor_x, y))
             y += self.font.get_height() + 2
         # Draw scrollbar
         self._render_scrollbar(screen, text_area, lines_visible, total_lines=len(wrapped_lines))
