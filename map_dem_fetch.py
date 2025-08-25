@@ -16,6 +16,8 @@ import urllib.request
 import urllib.error
 import shutil
 import tempfile
+import argparse
+import math
 
 try:
     from PIL import Image
@@ -139,25 +141,136 @@ the PNG back to meters: meters = int(V) - {offset}
 
 
 def main():
-    print("=== Airship Zero DEM Fetch (ETOP0/2022) ===")
+    parser = argparse.ArgumentParser(description='Fetch ETOPO DEM and generate game heightmap PNG')
+    parser.add_argument('--width', type=int, default=1536, help='target PNG width (pixels)')
+    parser.add_argument('--height', type=int, default=1024, help='target PNG height (pixels)')
+    parser.add_argument('--scale', type=float, default=1.0, help='scale multiplier to apply to default target size')
+    parser.add_argument('--target-everest', type=float, default=None, help='If provided, compute a scale factor so measured max maps to this value (meters)')
+    parser.add_argument('--cal-lat', type=float, default=None, help='Latitude to use for direct calibration (e.g. Everest)')
+    parser.add_argument('--cal-lon', type=float, default=None, help='Longitude to use for direct calibration (e.g. Everest)')
+
+    args = parser.parse_args()
+
+    target_width = int(args.width * args.scale)
+    target_height = int(args.height * args.scale)
+    target_size = (target_width, target_height)
+
+    print(f"=== Airship Zero DEM Fetch (ETOP0/2022) ===\nGenerating PNG at {target_size[0]}x{target_size[1]} (WxH)")
     project_root = Path(__file__).parent
     assets_dir = project_root / 'assets' / 'png'
+    tiff_dir = project_root / 'assets' / 'tiff'
     assets_dir.mkdir(parents=True, exist_ok=True)
+    tiff_dir.mkdir(parents=True, exist_ok=True)
     target_png = assets_dir / 'world-heightmap.png'
 
-    with tempfile.TemporaryDirectory() as td:
-        td_p = Path(td)
-        tif_path = td_p / 'etopo_surface.tif'
+    # Persist TIFF in assets/tiff/ to avoid re-downloading
+    persisted_tif = tiff_dir / 'ETOPO_2022_v1_30s_N90W180_surface.tif'
+    if persisted_tif.exists():
+        print(f'Found existing TIFF at {persisted_tif}, using it')
+        tif_path = persisted_tif
+    else:
+        with tempfile.TemporaryDirectory() as td:
+            td_p = Path(td)
+            tmp_tif = td_p / 'etopo_surface.tif'
 
-        if not download_file(ETOPO_URL, tif_path):
-            print('Failed to download ETOPO GeoTIFF')
-            sys.exit(1)
+            if not download_file(ETOPO_URL, tmp_tif):
+                print('Failed to download ETOPO GeoTIFF')
+                sys.exit(1)
 
-        stats = compute_stats_and_write(tif_path, target_png)
-        readme = project_root / 'doc' / 'MAP_DEM_FETCH_README.md'
-        write_readme(readme, stats)
+            # Move to assets/tiff for persistence
+            shutil.move(str(tmp_tif), str(persisted_tif))
+            tif_path = persisted_tif
 
-        print('Wrote', target_png)
+    stats = compute_stats_and_write(tif_path, target_png, target_size)
+
+    # After writing PNG, compute pixel range and write metadata JSON
+    try:
+        from PIL import Image
+        import json
+        with Image.open(target_png) as img:
+            img_i = img.convert('I')
+            pixels = list(img_i.getdata())
+            pixel_min = int(min(pixels))
+            pixel_max = int(max(pixels))
+
+        minv, sea, maxv = stats
+        offset = -minv
+        # Compute optional calibration scale so measured max maps to a target Everest height
+        scale = 1.0
+        if args.target_everest is not None and maxv != 0:
+            try:
+                scale = float(args.target_everest) / float(maxv)
+            except Exception:
+                scale = 1.0
+
+        # Optional direct calibration: sample a given lat/lon and compute scale so that
+        # sampled elevation at that point matches target-everest exactly. This is often
+        # preferable to using global max because downsampling may move the global max.
+        if args.cal_lat is not None and args.cal_lon is not None and args.target_everest is not None:
+            try:
+                from PIL import Image
+                import numpy as np
+
+                with Image.open(target_png) as img:
+                    img_i = img.convert('I')
+                    w, h = img_i.size
+                    arr = np.array(img_i, dtype=np.uint16).reshape((h, w))
+
+                # convert lat/lon to pixel coords
+                def deg_to_pixel(lat, lon, width, height):
+                    lon = ((lon + 180.0) % 360.0) - 180.0
+                    x = (lon + 180.0) / 360.0 * (width - 1)
+                    y = (90.0 - lat) / 180.0 * (height - 1)
+                    return x, y
+
+                def bilinear_sample(arr, x, y):
+                    x0 = int(math.floor(x))
+                    y0 = int(math.floor(y))
+                    x1 = min(x0 + 1, arr.shape[1] - 1)
+                    y1 = min(y0 + 1, arr.shape[0] - 1)
+                    wx = x - x0
+                    wy = y - y0
+                    v00 = float(arr[y0, x0])
+                    v10 = float(arr[y0, x1])
+                    v01 = float(arr[y1, x0])
+                    v11 = float(arr[y1, x1])
+                    a = v00 * (1 - wx) + v10 * wx
+                    b = v01 * (1 - wx) + v11 * wx
+                    return a * (1 - wy) + b * wy
+
+                x, y = deg_to_pixel(args.cal_lat, args.cal_lon, w, h)
+                sampled = bilinear_sample(arr, x, y)
+                sampled_m = float(sampled) - float(offset)
+                if sampled_m != 0:
+                    scale = float(args.target_everest) / sampled_m
+                    print(f'Calibration: sampled at {args.cal_lat},{args.cal_lon} -> {sampled_m:.2f} m, scale -> {scale:.6f}')
+            except Exception as e:
+                print('Warning: calibration by point failed:', e)
+
+        # Write metadata that includes TIFF-derived authoritative min/max
+        # and the PNG pixel range so runtime code can perform a linear map
+        # from pixel -> metres using the TIFF extrema.
+        meta = {
+            'min_elev': minv,
+            'sea': sea,
+            'max_elev': maxv,
+            'offset': offset,
+            'scale': scale,
+            'tiff_min': minv,
+            'tiff_max': maxv,
+            'pixel_min': pixel_min,
+            'pixel_max': pixel_max
+        }
+        meta_path = assets_dir / 'world-heightmap.meta.json'
+        meta_path.write_text(json.dumps(meta, indent=2))
+        print('Wrote metadata:', meta_path)
+    except Exception as e:
+        print('Warning: could not write metadata JSON:', e)
+
+    # Update README as well
+    readme = project_root / 'doc' / 'MAP_DEM_FETCH_README.md'
+    write_readme(readme, stats)
+    print('Wrote', target_png)
 
 
 if __name__ == '__main__':

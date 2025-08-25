@@ -80,6 +80,9 @@ cache/
 logs/
 *.log
 
+# Large raw GIS data (persist locally, don't commit)
+assets/tiff/
+
 # UV
 .uv/
 .vscode/
