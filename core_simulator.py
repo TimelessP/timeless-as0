@@ -14,6 +14,7 @@ import platform
 from pathlib import Path
 import sys
 from typing import Dict, Any, Optional, Tuple, List
+from heightmap import HeightMap
 
 # Cargo grid pixel size (must match scene_cargo.GRID_SIZE)
 CARGO_GRID_PX = 8
@@ -262,6 +263,8 @@ class CoreSimulator:
         
         # Store custom save path if provided
         self.custom_save_path = Path(custom_save_path) if custom_save_path else None
+        # Instantiate heightmap helper (critical)
+        self.heightmap = HeightMap()
         
     def _get_app_data_dir(self) -> Path:
         """Get the application data directory for the current OS"""
@@ -1065,6 +1068,30 @@ class CoreSimulator:
             position["latitude"] += lat_change
             position["longitude"] += lon_change
             
+        # Update surface height from heightmap (metres) so other systems can use it
+        nav_surface_height = None
+        # Use default precision; HeightMap.height_at expects lat, lon
+        lat = position.get("latitude", 0.0)
+        lon = position.get("longitude", 0.0)
+        nav_surface_height = float(self.heightmap.height_at(lat, lon))
+
+        position["surfaceHeight"] = nav_surface_height  # Earth's surface height in metres at airship position; negative values indicate below sea level.
+
+        # --- Clamp altitude if at/below ground or sea level ---
+        # Altitude is in feet, surfaceHeight is in metres
+        altitude_ft = position.get("altitude", 0.0)
+        surface_ft = nav_surface_height * 3.28084 if nav_surface_height is not None else float('-inf')
+        # If at/below ground or sea level, rest on the higher of the two
+        if altitude_ft <= surface_ft or altitude_ft <= 0.0:
+            new_altitude = max(surface_ft, 0.0)
+            position["altitude"] = new_altitude
+            # Stop all calculated speeds (but not user controls)
+            motion["indicatedAirspeed"] = 0.0
+            motion["trueAirspeed"] = 0.0
+            motion["groundSpeed"] = 0.0
+            if motion["verticalSpeed"] < 0.0:
+                motion["verticalSpeed"] = 0.0
+
         # Autopilot handling
         if nav["autopilot"]["engaged"]:
             self._update_autopilot(dt)

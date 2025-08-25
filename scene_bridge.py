@@ -59,11 +59,19 @@ class BridgeScene:
         self.widgets = [
             # Navigation display (shifted down for header)
             {
-                "id": "altitude",
+                "id": "altitude_asl",
                 "type": "label",
                 "position": [8, 32],
                 "size": [100, 16],
-                "text": "ALT: 1250 ft",
+                "text": "ALT ASL: 1250 ft",
+                "focused": False
+            },
+            {
+                "id": "altitude_agl",
+                "type": "label",
+                "position": [8, 48],
+                "size": [100, 16],
+                "text": "ALT AGL: 0 ft",
                 "focused": False
             },
             {
@@ -84,14 +92,6 @@ class BridgeScene:
             },
             
             # Engine instruments
-            {
-                "id": "engine_rpm",
-                "type": "label",
-                "position": [8, 56],
-                "size": [100, 16],
-                "text": "RPM: 2650",
-                "focused": False
-            },
             {
                 "id": "manifold_pressure",
                 "type": "label",
@@ -430,12 +430,18 @@ class BridgeScene:
         fuel = game_state["fuel"]
         
         # Update navigation displays
-        self._update_widget_text("altitude", f"ALT: {nav['position']['altitude']:.0f} ft")
+        # Altitude ASL (above sea level)
+        self._update_widget_text("altitude_asl", f"ALT ASL: {nav['position']['altitude']:.0f} ft")
+        # Altitude AGL (above ground level)
+        surface_m = nav['position'].get('surfaceHeight', 0.0)
+        altitude_ft = nav['position'].get('altitude', 0.0)
+        surface_ft = surface_m * 3.28084 if surface_m is not None else 0.0
+        agl = max(0, altitude_ft - surface_ft)
+        self._update_widget_text("altitude_agl", f"ALT AGL: {agl:.0f} ft")
         self._update_widget_text("airspeed", f"IAS: {nav['motion']['indicatedAirspeed']:.0f} kts")
         self._update_widget_text("heading", f"HDG: {nav['position']['heading']:03.0f}°")
         
         # Update engine displays
-        self._update_widget_text("engine_rpm", f"RPM: {engine['rpm']:.0f}")
         self._update_widget_text("manifold_pressure", f"MAP: {engine['manifoldPressure']:.1f}\"")
         self._update_widget_text("fuel_flow", f"FF: {engine['fuelFlow']:.1f}")
         
