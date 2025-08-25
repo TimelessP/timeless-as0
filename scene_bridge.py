@@ -83,6 +83,14 @@ class BridgeScene:
                 "focused": False
             },
             {
+                "id": "ground_speed",
+                "type": "label",
+                "position": [120, 48],
+                "size": [100, 16],
+                "text": "GS: 85 kts",
+                "focused": False
+            },
+            {
                 "id": "heading",
                 "type": "label",
                 "position": [240, 32],
@@ -420,14 +428,15 @@ class BridgeScene:
         agl = max(0, altitude_ft - surface_ft)
         self._update_widget_text("altitude_agl", f"ALT AGL: {agl:.0f} ft")
         self._update_widget_text("airspeed", f"IAS: {nav['motion']['indicatedAirspeed']:.0f} kts")
+        self._update_widget_text("ground_speed", f"GS: {nav['motion']['groundSpeed']:.0f} kts")
         self._update_widget_text("heading", f"HDG: {nav['position']['heading']:03.0f}°")
-        
+
         # Update engine displays
-        
+
         # Update system status
         battery_status = "ON" if electrical["batteryBusA"]["switch"] else "OFF"
         self._update_widget_text("battery_status", f"BAT A: {battery_status}")
-        
+
         # Show feed status instead of legacy pump mode
         fwd_feed = fuel.get("tanks", {}).get("forward", {}).get("feed", True)
         aft_feed = fuel.get("tanks", {}).get("aft", {}).get("feed", True)
@@ -436,13 +445,13 @@ class BridgeScene:
         else:
             feed_label = f"FEED: { 'F' if fwd_feed else '-' }{ 'A' if aft_feed else '-' }"
         self._update_widget_text("fuel_pumps", feed_label)
-        
+
         ap_status = "ON" if nav["autopilot"]["engaged"] else "OFF"
         self._update_widget_text("autopilot", f"A/P: {ap_status}")
-        
+
         nav_mode = nav.get("mode", "manual").replace("_", " ").upper()
         self._update_widget_text("nav_mode", f"NAV: {nav_mode}")
-        
+
         # Update rudder indicator
         rudder_angle = nav["controls"].get("rudder", 0.0)
         self._update_widget_text("rudder_indicator", f"RUD: {rudder_angle:+4.1f}°")
