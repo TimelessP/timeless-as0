@@ -626,15 +626,18 @@ class CoreSimulator:
         """
         if self.game_state["gameInfo"]["paused"] or not self.running:
             return
-            
+
         # Simulation time step (could be scaled for faster/slower simulation)
         sim_dt = real_dt
         self.total_sim_time += sim_dt
-        
+
         # Update game time
         self.game_state["gameInfo"]["sessionTime"] += sim_dt
         self.game_state["gameInfo"]["totalFlightTime"] += sim_dt
-        
+
+        # Update wind field before other systems (so nav/engine can use it)
+        self._update_wind_field(sim_dt)
+
         # Update all systems
         self._update_fuel_system(sim_dt)
         self._update_engine(sim_dt)
@@ -644,6 +647,91 @@ class CoreSimulator:
         self._update_environment(sim_dt)
         self._update_systems_monitoring(sim_dt)
         self._update_cargo_system(sim_dt)
+
+    def _update_wind_field(self, dt: float):
+        """
+        Update the wind field based on altitude, time, and smooth transitions.
+        Wind direction and speed vary with altitude, with smooth transitions and some randomness.
+        """
+        env = self.game_state["environment"]
+        nav = self.game_state["navigation"]
+        pos = nav["position"]
+        altitude = pos.get("altitude", 0.0)
+        weather = env["weather"]
+
+        # --- Wind bands by altitude (in feet) ---
+        # Each band: (min_alt, max_alt, base_dir, base_speed, dir_var, speed_var)
+        wind_bands = [
+            (0, 1000, 220, 6, 20, 2),      # Low: SSW, gentle, variable
+            (1000, 3000, 250, 10, 25, 4),  # Mid: WSW, moderate, more variable
+            (3000, 6000, 280, 18, 30, 6),  # High: W, strong, turbulent
+            (6000, 12000, 310, 30, 40, 10),# Jetstream: NW, fast, highly variable
+            (12000, 99999, 340, 40, 30, 8) # Stratosphere: NNW, very fast, less variable
+        ]
+
+        # Find which two bands we're between
+        for i, band in enumerate(wind_bands):
+            min_a, max_a, *_ = band
+            if altitude < max_a:
+                band_lo = wind_bands[max(0, i-1)] if i > 0 else band
+                band_hi = band
+                break
+        else:
+            band_lo = wind_bands[-2]
+            band_hi = wind_bands[-1]
+
+        # Interpolation factor between bands
+        min_a, max_a = band_lo[0], band_hi[1]
+        if max_a > min_a:
+            t = (altitude - min_a) / (max_a - min_a)
+            t = max(0.0, min(1.0, t))
+        else:
+            t = 0.0
+
+        # Interpolate base direction and speed
+        def lerp(a, b, t):
+            return a + (b - a) * t
+
+        base_dir = lerp(band_lo[2], band_hi[2], t)
+        base_speed = lerp(band_lo[3], band_hi[3], t)
+        dir_var = lerp(band_lo[4], band_hi[4], t)
+        speed_var = lerp(band_lo[5], band_hi[5], t)
+
+        # --- Smoothly transition wind direction and speed ---
+        # Store persistent wind state
+        if not hasattr(self, "_wind_state"):
+            self._wind_state = {
+                "dir": base_dir,
+                "speed": base_speed,
+                "target_dir": base_dir,
+                "target_speed": base_speed,
+                "timer": 0.0
+            }
+
+        ws = self._wind_state
+        ws["timer"] += dt
+
+        # Every 10-30s, pick a new target wind (with some randomness)
+        if ws["timer"] > getattr(self, "_wind_next_change", 0):
+            import random
+            ws["target_dir"] = base_dir + random.uniform(-dir_var, dir_var)
+            ws["target_speed"] = max(0.0, base_speed + random.uniform(-speed_var, speed_var))
+            self._wind_next_change = ws["timer"] + random.uniform(10, 30)
+
+        # Smoothly approach target wind
+        def smooth_angle(a, b, rate):
+            # Shortest path around circle
+            diff = ((b - a + 180) % 360) - 180
+            if abs(diff) < rate:
+                return b
+            return (a + rate * (1 if diff > 0 else -1)) % 360
+
+        ws["dir"] = smooth_angle(ws["dir"], ws["target_dir"], dt * 2.5)  # 2.5 deg/sec
+        ws["speed"] += max(-1.5 * dt, min(1.5 * dt, ws["target_speed"] - ws["speed"]))  # 1.5 kt/sec
+
+        # Write to weather
+        weather["windDirection"] = ws["dir"] % 360
+        weather["windSpeed"] = max(0.0, ws["speed"])
         
     def _update_engine(self, dt: float):
         """Update engine simulation"""
