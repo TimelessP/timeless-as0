@@ -663,39 +663,53 @@ class CoreSimulator:
         # Each band: (min_alt, max_alt, base_dir, base_speed, dir_var, speed_var)
         wind_bands = [
             (0, 1000, 220, 6, 20, 2),      # Low: SSW, gentle, variable
-            (1000, 3000, 250, 10, 25, 4),  # Mid: WSW, moderate, more variable
-            (3000, 6000, 280, 18, 30, 6),  # High: W, strong, turbulent
+            (1000, 6000, None, None, 30, 6),  # 1000-6000ft: special 360° sweep
             (6000, 12000, 310, 30, 40, 10),# Jetstream: NW, fast, highly variable
             (12000, 99999, 340, 40, 30, 8) # Stratosphere: NNW, very fast, less variable
         ]
 
-        # Find which two bands we're between
-        for i, band in enumerate(wind_bands):
-            min_a, max_a, *_ = band
-            if altitude < max_a:
-                band_lo = wind_bands[max(0, i-1)] if i > 0 else band
-                band_hi = band
-                break
-        else:
-            band_lo = wind_bands[-2]
-            band_hi = wind_bands[-1]
-
-        # Interpolation factor between bands
-        min_a, max_a = band_lo[0], band_hi[1]
-        if max_a > min_a:
-            t = (altitude - min_a) / (max_a - min_a)
-            t = max(0.0, min(1.0, t))
-        else:
-            t = 0.0
-
-        # Interpolate base direction and speed
         def lerp(a, b, t):
             return a + (b - a) * t
 
-        base_dir = lerp(band_lo[2], band_hi[2], t)
-        base_speed = lerp(band_lo[3], band_hi[3], t)
-        dir_var = lerp(band_lo[4], band_hi[4], t)
-        speed_var = lerp(band_lo[5], band_hi[5], t)
+        # Special case: 1000ft <= alt < 6000ft: direction sweeps 0-360° linearly with altitude
+        if 1000 <= altitude < 6000:
+            t = (altitude - 1000) / (6000 - 1000)
+            base_dir = (t * 360.0) % 360.0
+            # For speed/variance, interpolate between 1000ft and 6000ft bands from old model
+            # Use previous model's values for 1000ft (250,10,25,4) and 6000ft (280,18,30,6)
+            base_speed = lerp(10, 18, t)
+            dir_var = lerp(25, 30, t)
+            speed_var = lerp(4, 6, t)
+        else:
+            # Use banded model for other altitudes
+            for i, band in enumerate(wind_bands):
+                min_a, max_a, *_ = band
+                if altitude < max_a:
+                    band_lo = wind_bands[max(0, i-1)] if i > 0 else band
+                    band_hi = band
+                    break
+            else:
+                band_lo = wind_bands[-2]
+                band_hi = wind_bands[-1]
+
+            min_a, max_a = band_lo[0], band_hi[1]
+            if max_a > min_a:
+                t = (altitude - min_a) / (max_a - min_a)
+                t = max(0.0, min(1.0, t))
+            else:
+                t = 0.0
+
+            # If in the 1000-6000ft band, skip (handled above)
+            if band_lo[0] == 1000 and band_hi[1] == 6000:
+                base_dir = 0.0
+                base_speed = lerp(10, 18, t)
+                dir_var = lerp(25, 30, t)
+                speed_var = lerp(4, 6, t)
+            else:
+                base_dir = lerp(band_lo[2], band_hi[2], t)
+                base_speed = lerp(band_lo[3], band_hi[3], t)
+                dir_var = lerp(band_lo[4], band_hi[4], t)
+                speed_var = lerp(band_lo[5], band_hi[5], t)
 
         # --- Smoothly transition wind direction and speed ---
         # Store persistent wind state
@@ -1031,9 +1045,11 @@ class CoreSimulator:
         tas_factor = 1.0 / math.sqrt(altitude_density_factor)
         motion["trueAirspeed"] = motion["indicatedAirspeed"] * tas_factor
         
-        # Ground speed affected by wind
+        # Ground speed affected by wind (meteorological: windDirection is FROM)
+        # To get the wind's effect, use: heading - (windDirection + 180)
+        wind_from = (env["windDirection"] + 180) % 360
         wind_component = env["windSpeed"] * math.cos(
-            math.radians(position["heading"] - env["windDirection"])
+            math.radians(position["heading"] - wind_from)
         )
         motion["groundSpeed"] = motion["trueAirspeed"] + wind_component
         

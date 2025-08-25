@@ -150,7 +150,7 @@ class BridgeScene:
                 "type": "slider",
                 "position": [8, 160],
                 "size": [304, 20],  # 320 - 2*8px margin
-                "value": 0.3125,  # Default: 1250/4000
+                "value": 0.1786,  # Default: 1250/7000
                 "focused": False,
                 "label": "ALTITUDE"
             },
@@ -324,7 +324,7 @@ class BridgeScene:
         altitude_slider = next((w for w in self.widgets if w["id"] == "altitude_slider"), None)
         if altitude_slider:
             altitude_slider["value"] = max(0.0, min(1.0, altitude_slider["value"] + delta))
-            self.simulator.set_autopilot_target("altitude", int(altitude_slider["value"] * 4000))
+            self.simulator.set_autopilot_target("altitude", int(altitude_slider["value"] * 7000))
             
     def _screen_to_logical(self, screen_pos) -> Optional[tuple]:
         """Convert screen coordinates to logical 320x320 coordinates"""
@@ -466,7 +466,7 @@ class BridgeScene:
         altitude_slider = next((w for w in self.widgets if w["id"] == "altitude_slider"), None)
         if altitude_slider:
             target_alt = nav["targets"].get("altitude", nav["position"]["altitude"])
-            slider_value = max(0.0, min(1.0, target_alt / 4000.0))
+            slider_value = max(0.0, min(1.0, target_alt / 7000.0))
             altitude_slider["value"] = slider_value
 
         heading_widget = next((w for w in self.widgets if w["id"] == "heading_set"), None)
@@ -603,7 +603,7 @@ class BridgeScene:
                 label_surface = self.font.render(label, self.is_text_antialiased, text_color)
                 surface.blit(label_surface, (x, y - 14))
             # Value (altitude)
-            altitude_val = int(value * 4000)
+            altitude_val = int(value * 7000)
             value_text = f"{altitude_val} ft"
             value_surface = self.font.render(value_text, self.is_text_antialiased, text_color)
             value_rect = value_surface.get_rect()
@@ -697,4 +697,4 @@ class BridgeScene:
             rel_x = (x - wx) / ww
             rel_x = max(0.0, min(1.0, rel_x))
             widget["value"] = rel_x
-            self.simulator.set_autopilot_target("altitude", int(rel_x * 4000))
+            self.simulator.set_autopilot_target("altitude", int(rel_x * 7000))
