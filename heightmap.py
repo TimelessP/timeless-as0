@@ -9,7 +9,7 @@ small area average to reduce aliasing for very fine coordinates (default 4).
 
 Usage:
     from heightmap import HeightMap
-    hm = HeightMap()  # loads assets/png/world-heightmap.png and doc readme for offset
+    hm = HeightMap()  # loads assets/png/world-heightmap.png and json calibration data
     z = hm.height_at(40.7128, -74.0060)
 
 Requires Pillow; NumPy optional (faster array handling).
@@ -33,10 +33,10 @@ except Exception:
 
 
 class HeightMap:
-    def __init__(self, image_path: str = None, readme_path: str = None):
+    def __init__(self, image_path: str = None, calibration_path: str = None):
         project_root = Path(__file__).parent
         self.image_path = Path(image_path) if image_path else project_root / 'assets' / 'png' / 'world-heightmap.png'
-        self.meta_path = Path(readme_path) if readme_path else project_root / 'assets' / 'png' / 'world-heightmap.meta.json'
+        self.meta_path = Path(calibration_path) if calibration_path else project_root / 'assets' / 'png' / 'world-heightmap.meta.json'
 
         if not PIL_AVAILABLE:
             raise RuntimeError('Pillow is required to load heightmap')
@@ -198,8 +198,8 @@ if __name__ == '__main__':
     import argparse
 
     parser = argparse.ArgumentParser(description='Test HeightMap lookup')
-    parser.add_argument('lat', type=float, help='Latitude')
-    parser.add_argument('lon', type=float, help='Longitude')
+    parser.add_argument('lat', type=float, help='Latitude', default=27.9881)
+    parser.add_argument('lon', type=float, help='Longitude', default=86.925)
     parser.add_argument('--precision', type=int, default=4, help='Decimal places for averaging')
     args = parser.parse_args()
 
