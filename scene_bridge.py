@@ -90,25 +90,6 @@ class BridgeScene:
                 "text": "HDG: 045°",
                 "focused": False
             },
-            
-            # Engine instruments
-            {
-                "id": "manifold_pressure",
-                "type": "label",
-                "position": [120, 56],
-                "size": [100, 16],
-                "text": "MAP: 24.5\"",
-                "focused": False
-            },
-            {
-                "id": "fuel_flow",
-                "type": "label",
-                "position": [240, 56],
-                "size": [72, 16],
-                "text": "FF: 12.8",
-                "focused": False
-            },
-            
             # System status
             {
                 "id": "battery_status",
@@ -442,8 +423,6 @@ class BridgeScene:
         self._update_widget_text("heading", f"HDG: {nav['position']['heading']:03.0f}°")
         
         # Update engine displays
-        self._update_widget_text("manifold_pressure", f"MAP: {engine['manifoldPressure']:.1f}\"")
-        self._update_widget_text("fuel_flow", f"FF: {engine['fuelFlow']:.1f}")
         
         # Update system status
         battery_status = "ON" if electrical["batteryBusA"]["switch"] else "OFF"
