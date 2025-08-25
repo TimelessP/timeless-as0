@@ -496,10 +496,13 @@ class EditBookScene:
     def _scroll_source(self, y):
         # Mousewheel: y > 0 is up, < 0 is down
         lines_visible = 13  # About 250px / 18px per line
+        wrapped_lines = self._wrap_cache['wrapped_lines']
+        total_lines = len(wrapped_lines) if wrapped_lines else len(self.text_lines)
+        max_scroll = max(0, total_lines - lines_visible)
         if y > 0:
             self.scroll_offset = max(0, self.scroll_offset - 2)
         elif y < 0:
-            self.scroll_offset = min(max(0, len(self.text_lines) - lines_visible), self.scroll_offset + 2)
+            self.scroll_offset = min(max_scroll, self.scroll_offset + 2)
 
     def update(self, dt: float):
         self.simulator.update(dt)
