@@ -325,8 +325,7 @@ class CoreSimulator:
                     "latitude": 40.7128,  # NYC area
                     "longitude": -74.0060,
                     "altitude": 1250.0,
-                    "heading": 45.0,
-                    "track": 45.0
+                    "heading": 45.0
                 },
                 "motion": {
                     "indicatedAirspeed": 85.0,
