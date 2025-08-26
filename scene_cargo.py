@@ -542,8 +542,17 @@ class CargoScene:
             crate_in_cargo_hold = any(c.get("id") == self.selected_crate.get("id") for c in cargo_hold)
             return crate_in_cargo_hold
         elif widget_id == "refresh":
-            # Can refresh if available and ship is not moving
-            return cargo_state.get("refreshAvailable", True)
+            # Only enable if IAS <= 0.1 knots AND Altitude AGL <= 6 ft
+            nav_state = self.simulator.get_state().get("navigation", {})
+            nav_motion = nav_state.get("motion", {})
+            nav_pos = nav_state.get("position", {})
+            indicated_airspeed = nav_motion.get("indicatedAirspeed", 0.0)
+            altitude_ft = nav_pos.get("altitude", 0.0)
+            surface_m = nav_pos.get("surfaceHeight", 0.0)
+            surface_ft = surface_m * 3.28084 if surface_m is not None else 0.0
+            agl = max(0, altitude_ft - surface_ft)
+            # Only allow refresh if nearly stopped and AGL <= 6 ft
+            return indicated_airspeed <= 0.1 and agl <= 6.0
         else:
             # All other widgets (movement, navigation) are always enabled
             return True
