@@ -70,6 +70,16 @@ class EngineRoomScene:
                 "text": "MP: 24.5",
                 "focused": False
             },
+
+            # Efficiency display (align with Mixture/Prop Pitch)
+            {
+                "id": "mpg_display",
+                "type": "label",
+                "position": [168, 145],  # Same y as Prop Pitch, same x as Mixture
+                "size": [140, 16],
+                "text": "MPG: 0.0",
+                "focused": False
+            },
             
             # Temperature gauges
             {
@@ -395,6 +405,8 @@ class EngineRoomScene:
         # Get current state from simulator
         game_state = self.simulator.get_state()
         engine = game_state["engine"]
+        nav = game_state.get("navigation", {})
+        motion = nav.get("motion", {})
         
         # Update engine displays
         status = "RUNNING" if engine["running"] else "STOPPED"
@@ -418,10 +430,21 @@ class EngineRoomScene:
         
         fuel_press = engine.get("fuelPressure", 22.0)
         self._update_widget_text("fuel_pressure", f"FUEL PRESS: {fuel_press:.0f} PSI")
-        
+            
+
+
         fuel_flow = engine["fuelFlow"]
         self._update_widget_text("fuel_flow", f"FLOW: {fuel_flow:.1f} GPH")
-        
+
+        # --- Calculate MPG (miles per gallon) ---
+        # Use true airspeed (knots) and fuel flow (GPH)
+        true_airspeed_kt = motion.get("trueAirspeed", 0.0)
+        # 1 knot = 1.15078 mph
+        true_airspeed_mph = true_airspeed_kt * 1.15078
+        # Avoid division by zero
+        mpg = true_airspeed_mph / fuel_flow if fuel_flow > 0.01 else 0.0
+        self._update_widget_text("mpg_display", f"MPG: {mpg:.2f}")
+
         # Update control positions from game state
         controls = engine.get("controls", {})
         throttle_pos = controls.get("throttle", 0.75)
