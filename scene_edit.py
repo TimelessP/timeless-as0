@@ -1,3 +1,4 @@
+
 """
 Book Editing Scene - Edit markdown books in user's Documents/AirshipZero/books/
 """
@@ -24,6 +25,54 @@ from theme import (
 from scene_book import TEXT_COLOR, PAPER_COLOR, PAGE_BORDER_COLOR
 
 class EditBookScene:
+    def _insert_captains_log(self):
+        """Insert a formatted captain's log entry at the current cursor position."""
+        import datetime
+        # Get UTC date/time
+        now = datetime.datetime.utcnow()
+        dt_str = now.strftime("%Y-%m-%d %H:%M:%S UTC")
+        # Get airship state
+        state = self.simulator.get_state()
+        nav = state.get("navigation", {})
+        pos = nav.get("position", {})
+        motion = nav.get("motion", {})
+        # Position
+        lat = pos.get("latitude", 0.0)
+        lon = pos.get("longitude", 0.0)
+        # Altitude
+        altitude_ft = pos.get("altitude", 0.0)
+        surface_m = pos.get("surfaceHeight", 0.0)
+        surface_ft = surface_m * 3.28084 if surface_m is not None else 0.0
+        agl = max(0, altitude_ft - surface_ft)
+        # Motion
+        ias = motion.get("indicatedAirspeed", 0.0)
+        gs = motion.get("groundSpeed", 0.0)
+        heading = pos.get("heading", 0.0)
+        # Waypoint
+        waypoint = None
+        if hasattr(self.simulator, "get_waypoint"):
+            waypoint = self.simulator.get_waypoint()
+        log_lines = [
+            f"Date/Time (UTC): {dt_str}",
+            f"Position: {lat:.4f}, {lon:.4f}",
+            f"Altitude ASL: {altitude_ft:.0f} ft",
+            f"Altitude AGL: {agl:.0f} ft",
+            f"IAS: {ias:.1f} kts",
+            f"GS: {gs:.1f} kts",
+            f"Heading: {heading:.1f}°",
+        ]
+        if waypoint and isinstance(waypoint, dict):
+            wlat = waypoint.get("latitude")
+            wlon = waypoint.get("longitude")
+            if wlat is not None and wlon is not None:
+                log_lines.append(f"Waypoint: {wlat:.4f}, {wlon:.4f}")
+        log_text = "\n".join(log_lines) + "\n"
+        # Insert at cursor
+        self.text_buffer = self.text_buffer[:self.cursor_pos] + log_text + self.text_buffer[self.cursor_pos:]
+        self.cursor_pos += len(log_text)
+        self._update_lines_from_buffer()
+        self._rebuild_wrap_cache()
+        self._scroll_cursor_into_view()
     def _rebuild_wrap_cache(self):
         # Rebuild the wrap cache immediately (same logic as in _render_source_view)
         if not self.font:
@@ -161,6 +210,10 @@ class EditBookScene:
             mods = pygame.key.get_mods()
             nav_keys = [pygame.K_LEFT, pygame.K_RIGHT, pygame.K_UP, pygame.K_DOWN, pygame.K_PAGEUP, pygame.K_PAGEDOWN, pygame.K_HOME, pygame.K_END]
             edit_keys = [pygame.K_BACKSPACE, pygame.K_DELETE]
+            # Ctrl-L: Insert captain's log if text area focused
+            if self.focus_index >= len(self.widgets) and (event.key == pygame.K_l and (mods & pygame.KMOD_CTRL)):
+                self._insert_captains_log()
+                return None
             # Start key repeat for navigation, edit, and typable keys in text area
             if self.focus_index >= len(self.widgets):
                 if event.key in nav_keys + edit_keys:
