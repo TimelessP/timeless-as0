@@ -73,11 +73,19 @@ class EngineRoomScene:
 
             # Efficiency display (align with Mixture/Prop Pitch)
             {
-                "id": "mpg_display",
+                "id": "mpg_ias_display",
                 "type": "label",
-                "position": [168, 145],  # Same y as Prop Pitch, same x as Mixture
+                "position": [168, 137],  # Same y as Prop Pitch, same x as Mixture
                 "size": [140, 16],
-                "text": "MPG: 0.0",
+                "text": "MPG IAS: 0.0",
+                "focused": False
+            },
+            {
+                "id": "mpg_gs_display",
+                "type": "label",
+                "position": [168, 157],  # Next line below, same x
+                "size": [140, 16],
+                "text": "MPG GS: 0.0",
                 "focused": False
             },
             
@@ -430,20 +438,22 @@ class EngineRoomScene:
         
         fuel_press = engine.get("fuelPressure", 22.0)
         self._update_widget_text("fuel_pressure", f"FUEL PRESS: {fuel_press:.0f} PSI")
-            
-
 
         fuel_flow = engine["fuelFlow"]
         self._update_widget_text("fuel_flow", f"FLOW: {fuel_flow:.1f} GPH")
 
         # --- Calculate MPG (miles per gallon) ---
-        # Use true airspeed (knots) and fuel flow (GPH)
+        # IAS version (true airspeed)
         true_airspeed_kt = motion.get("trueAirspeed", 0.0)
-        # 1 knot = 1.15078 mph
         true_airspeed_mph = true_airspeed_kt * 1.15078
-        # Avoid division by zero
-        mpg = true_airspeed_mph / fuel_flow if fuel_flow > 0.01 else 0.0
-        self._update_widget_text("mpg_display", f"MPG: {mpg:.2f}")
+        mpg_ias = true_airspeed_mph / fuel_flow if fuel_flow > 0.01 else 0.0
+        self._update_widget_text("mpg_ias_display", f"MPG@IAS: {mpg_ias:.2f}")
+
+        # GS version (ground speed)
+        ground_speed_kt = motion.get("groundSpeed", 0.0)
+        ground_speed_mph = ground_speed_kt * 1.15078
+        mpg_gs = ground_speed_mph / fuel_flow if fuel_flow > 0.01 else 0.0
+        self._update_widget_text("mpg_gs_display", f"MPG@GS: {mpg_gs:.2f}")
 
         # Update control positions from game state
         controls = engine.get("controls", {})
