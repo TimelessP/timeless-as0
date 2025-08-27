@@ -665,7 +665,6 @@ class CoreSimulator:
         # Each band: (min_alt, max_alt, base_dir, base_speed, dir_var, speed_var)
         wind_bands = [
             (0, 1000, 220, 6, 20, 2),      # Low: SSW, gentle, variable
-            (1000, 6000, None, None, 30, 6),  # 1000-6000ft: special 360° sweep
             (6000, 12000, 310, 30, 40, 10),# Jetstream: NW, fast, highly variable
             (12000, 99999, 340, 40, 30, 8) # Stratosphere: NNW, very fast, less variable
         ]
@@ -683,7 +682,7 @@ class CoreSimulator:
             dir_var = lerp(25, 30, t)
             speed_var = lerp(4, 6, t)
         else:
-            # Use banded model for other altitudes
+            # Use banded model for other altitudes (bands all have valid values)
             for i, band in enumerate(wind_bands):
                 min_a, max_a, *_ = band
                 if altitude < max_a:
@@ -701,17 +700,10 @@ class CoreSimulator:
             else:
                 t = 0.0
 
-            # If in the 1000-6000ft band, skip (handled above)
-            if band_lo[0] == 1000 and band_hi[1] == 6000:
-                base_dir = 0.0
-                base_speed = lerp(10, 18, t)
-                dir_var = lerp(25, 30, t)
-                speed_var = lerp(4, 6, t)
-            else:
-                base_dir = lerp(band_lo[2], band_hi[2], t)
-                base_speed = lerp(band_lo[3], band_hi[3], t)
-                dir_var = lerp(band_lo[4], band_hi[4], t)
-                speed_var = lerp(band_lo[5], band_hi[5], t)
+            base_dir = lerp(band_lo[2], band_hi[2], t)
+            base_speed = lerp(band_lo[3], band_hi[3], t)
+            dir_var = lerp(band_lo[4], band_hi[4], t)
+            speed_var = lerp(band_lo[5], band_hi[5], t)
 
         # --- Smoothly transition wind direction and speed ---
         # Store persistent wind state
