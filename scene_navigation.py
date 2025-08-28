@@ -1283,6 +1283,30 @@ class NavigationScene:
             self._render_transparent_text(overlay, label_below, 
                                         (int(overlay_waypoint_x), int(overlay_waypoint_y + 8)), 
                                         NAV_WAYPOINT_TEXT_COLOR, 128, centered=True)
+            # Surface height below the lat/lon (from simulator heightmap or game state)
+            surface_height_label = None
+            try:
+                # Prefer querying the simulator's heightmap if available (returns metres)
+                if hasattr(self.simulator, "heightmap") and self.simulator.heightmap is not None:
+                    sh_m = float(self.simulator.heightmap.height_at(waypoint_lat, waypoint_lon))
+                    sh_ft = sh_m * 3.28084
+                    surface_height_label = f"{sh_ft:.1f} ft"
+                else:
+                    # Fall back to game state if a surfaceHeight for waypoint is stored (assumed metres)
+                    gs = self.simulator.get_state()
+                    wp_state = gs.get("navigation", {}).get("waypoint")
+                    if wp_state and "surfaceHeight" in wp_state:
+                        sh_m = float(wp_state['surfaceHeight'])
+                        sh_ft = sh_m * 3.28084
+                        surface_height_label = f"{sh_ft:.1f} ft"
+            except Exception:
+                surface_height_label = None
+
+            if surface_height_label is not None:
+                # Render the surface height a bit further below the lat/lon text
+                self._render_transparent_text(overlay, surface_height_label,
+                                            (int(overlay_waypoint_x), int(overlay_waypoint_y + 20)),
+                                            NAV_WAYPOINT_TEXT_COLOR, 128, centered=True)
         
         # Blit only the visible portion of the overlay onto the main surface
         # Extract the display-sized portion from the center of the larger overlay
