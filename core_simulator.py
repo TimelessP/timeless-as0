@@ -1065,15 +1065,22 @@ class CoreSimulator:
         lat = position.get("latitude", 0.0)
         lon = position.get("longitude", 0.0)
         # Robust latitude/longitude wrapping for global navigation and polar crossings
+        heading = position.get("heading", 0.0)
         while lat > 90.0 or lat < -90.0:
             if lat > 90.0:
                 lat = 180.0 - lat
                 lon += 180.0
+                heading = (heading + 180.0) % 360.0
             elif lat < -90.0:
                 lat = -180.0 - lat
                 lon += 180.0
+                heading = (heading + 180.0) % 360.0
         # Wrap longitude to [-180, 180)
         lon = ((lon + 180.0) % 360.0) - 180.0
+        # Update position with wrapped values
+        position["latitude"] = lat
+        position["longitude"] = lon
+        position["heading"] = heading
         nav_surface_height = float(self.heightmap.height_at(lat, lon))
 
         position["surfaceHeight"] = nav_surface_height  # Earth's surface height in metres at airship position; negative values indicate below sea level.
