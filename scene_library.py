@@ -409,7 +409,7 @@ class LibraryScene:
         return "scene_cargo"
 
     def _get_next_scene(self) -> str:
-        return "scene_bridge"
+        return "scene_observatory"
 
     # (Removed duplicate update method at end of file)
 

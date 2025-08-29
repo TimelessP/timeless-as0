@@ -17,6 +17,7 @@ from scene_navigation import NavigationScene
 from scene_fuel import FuelScene
 from scene_cargo import CargoScene
 from scene_library import LibraryScene
+from scene_observatory import ObservatoryScene
 from scene_book import BookScene
 from scene_update import SceneUpdate
 from core_simulator import get_simulator
@@ -170,6 +171,7 @@ class AirshipApp:
         self.scenes["scene_fuel"] = FuelScene(self.simulator)
         self.scenes["scene_cargo"] = CargoScene(self.simulator)
         self.scenes["scene_library"] = LibraryScene(self.simulator)
+        self.scenes["scene_observatory"] = ObservatoryScene(self.simulator)
         self.scenes["scene_update"] = SceneUpdate(self.font)
         
         # Set up cross-references
@@ -254,8 +256,8 @@ class AirshipApp:
             # Define actual game scenes that should resume simulation
             game_scenes = {
                 "scene_bridge", "scene_engine_room", "scene_navigation", 
-                "scene_fuel", "scene_cargo", "scene_library", "scene_communications", 
-                "scene_camera", "scene_crew", "scene_missions"
+                "scene_fuel", "scene_cargo", "scene_library", "scene_observatory",
+                "scene_communications", "scene_camera", "scene_crew", "scene_missions"
             }
             # Resume simulation only when transitioning to actual game scenes
             is_game_scene = scene_name in game_scenes
