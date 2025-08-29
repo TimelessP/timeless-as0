@@ -571,11 +571,9 @@ class ObservatoryScene:
         
     def _draw_forward_indicator(self, game_state):
         """Draw indicator showing forward direction of airship"""
-        position = game_state["navigation"]["position"]
-        ship_heading = position["heading"]
-        
-        # Calculate where the ship's forward direction appears in our view
-        forward_angle = (ship_heading - self.view_angle) % 360.0
+        # Since view_angle is now relative to ship heading,
+        # forward direction is at view_angle = 0 (center when mouse is centered)
+        forward_angle = -self.view_angle  # Negative because we want relative position on screen
         
         # Convert to screen position (assuming 90-degree field of view)
         fov = 120.0  # Wider field of view for better coverage
@@ -623,7 +621,10 @@ class ObservatoryScene:
         sun_bearing = self.scenery._calculate_bearing(current_lat, current_lon, sun_lat, sun_lon)
         
         # Calculate where the sun appears in our view
-        sun_angle = (sun_bearing - self.view_angle) % 360.0
+        # Since view_angle is now relative to ship heading, we need to convert to absolute world coordinates
+        ship_heading = position["heading"]
+        absolute_view_angle = (ship_heading + self.view_angle) % 360.0
+        sun_angle = (sun_bearing - absolute_view_angle) % 360.0
         
         # Convert to screen position
         fov = 120.0  # Match scenery field of view

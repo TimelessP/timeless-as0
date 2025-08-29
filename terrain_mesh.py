@@ -262,11 +262,9 @@ class TerrainMesh:
         angular_radius_deg = 2.0  # Much larger than real sun's 0.25° for game visibility
         angular_radius_rad = math.radians(angular_radius_deg)
         sun_radius = sun_distance * math.tan(angular_radius_rad)  # Game-sized for visibility
-        print(f"Debug: sun radius = {sun_radius:.1f} units for {angular_radius_deg}° angular radius at {sun_distance:.0f}m distance")
         self._generate_sun_dodecagon(sun_center, sun_radius, sun_color, elevation_rad, azimuth_rad)
         
         print(f"TerrainMesh: Generated 3D sun at elevation {sun_elevation:.1f}°, azimuth {sun_azimuth:.1f}° with {len(self.sun_triangles)} triangles")
-        print(f"Sun world position: ({sun_x:.1f}, {sun_y:.1f}, {sun_z:.1f}) - should be fixed regardless of ship heading")
     
     def _calculate_sun_elevation_azimuth(self, observer_lat: float, observer_lon: float, 
                                        subsolar_lat: float, subsolar_lon: float) -> Tuple[float, float]:
