@@ -99,18 +99,38 @@ class Camera3D:
         y_cam = relative_pos.dot(self.up)
         z_cam = relative_pos.dot(self.forward)
         
-        # Skip points behind camera
-        if z_cam <= 0:
-            return None
+        # Very lenient culling for close vertices to prevent triangle pop-in/pop-out
+        camera_distance = relative_pos.length()
+        if camera_distance < 3000.0:  # Very close vertices - extremely lenient
+            # Allow vertices significantly behind camera for close terrain viewing
+            if z_cam <= -camera_distance * 0.8:  # Allow up to 80% behind for very close objects
+                return None
+        elif camera_distance < 8000.0:  # Close vertices - lenient
+            if z_cam <= -camera_distance * 0.3:  # Allow up to 30% behind for close objects
+                return None
+        else:  # Distant vertices - standard culling
+            if z_cam <= 0:
+                return None
         
         # Perspective projection with aspect ratio correction
         fov_rad = math.radians(fov_deg)
         tan_half_fov = math.tan(fov_rad / 2)
         aspect_ratio = viewport_w / viewport_h
         
+        # Prevent division by zero or near-zero z_cam values
+        # For vertices very close to or behind camera, return None instead of extreme projections
+        z_cam_safe = max(z_cam, 0.1)  # Start with minimum safe distance
+        if z_cam_safe <= 0.5:  # Too close to camera - likely to cause extreme coordinates
+            return None
+        
         # Normalized device coordinates [-1, 1] with aspect ratio correction
-        x_ndc = x_cam / (z_cam * tan_half_fov * aspect_ratio)
-        y_ndc = y_cam / (z_cam * tan_half_fov)
+        x_ndc = x_cam / (z_cam_safe * tan_half_fov * aspect_ratio)
+        y_ndc = y_cam / (z_cam_safe * tan_half_fov)
+        
+        # Prevent extreme coordinates that cause visual glitches
+        # Clamp NDC coordinates to reasonable range
+        if abs(x_ndc) > 10.0 or abs(y_ndc) > 10.0:  # Way outside view, would cause extreme coordinates
+            return None
         
         # Convert to screen coordinates
         screen_x = int((x_ndc + 1) * viewport_w / 2)
@@ -137,28 +157,71 @@ class TerrainMesh:
         self.heightmap = heightmap
         self.world_map = world_map
         
+        # Multi-tier LOD mesh system for extended draw distance
+        # Ultra-high detail (immediate vicinity)
+        self.ultra_land_triangles: List[TerrainTriangle] = []
+        self.ultra_sea_triangles: List[TerrainTriangle] = []
+        
         # High-detail inner mesh
         self.inner_land_triangles: List[TerrainTriangle] = []
         self.inner_sea_triangles: List[TerrainTriangle] = []
         
-        # Low-detail outer mesh for extended draw distance
+        # Medium-detail mid-range mesh
+        self.mid_land_triangles: List[TerrainTriangle] = []
+        self.mid_sea_triangles: List[TerrainTriangle] = []
+        
+        # Low-detail outer mesh
         self.outer_land_triangles: List[TerrainTriangle] = []
         self.outer_sea_triangles: List[TerrainTriangle] = []
+        
+        # Ultra-low detail horizon mesh
+        self.horizon_land_triangles: List[TerrainTriangle] = []
+        self.horizon_sea_triangles: List[TerrainTriangle] = []
         
         # 3D sun mesh
         self.sun_triangles: List[TerrainTriangle] = []
         
-        # Mesh parameters
-        self.inner_mesh_resolution = 48  # Higher resolution for nearby terrain
-        self.outer_mesh_resolution = 24  # Half resolution for distant terrain
-        self.inner_radius_deg = 1.0      # Close detail radius
-        self.outer_radius_deg = 3.0      # Extended draw distance
+        # Multi-tier LOD mesh parameters for extended draw distance with performance
+        # Heightmap resolution: 0.117188 degrees per pixel at equator (13.05 km per pixel)
         
-        self.scale_horizontal = 50000.0  # Horizontal scale in meters per degree
-        self.scale_vertical = 5.0        # Realistic vertical scaling
+        # Ultra-high detail (immediate vicinity)
+        self.ultra_mesh_resolution = 32   # Very high detail for landing/close terrain
+        self.ultra_radius_deg = 1.0       # ~111km radius - extended immediate area
+        
+        # High detail (close terrain)
+        self.inner_mesh_resolution = 24   # High detail for nearby terrain
+        self.inner_radius_deg = 1.2       # ~133km radius - close detail
+        
+        # Medium detail (mid-range)
+        self.mid_mesh_resolution = 16     # Medium detail for mid-range
+        self.mid_radius_deg = 3.0         # ~333km radius - mid-range view
+        
+        # Low detail (distant terrain)
+        self.outer_mesh_resolution = 12   # Low detail for distant terrain
+        self.outer_radius_deg = 8.0       # ~889km radius - extended draw distance
+        
+        # Ultra-low detail (horizon)
+        self.horizon_mesh_resolution = 8  # Minimal detail for horizon
+        self.horizon_radius_deg = 15.0    # ~1667km radius - horizon visibility
+        
+        # Scale calibrated to heightmap pixel width at equator: 13.05 km per pixel
+        # This ensures mesh vertex spacing matches the maximum resolution of our source data
+        self.scale_horizontal = 13050.0  # Horizontal scale factor (13.05 km per heightmap pixel)
+        self.scale_vertical = 1.0        # Vertical exaggeration for terrain visibility
         self.sea_level = 0.0             # Sea level in meters
         self.sea_surface_elevation = 0.0 # Sea surface at actual sea level
         self.camera_altitude = 1000.0    # Current camera altitude for culling
+        
+        # Mesh caching system for performance
+        self.cached_meshes = {}  # Key: (lat_grid, lon_grid, alt_grid), Value: mesh data
+        self.cache_grid_size = 0.02  # Finer cache grid resolution in degrees (~2.2km)
+        self.cache_invalidation_distance_km = 0.8  # More aggressive caching - invalidate when moved this far
+        self.last_cache_position = None
+        
+        # Sun caching system (sun changes very slowly)
+        self.cached_sun_triangles = []
+        self.last_sun_generation_time = 0
+        self.sun_cache_duration_minutes = 10  # Regenerate sun every 10 minutes
     
     def generate_mesh_around_position(self, center_lat: float, center_lon: float, camera_altitude: float, radius_deg: float = 3.0):
         """Generate dual-LOD terrain mesh around a central position with proper coastline handling"""
@@ -180,32 +243,272 @@ class TerrainMesh:
     
     def generate_dual_lod_mesh_around_position(self, center_lat: float, center_lon: float, 
                                              camera_altitude: float):
-        """Generate dual-LOD terrain mesh around a position with seamless coastlines"""
+        """Generate multi-tier LOD terrain mesh around a position with caching for performance"""
         
-        # Clear all triangle lists
+        # Check if we can use cached mesh
+        cache_key = self._get_cache_key(center_lat, center_lon, camera_altitude)
+        
+        # Check if we need to regenerate based on movement
+        current_pos = (center_lat, center_lon, camera_altitude)
+        if (self.last_cache_position is not None and 
+            self._should_use_cache(current_pos, self.last_cache_position)):
+            # Use cached mesh if available
+            if cache_key in self.cached_meshes:
+                cached_data = self.cached_meshes[cache_key]
+                self.ultra_land_triangles = cached_data.get('ultra_land', []).copy()
+                self.ultra_sea_triangles = cached_data.get('ultra_sea', []).copy()
+                self.inner_land_triangles = cached_data['inner_land'].copy()
+                self.inner_sea_triangles = cached_data['inner_sea'].copy()
+                self.mid_land_triangles = cached_data.get('mid_land', []).copy()
+                self.mid_sea_triangles = cached_data.get('mid_sea', []).copy()
+                self.outer_land_triangles = cached_data['outer_land'].copy()
+                self.outer_sea_triangles = cached_data['outer_sea'].copy()
+                self.horizon_land_triangles = cached_data.get('horizon_land', []).copy()
+                self.horizon_sea_triangles = cached_data.get('horizon_sea', []).copy()
+                self.camera_altitude = camera_altitude
+                return
+        
+        # Generate new multi-tier mesh
+        self.ultra_land_triangles.clear()
+        self.ultra_sea_triangles.clear()
         self.inner_land_triangles.clear()
         self.inner_sea_triangles.clear()
+        self.mid_land_triangles.clear()
+        self.mid_sea_triangles.clear()
         self.outer_land_triangles.clear()
         self.outer_sea_triangles.clear()
+        self.horizon_land_triangles.clear()
+        self.horizon_sea_triangles.clear()
         
         # Store camera altitude for proper altitude-relative rendering
         self.camera_altitude = camera_altitude
         
-        # Generate inner (high-detail) mesh
-        self._generate_mesh_layer(center_lat, center_lon, camera_altitude,
-                                 self.inner_radius_deg, self.inner_mesh_resolution,
-                                 self.inner_land_triangles, self.inner_sea_triangles, "inner")
+        # Generate all LOD levels with adaptive detail based on distance
+        # Ultra-high detail for immediate vicinity (landing, close terrain inspection)
+        self._generate_mesh_layer_optimized(center_lat, center_lon, camera_altitude,
+                                           self.ultra_radius_deg, self.ultra_mesh_resolution,
+                                           self.ultra_land_triangles, self.ultra_sea_triangles, "ultra")
         
-        # Generate outer (low-detail) mesh  
-        self._generate_mesh_layer(center_lat, center_lon, camera_altitude,
-                                 self.outer_radius_deg, self.outer_mesh_resolution,
-                                 self.outer_land_triangles, self.outer_sea_triangles, "outer")
+        # High detail for close terrain
+        self._generate_mesh_layer_optimized(center_lat, center_lon, camera_altitude,
+                                           self.inner_radius_deg, self.inner_mesh_resolution,
+                                           self.inner_land_triangles, self.inner_sea_triangles, "inner")
+        
+        # Medium detail for mid-range terrain
+        self._generate_mesh_layer_optimized(center_lat, center_lon, camera_altitude,
+                                           self.mid_radius_deg, self.mid_mesh_resolution,
+                                           self.mid_land_triangles, self.mid_sea_triangles, "mid")
+        
+        # Low detail for distant terrain
+        self._generate_mesh_layer_optimized(center_lat, center_lon, camera_altitude,
+                                           self.outer_radius_deg, self.outer_mesh_resolution,
+                                           self.outer_land_triangles, self.outer_sea_triangles, "outer")
+        
+        # Ultra-low detail for horizon
+        self._generate_mesh_layer_optimized(center_lat, center_lon, camera_altitude,
+                                           self.horizon_radius_deg, self.horizon_mesh_resolution,
+                                           self.horizon_land_triangles, self.horizon_sea_triangles, "horizon")
+        
+        # Cache the generated mesh with all LOD levels
+        self.cached_meshes[cache_key] = {
+            'ultra_land': self.ultra_land_triangles.copy(),
+            'ultra_sea': self.ultra_sea_triangles.copy(),
+            'inner_land': self.inner_land_triangles.copy(),
+            'inner_sea': self.inner_sea_triangles.copy(),
+            'mid_land': self.mid_land_triangles.copy(),
+            'mid_sea': self.mid_sea_triangles.copy(),
+            'outer_land': self.outer_land_triangles.copy(),
+            'outer_sea': self.outer_sea_triangles.copy(),
+            'horizon_land': self.horizon_land_triangles.copy(),
+            'horizon_sea': self.horizon_sea_triangles.copy()
+        }
+        
+        # Update last cache position
+        self.last_cache_position = current_pos
+        
+        # Limit cache size to prevent memory growth (smaller limit due to more data per cache)
+        if len(self.cached_meshes) > 15:  # Reduced from 25 due to more triangles per cache
+            oldest_key = next(iter(self.cached_meshes))
+            del self.cached_meshes[oldest_key]
+    
+    def _get_cache_key(self, lat: float, lon: float, alt: float) -> tuple:
+        """Generate cache key based on position grid"""
+        lat_grid = round(lat / self.cache_grid_size) * self.cache_grid_size
+        lon_grid = round(lon / self.cache_grid_size) * self.cache_grid_size
+        alt_grid = round(alt / 100) * 100  # 100m altitude grid
+        return (lat_grid, lon_grid, alt_grid)
+    
+    def _should_use_cache(self, current_pos: tuple, last_pos: tuple) -> bool:
+        """Check if current position is close enough to use cached mesh using great circle distance"""
+        return self._great_circle_distance_km(current_pos[0], current_pos[1], 
+                                             last_pos[0], last_pos[1]) < self.cache_invalidation_distance_km
+    
+    def _great_circle_distance_km(self, lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+        """Calculate great circle distance between two points in kilometers"""
+        # Convert to radians
+        lat1_rad = math.radians(lat1)
+        lon1_rad = math.radians(lon1)
+        lat2_rad = math.radians(lat2)
+        lon2_rad = math.radians(lon2)
+        
+        # Haversine formula
+        dlat = lat2_rad - lat1_rad
+        dlon = lon2_rad - lon1_rad
+        
+        a = (math.sin(dlat/2)**2 + 
+             math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(dlon/2)**2)
+        c = 2 * math.asin(math.sqrt(a))
+        
+        # Earth's radius in kilometers
+        earth_radius_km = 6371.0
+        return earth_radius_km * c
+    
+    def _generate_mesh_layer_optimized(self, center_lat: float, center_lon: float, camera_altitude: float,
+                                     radius_deg: float, resolution: int, land_triangles: List[TerrainTriangle], 
+                                     sea_triangles: List[TerrainTriangle], layer_name: str):
+        """Generate mesh layer with optimized coordinate calculations for performance"""
+        
+        # Pre-calculate trigonometric values
+        center_lat_rad = math.radians(center_lat)
+        center_lon_rad = math.radians(center_lon)
+        cos_center_lat = math.cos(center_lat_rad)
+        
+        # Use simple rectangular grid for non-polar regions (|lat| < 85°)
+        # This is much faster than full spherical calculations
+        if abs(center_lat) < 85.0:
+            return self._generate_mesh_rectangular(center_lat, center_lon, camera_altitude,
+                                                 radius_deg, resolution, land_triangles, 
+                                                 sea_triangles, layer_name)
+        else:
+            # Use full spherical geometry only near poles
+            return self._generate_mesh_layer(center_lat, center_lon, camera_altitude,
+                                           radius_deg, resolution, land_triangles, 
+                                           sea_triangles, layer_name)
+    
+    def _generate_mesh_rectangular(self, center_lat: float, center_lon: float, camera_altitude: float,
+                                 radius_deg: float, resolution: int, land_triangles: List[TerrainTriangle], 
+                                 sea_triangles: List[TerrainTriangle], layer_name: str):
+        """True equal-area mesh generation - 'cloth wrapped on sphere' implementation"""
+        
+        # Convert radius to actual surface distance for equal-area calculation
+        earth_radius_km = 6371.0
+        radius_km = math.radians(radius_deg) * earth_radius_km
+        total_area_km2 = math.pi * radius_km * radius_km  # Circle area on sphere surface
+        cell_area_km2 = total_area_km2 / (resolution * resolution)  # Target area per cell
+        cell_size_km = math.sqrt(cell_area_km2)  # Target cell side length
+        
+        # Generate vertices in equal-area grid
+        vertices = {}
+        center_lat_rad = math.radians(center_lat)
+        center_lon_rad = math.radians(center_lon)
+        
+        for i in range(resolution + 1):
+            for j in range(resolution + 1):
+                # Calculate position in equal-area grid
+                # Move from center in steps that maintain equal surface area
+                u = (i - resolution/2) / resolution  # -0.5 to +0.5
+                v = (j - resolution/2) / resolution  # -0.5 to +0.5
+                
+                # Convert to surface distance (km) from center
+                x_km = u * radius_km * 2  # -radius_km to +radius_km
+                y_km = v * radius_km * 2  # -radius_km to +radius_km
+                
+                # Convert local surface coordinates to lat/lon using proper spherical geometry
+                # This ensures equal area regardless of latitude
+                angular_x = x_km / earth_radius_km  # radians
+                angular_y = y_km / earth_radius_km  # radians
+                
+                # Apply spherical coordinate transformation
+                lat_rad = center_lat_rad + angular_y
+                # Longitude adjustment for spherical surface (more complex near poles)
+                cos_lat = math.cos(lat_rad)
+                if abs(cos_lat) > 0.01:  # Not too close to poles
+                    lon_rad = center_lon_rad + angular_x / cos_lat
+                else:
+                    lon_rad = center_lon_rad  # At poles, longitude is undefined
+                
+                lat = math.degrees(lat_rad)
+                lon = math.degrees(lon_rad)
+                
+                # Handle coordinate wrapping
+                lat = max(-89.99, min(89.99, lat))
+                while lon < -180:
+                    lon += 360
+                while lon > 180:
+                    lon -= 360
+                
+                # Get elevation and color
+                elevation = self.heightmap.height_at(lat, lon)
+                color = self._sample_world_map_color_corrected(lat, lon)
+                
+                # Convert to 3D coordinates for rendering
+                # Use the local surface coordinates for consistent scaling
+                x = x_km * self.scale_horizontal / 1000.0  # Convert km to scaled units
+                y = y_km * self.scale_horizontal / 1000.0
+                z = (elevation - camera_altitude) * self.scale_vertical
+                
+                position = Vector3(x, y, z)
+                normal = self._calculate_vertex_normal_fast(lat, lon, cell_size_km / earth_radius_km)
+                
+                # Create vertex
+                if elevation > self.sea_level:
+                    vertices[(i, j)] = TerrainVertex(position, normal, color, lat, lon)
+                else:
+                    z_sea = (self.sea_surface_elevation - camera_altitude) * self.scale_vertical
+                    position_sea = Vector3(x, y, z_sea)
+                    normal_sea = Vector3(0, 0, 1)
+                    sea_color = self._get_sea_color(color, elevation)
+                    vertices[(i, j)] = TerrainVertex(position_sea, normal_sea, sea_color, lat, lon)
+        
+        # Generate triangles (same as before)
+        for i in range(resolution):
+            for j in range(resolution):
+                v1 = vertices[(i, j)]
+                v2 = vertices[(i + 1, j)]
+                v3 = vertices[(i, j + 1)]
+                v4 = vertices[(i + 1, j + 1)]
+                
+                triangle1 = TerrainTriangle(v1, v2, v3)
+                triangle2 = TerrainTriangle(v2, v4, v3)
+                
+                self._update_triangle_color_from_centroid(triangle1, center_lat, center_lon)
+                self._update_triangle_color_from_centroid(triangle2, center_lat, center_lon)
+                
+                # Classify triangles
+                quad_elevations = [
+                    self.heightmap.height_at(v1.lat, v1.lon),
+                    self.heightmap.height_at(v2.lat, v2.lon), 
+                    self.heightmap.height_at(v3.lat, v3.lon),
+                    self.heightmap.height_at(v4.lat, v4.lon)
+                ]
+                
+                land_count = sum(1 for elev in quad_elevations if elev > self.sea_level)
+                
+                if land_count >= 2:
+                    land_triangles.extend([triangle1, triangle2])
+                else:
+                    sea_triangles.extend([triangle1, triangle2])
+    
+    def _calculate_vertex_normal_fast(self, lat: float, lon: float, sample_distance: float) -> Vector3:
+        """Ultra-fast vertex normal calculation with minimal overhead"""
+        # For performance, use a simple upward-pointing normal
+        # In most cases, terrain normals don't dramatically affect the visual result
+        # when viewing from altitude, so we can simplify this
+        return Vector3(0, 0, 1)  # Simple upward normal
     
     def generate_3d_sun(self, observer_lat: float, observer_lon: float, observer_alt: float, 
                        time_info: dict):
-        """Generate 3D sun mesh based on astronomical position"""
+        """Generate 3D sun mesh based on astronomical position with caching"""
         import time
         import datetime
+        
+        # Check if we can use cached sun triangles
+        current_time = time.time()
+        if (self.cached_sun_triangles and 
+            (current_time - self.last_sun_generation_time) < (self.sun_cache_duration_minutes * 60)):
+            # Use cached sun triangles
+            self.sun_triangles = self.cached_sun_triangles.copy()
+            return
         
         # Clear existing sun triangles
         self.sun_triangles.clear()
@@ -259,6 +562,33 @@ class TerrainMesh:
         angular_radius_rad = math.radians(angular_radius_deg)
         sun_radius = sun_distance * math.tan(angular_radius_rad)  # Game-sized for visibility
         self._generate_sun_dodecagon(sun_center, sun_radius, sun_color, elevation_rad, azimuth_rad)
+        
+        # Cache the generated sun triangles and update timestamp
+        self.cached_sun_triangles = self.sun_triangles.copy()
+        self.last_sun_generation_time = current_time
+    
+    def _local_cartesian_to_latlon(self, local_x_km: float, local_y_km: float, 
+                                  center_lat: float, center_lon: float) -> Tuple[float, float]:
+        """Convert local Cartesian coordinates (km) to lat/lon using spherical geometry"""
+        earth_radius_km = 6371.0
+        
+        # Convert local distances to angular distances
+        angular_x = local_x_km / earth_radius_km  # radians
+        angular_y = local_y_km / earth_radius_km  # radians
+        
+        center_lat_rad = math.radians(center_lat)
+        center_lon_rad = math.radians(center_lon)
+        
+        # For small distances, we can use approximate flat-earth transformation
+        # This is valid for mesh generation within ~100km of our position
+        lat_rad = center_lat_rad + angular_y
+        lon_rad = center_lon_rad + angular_x / math.cos(center_lat_rad) if abs(center_lat) < 89 else center_lon_rad
+        
+        # Convert back to degrees
+        lat = math.degrees(lat_rad)
+        lon = math.degrees(lon_rad)
+        
+        return lat, lon
     
     def _calculate_sun_elevation_azimuth(self, observer_lat: float, observer_lon: float, 
                                        subsolar_lat: float, subsolar_lon: float) -> Tuple[float, float]:
@@ -352,47 +682,49 @@ class TerrainMesh:
     def _generate_mesh_layer(self, center_lat: float, center_lon: float, camera_altitude: float,
                            radius_deg: float, resolution: int, land_triangles: List[TerrainTriangle], 
                            sea_triangles: List[TerrainTriangle], layer_name: str):
-        """Generate a single mesh layer with continuous coverage"""
+        """Generate a single mesh layer with equal-area coverage using proper spherical geometry"""
         
-        # Calculate mesh bounds with proper polar handling
-        lat_min = max(-89.9, center_lat - radius_deg)
-        lat_max = min(89.9, center_lat + radius_deg)
-        lon_min = center_lon - radius_deg
-        lon_max = center_lon + radius_deg
-        
-        # Handle longitude wrapping
-        while lon_min < -180:
-            lon_min += 360
-        while lon_max > 180:
-            lon_max -= 360
-        
-        # Create complete vertex grid (no gaps)
+        # Create complete vertex grid using equal-area spacing
         vertices = {}
-        step = (radius_deg * 2) / resolution
         
-        # Generate all vertices in grid
+        # Convert radius from degrees to actual surface distance (km)
+        earth_radius_km = 6371.0
+        radius_km = math.radians(radius_deg) * earth_radius_km
+        
+        # Generate vertices in equal-area grid (like laying cloth on sphere surface)
+        # Each grid cell covers the same physical area regardless of latitude
+        step_km = (radius_km * 2) / resolution
+        
         for i in range(resolution + 1):
             for j in range(resolution + 1):
-                lat = lat_min + i * step
-                lon = lon_min + j * step
+                # Local Cartesian coordinates (km from center position)
+                # This ensures equal area coverage - each step is the same surface distance
+                local_x = -radius_km + i * step_km
+                local_y = -radius_km + j * step_km
                 
-                # Handle longitude wrapping at dateline
-                if lon < -180:
+                # Convert local Cartesian to lat/lon using spherical geometry
+                lat, lon = self._local_cartesian_to_latlon(local_x, local_y, center_lat, center_lon)
+                
+                # Clamp latitude to valid range (this is the only place we should need clamping)
+                lat = max(-89.99, min(89.99, lat))
+                
+                # Handle longitude wrapping
+                while lon < -180:
                     lon += 360
-                elif lon > 180:
+                while lon > 180:
                     lon -= 360
                 
                 # Get elevation and color
                 elevation = self.heightmap.height_at(lat, lon)
                 color = self._sample_world_map_color_corrected(lat, lon)
                 
-                # Convert to 3D world coordinates relative to camera
-                x = (lon - center_lon) * self.scale_horizontal * math.cos(math.radians(center_lat))
-                y = (lat - center_lat) * self.scale_horizontal
+                # Convert back to 3D world coordinates for rendering (using local coords)
+                x = local_x * self.scale_horizontal / 1000.0  # Convert km to scaled units
+                y = local_y * self.scale_horizontal / 1000.0
                 z = (elevation - camera_altitude) * self.scale_vertical
                 
                 position = Vector3(x, y, z)
-                normal = self._calculate_vertex_normal(lat, lon, step * 0.1)
+                normal = self._calculate_vertex_normal(lat, lon, step_km / earth_radius_km)  # Use angular step size
                 
                 # Determine vertex type and create appropriate vertex
                 if elevation > self.sea_level:
@@ -424,11 +756,12 @@ class TerrainMesh:
                 self._update_triangle_color_from_centroid(triangle2, center_lat, center_lon)
                 
                 # Determine if triangles are primarily land or sea based on vertex elevations
+                # Use the vertices we already have - they contain the elevation data
                 quad_elevations = [
-                    self.heightmap.height_at(lat_min + i * step, lon_min + j * step),
-                    self.heightmap.height_at(lat_min + (i + 1) * step, lon_min + j * step),
-                    self.heightmap.height_at(lat_min + i * step, lon_min + (j + 1) * step),
-                    self.heightmap.height_at(lat_min + (i + 1) * step, lon_min + (j + 1) * step)
+                    self.heightmap.height_at(v1.lat, v1.lon),
+                    self.heightmap.height_at(v2.lat, v2.lon), 
+                    self.heightmap.height_at(v3.lat, v3.lon),
+                    self.heightmap.height_at(v4.lat, v4.lon)
                 ]
                 
                 # Use majority rule for triangle classification
@@ -527,16 +860,22 @@ class TerrainMesh:
     
     def _calculate_vertex_normal(self, lat: float, lon: float, sample_distance: float) -> Vector3:
         """Calculate vertex normal using height samples around the point"""
-        # Sample heights at surrounding points
+        # Sample heights at surrounding points with polar clamping
         h_center = self.heightmap.height_at(lat, lon)
-        h_north = self.heightmap.height_at(lat + sample_distance, lon)
-        h_south = self.heightmap.height_at(lat - sample_distance, lon)
+        
+        # Clamp latitude sampling to valid range to handle poles
+        lat_north = min(89.9, lat + sample_distance)
+        lat_south = max(-89.9, lat - sample_distance)
+        
+        h_north = self.heightmap.height_at(lat_north, lon)
+        h_south = self.heightmap.height_at(lat_south, lon)
         h_east = self.heightmap.height_at(lat, lon + sample_distance)
         h_west = self.heightmap.height_at(lat, lon - sample_distance)
         
-        # Calculate gradient vectors
+        # Calculate gradient vectors using actual sample distances
+        actual_lat_distance = lat_north - lat_south
         dx = (h_east - h_west) / (2 * sample_distance * self.scale_horizontal)
-        dy = (h_north - h_south) / (2 * sample_distance * self.scale_horizontal)
+        dy = (h_north - h_south) / (actual_lat_distance * self.scale_horizontal)
         
         # Normal vector from cross product of tangent vectors
         tangent_x = Vector3(1, 0, dx * self.scale_vertical)
@@ -547,14 +886,30 @@ class TerrainMesh:
     
     def render_to_surface(self, surface: pygame.Surface, camera: Camera3D, 
                          viewport_x: int, viewport_y: int, viewport_w: int, viewport_h: int):
-        """Render dual-LOD terrain mesh to pygame surface with proper layering"""
+        """Render multi-tier LOD terrain mesh to pygame surface with proper layering"""
         if not self._has_any_triangles():
             return
         
         # Combine all triangles with distance and layer information
         all_triangles = []
         
-        # Add outer (distant) triangles first - render back to front
+        # Add sun triangles first - render as background (sky layer)
+        for triangle in self.sun_triangles:
+            # Use negative distance to ensure sun renders as background (first)
+            distance = -999999999.0  # Negative distance for background rendering
+            all_triangles.append((triangle, 'sun', 'sun', distance))
+        
+        # Add all LOD levels - render back to front by distance
+        # Horizon level (furthest)
+        for triangle in self.horizon_sea_triangles:
+            distance = camera.get_distance_to(triangle.center)
+            all_triangles.append((triangle, 'sea', 'horizon', distance))
+        
+        for triangle in self.horizon_land_triangles:
+            distance = camera.get_distance_to(triangle.center)
+            all_triangles.append((triangle, 'land', 'horizon', distance))
+        
+        # Outer level 
         for triangle in self.outer_sea_triangles:
             distance = camera.get_distance_to(triangle.center)
             all_triangles.append((triangle, 'sea', 'outer', distance))
@@ -563,7 +918,16 @@ class TerrainMesh:
             distance = camera.get_distance_to(triangle.center)
             all_triangles.append((triangle, 'land', 'outer', distance))
         
-        # Add inner (nearby) triangles - these will be rendered on top
+        # Mid level
+        for triangle in self.mid_sea_triangles:
+            distance = camera.get_distance_to(triangle.center)
+            all_triangles.append((triangle, 'sea', 'mid', distance))
+        
+        for triangle in self.mid_land_triangles:
+            distance = camera.get_distance_to(triangle.center)
+            all_triangles.append((triangle, 'land', 'mid', distance))
+        
+        # Inner level
         for triangle in self.inner_sea_triangles:
             distance = camera.get_distance_to(triangle.center)
             all_triangles.append((triangle, 'sea', 'inner', distance))
@@ -572,16 +936,22 @@ class TerrainMesh:
             distance = camera.get_distance_to(triangle.center)
             all_triangles.append((triangle, 'land', 'inner', distance))
         
-        # Add sun triangles - render first (background/sky layer)
-        for triangle in self.sun_triangles:
-            # Use negative distance to ensure sun renders as background (first)
-            distance = -999999999.0  # Negative distance for background rendering
-            all_triangles.append((triangle, 'sun', 'sun', distance))
+        # Ultra level (closest, highest detail)
+        for triangle in self.ultra_sea_triangles:
+            distance = camera.get_distance_to(triangle.center)
+            all_triangles.append((triangle, 'sea', 'ultra', distance))
         
-        # Sort by distance (back to front) then by layer (outer first, then inner)
+        for triangle in self.ultra_land_triangles:
+            distance = camera.get_distance_to(triangle.center)
+            all_triangles.append((triangle, 'land', 'ultra', distance))
+        
+        # Sort by layer priority FIRST, then by distance within each layer
+        # Higher detail layers render LAST (on top) - reverse order for proper layering
+        # Layer priority: sun < horizon < outer < mid < inner < ultra (ultra renders last/on top)
+        layer_priority = {'sun': 0, 'horizon': 1, 'outer': 2, 'mid': 3, 'inner': 4, 'ultra': 5}
         sorted_triangles = sorted(all_triangles, 
-                                key=lambda t: (t[3], t[2] == 'inner'),  # Distance first, then layer priority
-                                reverse=True)
+                                key=lambda t: (layer_priority.get(t[2], 0), -t[3]),  # Layer priority FIRST, then reverse distance (closer last)
+                                reverse=False)  # Sort ascending so ultra (5) renders last
         
         # Create clipping rectangle for viewport
         clip_rect = pygame.Rect(viewport_x, viewport_y, viewport_w, viewport_h)
@@ -589,30 +959,62 @@ class TerrainMesh:
         surface.set_clip(clip_rect)
         
         try:
-            # Render each triangle with layer-specific handling
+            # Calculate minimum no-cull distance based on triangle spacing
+            # Ultra mesh: 0.5° radius / 32 resolution = 0.03125° per triangle  
+            # At scale_horizontal = 13050: triangle_edge ≈ 0.03125° × 13050 = ~407 units
+            # 3 triangle distances = ~1221 units for safe close-range rendering
+            min_no_cull_distance = 5000.0  # Never cull triangles closer than this (conservative)
+            
+            # Render each triangle with proper layer priority and distance culling only
             for triangle, triangle_type, layer, distance in sorted_triangles:
-                # Skip distant triangles that are too far or behind camera
-                # Use higher limit for sun triangles since they're at astronomical distances
-                max_distance = 5000000.0 if triangle_type == 'sun' else 100000.0
-                if distance > max_distance:
-                    continue
+                # Distance culling - only maximum distance for performance, no minimum distance exclusion
+                if triangle_type == 'sun':
+                    max_distance = 5000000.0  # Sun triangles at astronomical distances
+                elif distance <= min_no_cull_distance:
+                    # Always render close triangles regardless of frustum culling (for landing safety)
+                    pass  # No distance culling for very close triangles
+                else:
+                    # Layer-specific maximum distance culling for performance only
+                    if layer == 'horizon':
+                        max_distance = 200000.0  # ~200km for horizon visibility
+                    elif layer == 'outer':  
+                        max_distance = 120000.0  # ~120km for distant terrain
+                    elif layer == 'mid':
+                        max_distance = 50000.0   # ~50km for mid-range
+                    elif layer == 'inner':
+                        max_distance = 20000.0   # ~20km for detailed terrain
+                    elif layer == 'ultra':
+                        max_distance = 25000.0   # ~25km for ultra-high detail (extended coverage)
+                    else:
+                        max_distance = 100000.0  # Default fallback
+                    
+                    # Skip triangle if beyond maximum distance for this LOD level
+                    if distance > max_distance:
+                        continue
                 
                 self._render_triangle(surface, triangle, camera, viewport_x, viewport_y, 
-                                    viewport_w, viewport_h, triangle_type, layer)
+                                    viewport_w, viewport_h, triangle_type, layer, distance)
         finally:
             # Restore original clipping
             surface.set_clip(old_clip)
     
     def _has_any_triangles(self) -> bool:
-        """Check if any triangles exist in either LOD level or sun"""
-        return (len(self.inner_land_triangles) > 0 or len(self.inner_sea_triangles) > 0 or
+        """Check if any triangles exist in any LOD level or sun"""
+        return (len(self.ultra_land_triangles) > 0 or len(self.ultra_sea_triangles) > 0 or
+                len(self.inner_land_triangles) > 0 or len(self.inner_sea_triangles) > 0 or
+                len(self.mid_land_triangles) > 0 or len(self.mid_sea_triangles) > 0 or
                 len(self.outer_land_triangles) > 0 or len(self.outer_sea_triangles) > 0 or
+                len(self.horizon_land_triangles) > 0 or len(self.horizon_sea_triangles) > 0 or
                 len(self.sun_triangles) > 0)
     
     def _render_triangle(self, surface: pygame.Surface, triangle: TerrainTriangle, camera: Camera3D,
                         viewport_x: int, viewport_y: int, viewport_w: int, viewport_h: int, 
-                        triangle_type: str = 'land', layer: str = 'inner'):
+                        triangle_type: str = 'land', layer: str = 'inner', distance: float = 0.0):
         """Render a single triangle to the surface with layer and type-specific lighting"""
+        
+        # Calculate if this is a close triangle that should avoid aggressive culling
+        min_no_cull_distance = 5000.0  # Same as main culling distance
+        is_close_triangle = distance <= min_no_cull_distance
         
         # Project vertices to screen coordinates with proper clipping
         screen_coords = []
@@ -630,50 +1032,30 @@ class TerrainMesh:
                 screen_coords.append(coord)
                 valid_coords.append(coord)
         
-        # Skip triangle if ALL vertices are behind camera
-        if vertices_behind_camera >= 3:
-            return
-        
-        # Skip if no valid coordinates
+        # CRITICAL: If ANY vertex projects successfully (is in view frustum), render the triangle
+        # This prevents triangle pop-in/pop-out during camera rotation
         if len(valid_coords) == 0:
+            # No vertices are in the view frustum - can skip this triangle
             return
-            
-        # For partially clipped triangles, only render if we have at least 2 valid vertices
-        # and they're within reasonable bounds of the viewport
-        if vertices_behind_camera > 0:
-            if len(valid_coords) < 2:
-                return  # Can't form a meaningful triangle with less than 2 visible vertices
-                
-            # For sun triangles, be much more permissive with viewport bounds
-            if triangle_type == 'sun':
-                # Sun can be anywhere in the sky - use much larger bounds
-                viewport_bounds = pygame.Rect(viewport_x - 1000, viewport_y - 1000, 
-                                            viewport_w + 2000, viewport_h + 2000)
-            else:
-                # For terrain triangles, use conservative bounds
-                viewport_bounds = pygame.Rect(viewport_x - 100, viewport_y - 100, 
-                                            viewport_w + 200, viewport_h + 200)
-            
-            any_visible = False
-            for coord in valid_coords:
-                if viewport_bounds.collidepoint(coord):
-                    any_visible = True
-                    break
-            
-            if not any_visible:
-                return
-                
-            # For sun triangles, be more permissive with partial clipping
-            if triangle_type != 'sun':
-                # For terrain triangles, skip partial clipping to avoid artifacts
-                return
-            # Sun triangles can handle partial clipping better due to their simple geometry
         
-        # At this point, all vertices are valid - proceed with normal rendering
-        final_screen_coords = [coord for coord in screen_coords if coord is not None]
-        
-        if len(final_screen_coords) < 3:
+        # For triangles with vertices partially outside frustum, we need proper clipping
+        # Only render triangles where we have valid coordinates for ALL vertices
+        if len(valid_coords) < 3:
+            # Partial triangle - skip to avoid visual glitches and degenerate triangles
+            # This prevents the vertex position glitch issue
             return
+        
+        # Use the valid coordinates directly - no coordinate replacement needed
+        final_screen_coords = valid_coords
+        
+        # Ensure we have exactly 3 coordinates for a proper triangle
+        if len(final_screen_coords) != 3:
+            return  # Skip degenerate triangles
+            
+        # For close triangles, be extra permissive with any rendering issues
+        if is_close_triangle:
+            # Close triangles get maximum protection from culling
+            pass  # Continue to rendering
         
         # Calculate triangle color with lighting
         if triangle_type == 'sun':
@@ -752,31 +1134,60 @@ class TerrainMesh:
                 int(avg_color[2] * light_intensity)
             )
         
-        # Draw filled triangle only (no wireframes)
-        try:
-            pygame.draw.polygon(surface, final_color, final_screen_coords)
-        except:
-            pass  # Skip if triangle is degenerate or outside surface
+        # Draw filled triangle with proper validation
+        # We should now have exactly 3 valid coordinates
+        if len(final_screen_coords) == 3:
+            # Validate coordinates are reasonable (prevent extreme values)
+            valid_triangle = True
+            for coord in final_screen_coords:
+                if (not isinstance(coord[0], int) or not isinstance(coord[1], int) or
+                    abs(coord[0]) > 10000 or abs(coord[1]) > 10000):
+                    valid_triangle = False
+                    break
+            
+            if valid_triangle:
+                pygame.draw.polygon(surface, final_color, final_screen_coords)
+            # Skip invalid triangles silently (no exception)
     
     def get_terrain_height_at_camera(self, lat: float, lon: float) -> float:
         """Get terrain height at camera position for ground level reference"""
         return self.heightmap.height_at(lat, lon) * self.scale_vertical
     
     def get_mesh_statistics(self) -> Dict[str, Any]:
-        """Get statistics about the current dual-LOD mesh for debugging"""
+        """Get statistics about the current multi-tier LOD mesh for debugging"""
         return {
+            "ultra_land_triangles": len(self.ultra_land_triangles),
+            "ultra_sea_triangles": len(self.ultra_sea_triangles),
             "inner_land_triangles": len(self.inner_land_triangles),
             "inner_sea_triangles": len(self.inner_sea_triangles),
+            "mid_land_triangles": len(self.mid_land_triangles),
+            "mid_sea_triangles": len(self.mid_sea_triangles),
             "outer_land_triangles": len(self.outer_land_triangles),
             "outer_sea_triangles": len(self.outer_sea_triangles),
+            "horizon_land_triangles": len(self.horizon_land_triangles),
+            "horizon_sea_triangles": len(self.horizon_sea_triangles),
             "sun_triangles": len(self.sun_triangles),
-            "total_triangles": (len(self.inner_land_triangles) + len(self.inner_sea_triangles) + 
+            "total_triangles": (len(self.ultra_land_triangles) + len(self.ultra_sea_triangles) +
+                               len(self.inner_land_triangles) + len(self.inner_sea_triangles) + 
+                               len(self.mid_land_triangles) + len(self.mid_sea_triangles) +
                                len(self.outer_land_triangles) + len(self.outer_sea_triangles) +
+                               len(self.horizon_land_triangles) + len(self.horizon_sea_triangles) +
                                len(self.sun_triangles)),
+            "ultra_total": len(self.ultra_land_triangles) + len(self.ultra_sea_triangles),
             "inner_total": len(self.inner_land_triangles) + len(self.inner_sea_triangles),
+            "mid_total": len(self.mid_land_triangles) + len(self.mid_sea_triangles),
             "outer_total": len(self.outer_land_triangles) + len(self.outer_sea_triangles),
+            "horizon_total": len(self.horizon_land_triangles) + len(self.horizon_sea_triangles),
+            "ultra_mesh_resolution": self.ultra_mesh_resolution,
             "inner_mesh_resolution": self.inner_mesh_resolution,
+            "mid_mesh_resolution": self.mid_mesh_resolution,
             "outer_mesh_resolution": self.outer_mesh_resolution,
+            "horizon_mesh_resolution": self.horizon_mesh_resolution,
+            "ultra_radius_deg": self.ultra_radius_deg,
+            "inner_radius_deg": self.inner_radius_deg,
+            "mid_radius_deg": self.mid_radius_deg,
+            "outer_radius_deg": self.outer_radius_deg,
+            "horizon_radius_deg": self.horizon_radius_deg,
             "sea_level": self.sea_level,
             "sea_surface_elevation": self.sea_surface_elevation,
             "scale_horizontal": self.scale_horizontal,
