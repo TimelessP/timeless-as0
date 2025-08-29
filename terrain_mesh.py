@@ -138,12 +138,12 @@ class Camera3D:
             if z_cam < near_plane:
                 return None  # Still cull if behind near plane
                 
-            # Use 3x frustum expansion for close terrain to capture triangle edges
-            if not is_in_view_frustum_generous(x_cam, y_cam, z_cam, margin_multiplier=3.0):
+            # Use 5x frustum expansion for close terrain to capture ALL triangle edges
+            if not is_in_view_frustum_generous(x_cam, y_cam, z_cam, margin_multiplier=5.0):
                 return None
         else:
-            # For distant terrain, use generous frustum culling with 2x margin
-            if not is_in_view_frustum_generous(x_cam, y_cam, z_cam, margin_multiplier=2.0):
+            # For distant terrain, use generous frustum culling with 4x margin
+            if not is_in_view_frustum_generous(x_cam, y_cam, z_cam, margin_multiplier=4.0):
                 return None
         
         # Perspective projection with aspect ratio correction
@@ -168,20 +168,16 @@ class Camera3D:
         screen_x = int((x_ndc + 1) * viewport_w / 2)
         screen_y = int((1 - y_ndc) * viewport_h / 2)  # Flip Y for screen coordinates
         
-        # For vertices within close terrain, be completely permissive - but only for viewport bounds
+        # For vertices within close terrain, be completely permissive - NO VIEWPORT CULLING
         distance_to_camera = relative_pos.length()
         if distance_to_camera < close_terrain_radius:  # Within close terrain radius - no viewport culling
             return (screen_x, screen_y)
         
-        # For medium distance terrain, still be very permissive with viewport bounds
-        if distance_to_camera < close_terrain_radius * 2:
-            # For medium distance, use large margin to prevent corner culling
-            extended_margin = max(viewport_w, viewport_h) * 5
-        else:
-            # For distant terrain, moderate margin
-            extended_margin = max(viewport_w, viewport_h) * 3
+        # For ALL other terrain, be extremely permissive with viewport bounds to allow triangle clipping
+        # Use massive margins to ensure triangle edges are captured
+        extended_margin = max(viewport_w, viewport_h) * 10  # 10x margin for all distant terrain
         
-        # Check viewport bounds with appropriate margin (only for distant terrain)
+        # Only cull if WAY outside the viewport to allow proper triangle clipping
         if (screen_x < -extended_margin or screen_x > viewport_w + extended_margin or
             screen_y < -extended_margin or screen_y > viewport_h + extended_margin):
             return None
@@ -1080,14 +1076,42 @@ class TerrainMesh:
         valid_coords = []
         
         for vertex in [triangle.v1, triangle.v2, triangle.v3]:
-            screen_pos = camera.project_to_2d(vertex.position, viewport_w, viewport_h)
-            if screen_pos is not None:
-                # Offset by viewport position
-                coord = (screen_pos[0] + viewport_x, screen_pos[1] + viewport_y)
+            # For ultra LOD triangles, bypass ALL culling in project_to_2d and force projection
+            if is_ultra_lod:
+                # Ultra LOD gets forced projection - calculate screen coordinates directly
+                relative_pos = vertex.position - camera.position
+                x_cam = relative_pos.dot(camera.right)
+                y_cam = relative_pos.dot(camera.up)
+                z_cam = relative_pos.dot(camera.forward)
+                
+                # Use safe z_cam for projection
+                z_cam_safe = max(z_cam, 0.1)
+                
+                # Direct projection without any culling
+                fov_rad = math.radians(60.0)  # Default FOV
+                tan_half_fov = math.tan(fov_rad / 2)
+                aspect_ratio = viewport_w / viewport_h
+                
+                x_ndc = x_cam / (z_cam_safe * tan_half_fov * aspect_ratio)
+                y_ndc = y_cam / (z_cam_safe * tan_half_fov)
+                
+                screen_x = int((x_ndc + 1) * viewport_w / 2)
+                screen_y = int((1 - y_ndc) * viewport_h / 2)
+                
+                # Force coordinates for ultra LOD - no culling at all
+                coord = (screen_x + viewport_x, screen_y + viewport_y)
                 screen_coords.append(coord)
                 valid_coords.append(coord)
             else:
-                screen_coords.append(None)
+                # Normal projection with culling for other LOD levels
+                screen_pos = camera.project_to_2d(vertex.position, viewport_w, viewport_h)
+                if screen_pos is not None:
+                    # Offset by viewport position
+                    coord = (screen_pos[0] + viewport_x, screen_pos[1] + viewport_y)
+                    screen_coords.append(coord)
+                    valid_coords.append(coord)
+                else:
+                    screen_coords.append(None)
         
         # Render triangle if ANY vertex is visible OR if close to camera OR if ultra LOD
         # This prevents triangle pop-in/pop-out during camera movement
@@ -1102,14 +1126,10 @@ class TerrainMesh:
                 final_coords.append(coord)
         
         # Only render triangles with enough valid coordinates
-        if is_ultra_lod:
-            # Ultra LOD: need at least 2 valid vertices, but no coordinate faking
-            if len(final_coords) < 2:
-                return
-        else:
-            # Other LODs: need all 3 coordinates to avoid artifacts
-            if len(final_coords) < 3:
-                return
+        # Allow partial triangles for ALL LOD levels to enable proper edge clipping
+        if len(final_coords) < 2:
+            # Need at least 2 valid vertices to render any triangle
+            return
         
         # Skip triangles that don't have exactly 3 coordinates for proper rendering
         if len(final_coords) != 3:
