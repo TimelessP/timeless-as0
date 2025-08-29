@@ -207,7 +207,7 @@ class TerrainMesh:
         # Scale calibrated to heightmap pixel width at equator: 13.05 km per pixel
         # This ensures mesh vertex spacing matches the maximum resolution of our source data
         self.scale_horizontal = 13050.0  # Horizontal scale factor (13.05 km per heightmap pixel)
-        self.scale_vertical = 1.0        # Vertical exaggeration for terrain visibility
+        self.scale_vertical = 0.15       # Reduced vertical exaggeration for realistic proportions from altitude
         self.sea_level = 0.0             # Sea level in meters
         self.sea_surface_elevation = 0.0 # Sea surface at actual sea level
         self.camera_altitude = 1000.0    # Current camera altitude for culling
