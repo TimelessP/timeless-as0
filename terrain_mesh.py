@@ -85,7 +85,7 @@ class Camera3D:
         self.up = self.right.cross(self.forward).normalize()
     
     def project_to_2d(self, world_pos: Vector3, viewport_w: int, viewport_h: int, fov_deg: float = 60.0) -> Optional[Tuple[int, int]]:
-        """Project 3D world position to 2D screen coordinates"""
+        """Project 3D world position to 2D screen coordinates with extended bounds"""
         # Transform to camera space
         relative_pos = world_pos - self.position
         
@@ -110,8 +110,11 @@ class Camera3D:
         screen_x = int((x_ndc + 1) * viewport_w / 2)
         screen_y = int((1 - y_ndc) * viewport_h / 2)  # Flip Y for screen coordinates
         
-        # Check if point is within viewport
-        if 0 <= screen_x < viewport_w and 0 <= screen_y < viewport_h:
+        # Allow points well outside viewport for triangle clipping
+        # Extended bounds to catch triangles that intersect viewport
+        extended_margin = max(viewport_w, viewport_h)
+        if (-extended_margin <= screen_x <= viewport_w + extended_margin and 
+            -extended_margin <= screen_y <= viewport_h + extended_margin):
             return (screen_x, screen_y)
         
         return None
@@ -425,15 +428,57 @@ class TerrainMesh:
                         viewport_x: int, viewport_y: int, viewport_w: int, viewport_h: int, 
                         triangle_type: str = 'land', layer: str = 'inner'):
         """Render a single triangle to the surface with layer and type-specific lighting"""
-        # Project vertices to screen coordinates
+        # Project vertices to screen coordinates with proper clipping
         screen_coords = []
+        vertices_behind_camera = 0
+        valid_coords = []
+        
         for vertex in [triangle.v1, triangle.v2, triangle.v3]:
             screen_pos = camera.project_to_2d(vertex.position, viewport_w, viewport_h)
             if screen_pos is None:
-                return  # Triangle is behind camera or outside viewport
+                vertices_behind_camera += 1
+                screen_coords.append(None)  # Mark as invalid instead of placeholder
+            else:
+                # Offset by viewport position
+                coord = (screen_pos[0] + viewport_x, screen_pos[1] + viewport_y)
+                screen_coords.append(coord)
+                valid_coords.append(coord)
+        
+        # Skip triangle if ALL vertices are behind camera
+        if vertices_behind_camera >= 3:
+            return
+        
+        # Skip if no valid coordinates
+        if len(valid_coords) == 0:
+            return
             
-            # Offset by viewport position
-            screen_coords.append((screen_pos[0] + viewport_x, screen_pos[1] + viewport_y))
+        # For partially clipped triangles, only render if we have at least 2 valid vertices
+        # and they're within reasonable bounds of the viewport
+        if vertices_behind_camera > 0:
+            if len(valid_coords) < 2:
+                return  # Can't form a meaningful triangle with less than 2 visible vertices
+                
+            # Check if any valid vertex is within extended viewport bounds
+            viewport_bounds = pygame.Rect(viewport_x - 100, viewport_y - 100, 
+                                        viewport_w + 200, viewport_h + 200)
+            any_visible = False
+            for coord in valid_coords:
+                if viewport_bounds.collidepoint(coord):
+                    any_visible = True
+                    break
+            
+            if not any_visible:
+                return
+                
+            # For partially clipped triangles, only use the valid coordinates
+            # Skip rendering to avoid artifacts from invalid coordinates
+            return
+        
+        # At this point, all vertices are valid - proceed with normal rendering
+        final_screen_coords = [coord for coord in screen_coords if coord is not None]
+        
+        if len(final_screen_coords) < 3:
+            return
         
         # Calculate triangle color with lighting
         if triangle_type == 'sea':
@@ -478,7 +523,7 @@ class TerrainMesh:
         
         # Draw filled triangle only (no wireframes)
         try:
-            pygame.draw.polygon(surface, final_color, screen_coords)
+            pygame.draw.polygon(surface, final_color, final_screen_coords)
         except:
             pass  # Skip if triangle is degenerate or outside surface
     
