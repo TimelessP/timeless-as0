@@ -264,9 +264,11 @@ class ObservatoryScene:
     
     def _center_view_on_heading(self):
         """Center the camera view to face the airship's current heading"""
-        self.view_angle = 0.0  # Reset to forward (ship's heading)
+        game_state = self.simulator.get_state()
+        ship_heading = game_state["navigation"]["position"]["heading"]
+        self.view_angle = ship_heading  # Set to actual ship heading, not 0°
         self.tilt_angle = 0.0  # Reset tilt to level
-        print("Observatory: Camera centered on ship's heading")
+        print(f"Observatory: Camera centered on ship's heading ({ship_heading:.1f}°)")
     
     def _update_camera_from_mouse_pos(self, logical_pos):
         """Update camera angles based on absolute mouse position within viewport"""
@@ -287,12 +289,18 @@ class ObservatoryScene:
         rel_x = (mouse_x - vp_x) / vp_w
         rel_y = (mouse_y - vp_y) / vp_h
         
-        # Convert to camera angles
-        # Center of viewport (0.5, 0.5) should be forward (0°) and level (0°)
+        # Get current airship heading to use as reference
+        game_state = self.simulator.get_state()
+        ship_heading = game_state["navigation"]["position"]["heading"]
+        
+        # Convert to camera angles relative to ship heading
+        # Center of viewport (0.5, 0.5) should be ship's forward direction (heading + 0°)
         max_rotation = 90.0  # Maximum rotation in either direction
         max_tilt = 30.0      # Maximum tilt up/down
         
-        self.view_angle = (rel_x - 0.5) * 2.0 * max_rotation  # -90° to +90°
+        # View angle is relative to ship heading: center = ship_heading, left/right = ±90°
+        relative_angle = (rel_x - 0.5) * 2.0 * max_rotation  # -90° to +90° relative to ship
+        self.view_angle = ship_heading + relative_angle  # Absolute angle from North
         self.tilt_angle = -(rel_y - 0.5) * 2.0 * max_tilt     # -30° to +30° (inverted Y)
     
     def _regenerate_mesh(self):

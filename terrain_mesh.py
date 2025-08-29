@@ -90,7 +90,7 @@ class Camera3D:
         self.up = self.right.cross(self.forward).normalize()
     
     def project_to_2d(self, world_pos: Vector3, viewport_w: int, viewport_h: int, fov_deg: float = 60.0) -> Optional[Tuple[int, int]]:
-        """Project 3D world position to 2D screen coordinates with extended bounds"""
+        """Project 3D world position to 2D screen coordinates"""
         # Transform to camera space
         relative_pos = world_pos - self.position
         
@@ -103,12 +103,13 @@ class Camera3D:
         if z_cam <= 0:
             return None
         
-        # Perspective projection
+        # Perspective projection with aspect ratio correction
         fov_rad = math.radians(fov_deg)
         tan_half_fov = math.tan(fov_rad / 2)
+        aspect_ratio = viewport_w / viewport_h
         
-        # Normalized device coordinates [-1, 1]
-        x_ndc = x_cam / (z_cam * tan_half_fov)
+        # Normalized device coordinates [-1, 1] with aspect ratio correction
+        x_ndc = x_cam / (z_cam * tan_half_fov * aspect_ratio)
         y_ndc = y_cam / (z_cam * tan_half_fov)
         
         # Convert to screen coordinates
@@ -245,10 +246,11 @@ class TerrainMesh:
         elevation_rad = math.radians(sun_elevation)
         azimuth_rad = math.radians(sun_azimuth)
         
-        # Calculate sun position relative to observer
-        sun_x = observer_lon * self.scale_horizontal + sun_distance * math.sin(azimuth_rad) * math.cos(elevation_rad)
-        sun_y = observer_lat * self.scale_horizontal + sun_distance * math.cos(azimuth_rad) * math.cos(elevation_rad)
-        sun_z = observer_alt + sun_distance * math.sin(elevation_rad)
+        # Calculate sun position relative to observer (camera is at origin)
+        # Use relative positioning instead of absolute world coordinates
+        sun_x = sun_distance * math.sin(azimuth_rad) * math.cos(elevation_rad)
+        sun_y = sun_distance * math.cos(azimuth_rad) * math.cos(elevation_rad)
+        sun_z = sun_distance * math.sin(elevation_rad)
         
         sun_center = Vector3(sun_x, sun_y, sun_z)
         
@@ -256,7 +258,11 @@ class TerrainMesh:
         sun_color = self._calculate_sun_color(sun_elevation)
         
         # Generate 12-sided polygon (dodecagon) made of triangles
-        sun_radius = 500.0  # Proportionally smaller radius for closer distance
+        # Make sun larger than realistic for better visibility in game
+        angular_radius_deg = 2.0  # Much larger than real sun's 0.25° for game visibility
+        angular_radius_rad = math.radians(angular_radius_deg)
+        sun_radius = sun_distance * math.tan(angular_radius_rad)  # Game-sized for visibility
+        print(f"Debug: sun radius = {sun_radius:.1f} units for {angular_radius_deg}° angular radius at {sun_distance:.0f}m distance")
         self._generate_sun_dodecagon(sun_center, sun_radius, sun_color, elevation_rad, azimuth_rad)
         
         print(f"TerrainMesh: Generated 3D sun at elevation {sun_elevation:.1f}°, azimuth {sun_azimuth:.1f}° with {len(self.sun_triangles)} triangles")
@@ -573,9 +579,10 @@ class TerrainMesh:
             distance = camera.get_distance_to(triangle.center)
             all_triangles.append((triangle, 'land', 'inner', distance))
         
-        # Add sun triangles - render last (closest to camera)
+        # Add sun triangles - render first (background/sky layer)
         for triangle in self.sun_triangles:
-            distance = camera.get_distance_to(triangle.center)
+            # Use negative distance to ensure sun renders as background (first)
+            distance = -999999999.0  # Negative distance for background rendering
             all_triangles.append((triangle, 'sun', 'sun', distance))
         
         # Sort by distance (back to front) then by layer (outer first, then inner)
@@ -814,3 +821,11 @@ def create_camera_from_airship_state(game_state: Dict[str, Any], view_angle: flo
     target_pos = Vector3(target_x, target_y, target_z)
     
     return Camera3D(camera_pos, target_pos)
+
+
+def _azimuth_to_compass_direction(azimuth: float) -> str:
+    """Convert azimuth angle to compass direction string"""
+    directions = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", 
+                 "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"]
+    index = int((azimuth + 11.25) / 22.5) % 16
+    return directions[index]
