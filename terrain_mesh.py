@@ -181,7 +181,6 @@ class TerrainMesh:
     def generate_dual_lod_mesh_around_position(self, center_lat: float, center_lon: float, 
                                              camera_altitude: float):
         """Generate dual-LOD terrain mesh around a position with seamless coastlines"""
-        print(f"TerrainMesh: Generating dual-LOD mesh at {center_lat:.3f}°, {center_lon:.3f}° alt={camera_altitude:.0f}m")
         
         # Clear all triangle lists
         self.inner_land_triangles.clear()
@@ -201,9 +200,6 @@ class TerrainMesh:
         self._generate_mesh_layer(center_lat, center_lon, camera_altitude,
                                  self.outer_radius_deg, self.outer_mesh_resolution,
                                  self.outer_land_triangles, self.outer_sea_triangles, "outer")
-        
-        print(f"TerrainMesh: Generated inner mesh: {len(self.inner_land_triangles)} land, {len(self.inner_sea_triangles)} sea")
-        print(f"TerrainMesh: Generated outer mesh: {len(self.outer_land_triangles)} land, {len(self.outer_sea_triangles)} sea")
     
     def generate_3d_sun(self, observer_lat: float, observer_lon: float, observer_alt: float, 
                        time_info: dict):
@@ -263,8 +259,6 @@ class TerrainMesh:
         angular_radius_rad = math.radians(angular_radius_deg)
         sun_radius = sun_distance * math.tan(angular_radius_rad)  # Game-sized for visibility
         self._generate_sun_dodecagon(sun_center, sun_radius, sun_color, elevation_rad, azimuth_rad)
-        
-        print(f"TerrainMesh: Generated 3D sun at elevation {sun_elevation:.1f}°, azimuth {sun_azimuth:.1f}° with {len(self.sun_triangles)} triangles")
     
     def _calculate_sun_elevation_azimuth(self, observer_lat: float, observer_lon: float, 
                                        subsolar_lat: float, subsolar_lon: float) -> Tuple[float, float]:
