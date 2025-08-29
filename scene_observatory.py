@@ -54,19 +54,27 @@ class ObservatoryScene:
         # Load world map for texture mapping
         self.world_map = None
         import os
-        world_map_path = "assets/png/world-map.png"
-        print(f"Observatory: Looking for world map at: {world_map_path}")
-        print(f"Observatory: Current working directory: {os.getcwd()}")
-        print(f"Observatory: World map exists: {os.path.exists(world_map_path)}")
-        if os.path.exists("assets"):
-            print(f"Observatory: Assets directory contents: {os.listdir('assets')}")
-            if os.path.exists("assets/png"):
-                print(f"Observatory: PNG directory contents: {os.listdir('assets/png')[:10]}")  # First 10 files
         try:
+            from main import get_assets_dir
+            assets_dir = get_assets_dir()
+            world_map_path = os.path.join(assets_dir, "png", "world-map.png")
+            print(f"Observatory: Looking for world map at: {world_map_path}")
+            print(f"Observatory: Current working directory: {os.getcwd()}")
+            print(f"Observatory: Assets directory: {assets_dir}")
+            print(f"Observatory: World map exists: {os.path.exists(world_map_path)}")
+            if os.path.exists(assets_dir):
+                print(f"Observatory: Assets directory contents: {os.listdir(assets_dir)}")
+                png_dir = os.path.join(assets_dir, "png")
+                if os.path.exists(png_dir):
+                    png_files = os.listdir(png_dir)[:10]  # First 10 files
+                    print(f"Observatory: PNG directory contents: {png_files}")
+            
             self.world_map = pygame.image.load(world_map_path)
             print(f"Observatory: Successfully loaded world map: {self.world_map.get_size()}")
         except Exception as e:
             print(f"Observatory: Could not load world-map.png: {e}")
+            import traceback
+            traceback.print_exc()
         
         # Initialize terrain mesh if heightmap is available
         self._init_terrain_mesh()
