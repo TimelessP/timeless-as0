@@ -9,9 +9,9 @@ from heightmap import HeightMap
 
 # Debug mode for tracking rare edge cases
 DEBUG_SKY_FILLING = False  # Disabled after confirming it works
-DEBUG_CULLING = True
+DEBUG_CULLING = False
 # Special tracking for rare edge cases that slip through
-TRACK_EDGE_CASES = True
+TRACK_EDGE_CASES = False
 
 
 class Vector3:
