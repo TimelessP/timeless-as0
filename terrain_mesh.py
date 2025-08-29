@@ -102,14 +102,48 @@ class Camera3D:
         # Calculate distance to vertex
         distance = relative_pos.length()
         
-        # For very close terrain (within 200m), disable all culling completely
-        # This prevents close triangles from being culled when landing or flying low
-        if distance < 200.0:
-            # Absolutely no culling at all for very close terrain
-            pass
+        # Proper view frustum culling instead of distance-based protection
+        # Define the view frustum parameters
+        fov_rad = math.radians(fov_deg)
+        tan_half_fov = math.tan(fov_rad / 2)
+        aspect_ratio = viewport_w / viewport_h
+        
+        # Near and far plane distances
+        near_plane = 1.0  # Very close near plane for ground terrain
+        far_plane = 50000.0  # Far plane
+        
+        # Check if vertex is within the view frustum (with generous margins for triangle clipping)
+        def is_in_view_frustum_generous(x_cam, y_cam, z_cam, margin_multiplier=2.0):
+            # Must be in front of near plane and behind far plane
+            if z_cam < near_plane or z_cam > far_plane:
+                return False
+            
+            # Calculate frustum bounds at this z distance with generous margins
+            frustum_half_height = z_cam * tan_half_fov * margin_multiplier
+            frustum_half_width = frustum_half_height * aspect_ratio
+            
+            # Check if within expanded horizontal and vertical frustum bounds
+            if abs(x_cam) > frustum_half_width or abs(y_cam) > frustum_half_height:
+                return False
+                
+            return True
+        
+        # For close terrain, be very permissive to ensure triangle edges are captured
+        triangle_edge_distance = 470.0  # Distance between triangle centers in ultra mesh
+        close_terrain_radius = triangle_edge_distance * 3.0  # 3 triangle lengths
+        
+        if distance < close_terrain_radius:
+            # For close terrain, use very generous frustum margins for triangle clipping
+            # Only cull if very far outside the view frustum
+            if z_cam < near_plane:
+                return None  # Still cull if behind near plane
+                
+            # Use 3x frustum expansion for close terrain to capture triangle edges
+            if not is_in_view_frustum_generous(x_cam, y_cam, z_cam, margin_multiplier=3.0):
+                return None
         else:
-            # Only cull vertices that are way behind camera for distant terrain
-            if z_cam < -1000.0:  # Only cull if very far behind camera
+            # For distant terrain, use generous frustum culling with 2x margin
+            if not is_in_view_frustum_generous(x_cam, y_cam, z_cam, margin_multiplier=2.0):
                 return None
         
         # Perspective projection with aspect ratio correction
@@ -118,12 +152,12 @@ class Camera3D:
         aspect_ratio = viewport_w / viewport_h
         
         # Handle very close vertices and negative z_cam more carefully
-        # For very close terrain, use absolute distance to prevent division issues
-        if distance < 200.0:
-            # For very close terrain, use the distance as z_cam to prevent issues
+        # Only use distance-based z_cam for vertices that are very close AND behind camera
+        if distance < close_terrain_radius and z_cam <= 0.1:
+            # For terrain within close terrain radius that's behind camera, use distance to prevent division issues
             z_cam_safe = max(distance, 0.1)
         else:
-            # For normal terrain, use regular z_cam with small minimum
+            # For normal terrain or terrain in front of camera, use regular z_cam with small minimum
             z_cam_safe = max(z_cam, 0.1)
         
         # Normalized device coordinates [-1, 1] with aspect ratio correction
@@ -134,13 +168,13 @@ class Camera3D:
         screen_x = int((x_ndc + 1) * viewport_w / 2)
         screen_y = int((1 - y_ndc) * viewport_h / 2)  # Flip Y for screen coordinates
         
-        # For vertices very close to camera, be completely permissive - NO CULLING AT ALL
+        # For vertices within close terrain, be completely permissive - but only for viewport bounds
         distance_to_camera = relative_pos.length()
-        if distance_to_camera < 200:  # Within 200m - absolutely no culling for landing safety
+        if distance_to_camera < close_terrain_radius:  # Within close terrain radius - no viewport culling
             return (screen_x, screen_y)
         
         # For medium distance terrain, still be very permissive with viewport bounds
-        if distance_to_camera < 1000:
+        if distance_to_camera < close_terrain_radius * 2:
             # For medium distance, use large margin to prevent corner culling
             extended_margin = max(viewport_w, viewport_h) * 5
         else:
