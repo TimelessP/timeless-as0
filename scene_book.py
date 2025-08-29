@@ -241,23 +241,26 @@ class BookScene:
                 surface = pygame.image.load(local_path)
                 return surface.convert_alpha()
             else:
-                # Local file path - resolve relative to the markdown file
+                # Local file path - resolve relative to the markdown file's directory
                 if not os.path.isabs(image_path):
-                    # Get the directory containing the markdown file
-                    book_path = self.book["source"]
+                    # Use the actual loaded markdown path if available, otherwise fall back to book ref
+                    book_path = getattr(self, '_loaded_book_path', self.book.get('source'))
+                    book_path = os.path.abspath(book_path)
                     book_dir = os.path.dirname(book_path)
-                    # Resolve the relative path
+
+                    # Resolve the relative path against the markdown file directory
                     full_path = os.path.normpath(os.path.join(book_dir, image_path))
-                    # Security check: ensure the resolved path is within the assets directory
-                    assets_root = os.path.normpath(os.path.dirname(get_assets_path("")))
+                    full_path = os.path.abspath(full_path)
+
+                    # Security: only allow traversal within the markdown file's parent directory
+                    # (e.g. assets/books -> assets is allowed; ~/Documents/AirshipZero/books -> ~/Documents/AirshipZero allowed)
+                    allowed_root = os.path.abspath(os.path.join(book_dir, os.pardir))
                     try:
-                        # Check if the resolved path is within assets directory
-                        os.path.relpath(full_path, assets_root)
-                        if not full_path.startswith(assets_root):
-                            print(f"Security error: Image path '{image_path}' resolves outside assets directory")
+                        if os.path.commonpath([allowed_root, full_path]) != allowed_root:
+                            print(f"Security error: Image path '{image_path}' resolves outside allowed root '{allowed_root}'")
                             return None
                     except ValueError:
-                        # os.path.relpath raises ValueError if paths are on different drives (Windows)
+                        # Different drives or invalid paths
                         print(f"Security error: Image path '{image_path}' is invalid")
                         return None
                 else:
