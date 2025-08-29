@@ -239,18 +239,18 @@ class TerrainMesh:
         if sun_elevation <= 0:
             return  # Sun is below horizon
         
-        # Calculate 3D position for sun (place it far away but within camera range)
-        sun_distance = 10000.0  # 10km away for rendering purposes - much closer but still distant
+        # Calculate 3D position for sun in absolute world coordinates
+        sun_distance = 10000.0  # 10km away for rendering purposes
         
-        # Convert spherical coordinates to 3D position
+        # Convert spherical coordinates to 3D position in absolute world space
         elevation_rad = math.radians(sun_elevation)
         azimuth_rad = math.radians(sun_azimuth)
         
-        # Calculate sun position relative to observer (camera is at origin)
-        # Use relative positioning instead of absolute world coordinates
-        sun_x = sun_distance * math.sin(azimuth_rad) * math.cos(elevation_rad)
-        sun_y = sun_distance * math.cos(azimuth_rad) * math.cos(elevation_rad)
-        sun_z = sun_distance * math.sin(elevation_rad)
+        # Calculate sun position in absolute world coordinates (North=+Y, East=+X, Up=+Z)
+        # Azimuth 0° = North, 90° = East, 180° = South, 270° = West
+        sun_x = sun_distance * math.sin(azimuth_rad) * math.cos(elevation_rad)  # East/West
+        sun_y = sun_distance * math.cos(azimuth_rad) * math.cos(elevation_rad)  # North/South
+        sun_z = sun_distance * math.sin(elevation_rad)  # Up/Down
         
         sun_center = Vector3(sun_x, sun_y, sun_z)
         
@@ -266,6 +266,7 @@ class TerrainMesh:
         self._generate_sun_dodecagon(sun_center, sun_radius, sun_color, elevation_rad, azimuth_rad)
         
         print(f"TerrainMesh: Generated 3D sun at elevation {sun_elevation:.1f}°, azimuth {sun_azimuth:.1f}° with {len(self.sun_triangles)} triangles")
+        print(f"Sun world position: ({sun_x:.1f}, {sun_y:.1f}, {sun_z:.1f}) - should be fixed regardless of ship heading")
     
     def _calculate_sun_elevation_azimuth(self, observer_lat: float, observer_lon: float, 
                                        subsolar_lat: float, subsolar_lon: float) -> Tuple[float, float]:

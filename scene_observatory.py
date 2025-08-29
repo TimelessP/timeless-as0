@@ -266,7 +266,7 @@ class ObservatoryScene:
         """Center the camera view to face the airship's current heading"""
         game_state = self.simulator.get_state()
         ship_heading = game_state["navigation"]["position"]["heading"]
-        self.view_angle = ship_heading  # Set to actual ship heading, not 0°
+        self.view_angle = 0.0  # Reset to forward (relative to ship heading)
         self.tilt_angle = 0.0  # Reset tilt to level
         print(f"Observatory: Camera centered on ship's heading ({ship_heading:.1f}°)")
     
@@ -300,7 +300,7 @@ class ObservatoryScene:
         
         # View angle is relative to ship heading: center = ship_heading, left/right = ±90°
         relative_angle = (rel_x - 0.5) * 2.0 * max_rotation  # -90° to +90° relative to ship
-        self.view_angle = ship_heading + relative_angle  # Absolute angle from North
+        self.view_angle = relative_angle  # Store relative angle, not absolute
         self.tilt_angle = -(rel_y - 0.5) * 2.0 * max_tilt     # -30° to +30° (inverted Y)
     
     def _regenerate_mesh(self):
@@ -700,8 +700,11 @@ class ObservatoryScene:
             title_x = 8
             surface.blit(title_text, (title_x, 4))
             
-            # Show current view direction as compass heading
-            view_compass = self._angle_to_compass(self.view_angle)
+            # Show current view direction as compass heading (absolute direction)
+            game_state = self.simulator.get_state()
+            ship_heading = game_state["navigation"]["position"]["heading"]
+            absolute_view_angle = (ship_heading + self.view_angle) % 360.0
+            view_compass = self._angle_to_compass(absolute_view_angle)
             compass_text = self.font.render(f"VIEW: {view_compass}", self.is_text_antialiased, TEXT_COLOR)
             compass_x = 320 - compass_text.get_width() - 8
             surface.blit(compass_text, (compass_x, 4))
