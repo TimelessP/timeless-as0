@@ -42,14 +42,19 @@ class Vector3:
     
     def length(self) -> float:
         return math.sqrt(self.x ** 2 + self.y ** 2 + self.z ** 2)
+    
+    def __str__(self):
+        return f"({self.x:.1f}, {self.y:.1f}, {self.z:.1f})"
 
 
 class TerrainVertex:
     """Vertex in 3D terrain mesh with position, normal, and texture color"""
-    def __init__(self, position: Vector3, normal: Vector3, color: Tuple[int, int, int]):
+    def __init__(self, position: Vector3, normal: Vector3, color: Tuple[int, int, int], lat: float = 0.0, lon: float = 0.0):
         self.position = position
         self.normal = normal
         self.color = color
+        self.lat = lat
+        self.lon = lon
 
 
 class TerrainTriangle:
@@ -139,6 +144,9 @@ class TerrainMesh:
         self.outer_land_triangles: List[TerrainTriangle] = []
         self.outer_sea_triangles: List[TerrainTriangle] = []
         
+        # 3D sun mesh
+        self.sun_triangles: List[TerrainTriangle] = []
+        
         # Mesh parameters
         self.inner_mesh_resolution = 48  # Higher resolution for nearby terrain
         self.outer_mesh_resolution = 24  # Half resolution for distant terrain
@@ -196,6 +204,152 @@ class TerrainMesh:
         print(f"TerrainMesh: Generated inner mesh: {len(self.inner_land_triangles)} land, {len(self.inner_sea_triangles)} sea")
         print(f"TerrainMesh: Generated outer mesh: {len(self.outer_land_triangles)} land, {len(self.outer_sea_triangles)} sea")
     
+    def generate_3d_sun(self, observer_lat: float, observer_lon: float, observer_alt: float, 
+                       time_info: dict):
+        """Generate 3D sun mesh based on astronomical position"""
+        import time
+        import datetime
+        
+        # Clear existing sun triangles
+        self.sun_triangles.clear()
+        
+        # Calculate sun's subsolar point (where sun is directly overhead on Earth)
+        utc_time = time.gmtime()
+        utc_hours = utc_time.tm_hour + utc_time.tm_min / 60.0 + utc_time.tm_sec / 3600.0
+        utc_date = datetime.date(utc_time.tm_year, utc_time.tm_mon, utc_time.tm_mday)
+        
+        # Solar longitude (15 degrees per hour westward from Greenwich)
+        subsolar_lon = -15.0 * (utc_hours - 12.0)
+        subsolar_lon = ((subsolar_lon + 180) % 360) - 180  # Normalize to [-180, 180]
+        
+        # Solar latitude based on Earth's axial tilt and day of year
+        max_declination = 23.44  # Earth's axial tilt in degrees
+        day_of_year = utc_date.timetuple().tm_yday
+        
+        # Summer solstice is approximately day 172 (June 21st)
+        declination_angle = (day_of_year - 172) * (2 * math.pi / 365.25)
+        subsolar_lat = max_declination * math.cos(declination_angle)
+        
+        # Calculate sun's position in local sky coordinates
+        sun_elevation, sun_azimuth = self._calculate_sun_elevation_azimuth(
+            observer_lat, observer_lon, subsolar_lat, subsolar_lon)
+        
+        # Only generate sun if it's above horizon
+        if sun_elevation <= 0:
+            return  # Sun is below horizon
+        
+        # Calculate 3D position for sun (place it far away but within camera range)
+        sun_distance = 10000.0  # 10km away for rendering purposes - much closer but still distant
+        
+        # Convert spherical coordinates to 3D position
+        elevation_rad = math.radians(sun_elevation)
+        azimuth_rad = math.radians(sun_azimuth)
+        
+        # Calculate sun position relative to observer
+        sun_x = observer_lon * self.scale_horizontal + sun_distance * math.sin(azimuth_rad) * math.cos(elevation_rad)
+        sun_y = observer_lat * self.scale_horizontal + sun_distance * math.cos(azimuth_rad) * math.cos(elevation_rad)
+        sun_z = observer_alt + sun_distance * math.sin(elevation_rad)
+        
+        sun_center = Vector3(sun_x, sun_y, sun_z)
+        
+        # Calculate sun color based on elevation (white high, orange near horizon)
+        sun_color = self._calculate_sun_color(sun_elevation)
+        
+        # Generate 12-sided polygon (dodecagon) made of triangles
+        sun_radius = 500.0  # Proportionally smaller radius for closer distance
+        self._generate_sun_dodecagon(sun_center, sun_radius, sun_color, elevation_rad, azimuth_rad)
+        
+        print(f"TerrainMesh: Generated 3D sun at elevation {sun_elevation:.1f}°, azimuth {sun_azimuth:.1f}° with {len(self.sun_triangles)} triangles")
+    
+    def _calculate_sun_elevation_azimuth(self, observer_lat: float, observer_lon: float, 
+                                       subsolar_lat: float, subsolar_lon: float) -> Tuple[float, float]:
+        """Calculate sun's elevation and azimuth from observer position"""
+        # Convert to radians
+        obs_lat_rad = math.radians(observer_lat)
+        obs_lon_rad = math.radians(observer_lon)
+        sun_lat_rad = math.radians(subsolar_lat)
+        sun_lon_rad = math.radians(subsolar_lon)
+        
+        # Calculate angular distance between observer and subsolar point
+        dlon = sun_lon_rad - obs_lon_rad
+        
+        # Calculate sun elevation using spherical trigonometry
+        sin_elevation = (math.sin(obs_lat_rad) * math.sin(sun_lat_rad) + 
+                        math.cos(obs_lat_rad) * math.cos(sun_lat_rad) * math.cos(dlon))
+        elevation = math.degrees(math.asin(max(-1, min(1, sin_elevation))))
+        
+        # Calculate sun azimuth
+        if math.cos(sun_lat_rad) == 0:
+            azimuth = 180.0 if subsolar_lat > observer_lat else 0.0
+        else:
+            sin_azimuth = math.sin(dlon) * math.cos(sun_lat_rad) / math.cos(math.radians(elevation))
+            cos_azimuth = ((math.sin(sun_lat_rad) - math.sin(obs_lat_rad) * math.sin(math.radians(elevation))) /
+                          (math.cos(obs_lat_rad) * math.cos(math.radians(elevation))))
+            
+            azimuth = math.degrees(math.atan2(sin_azimuth, cos_azimuth))
+            azimuth = (azimuth + 360) % 360  # Normalize to 0-360
+        
+        return elevation, azimuth
+    
+    def _calculate_sun_color(self, elevation: float) -> Tuple[int, int, int]:
+        """Calculate sun color based on elevation angle"""
+        # White at high elevations, orange near horizon
+        # Non-linear transition kicks in as it approaches horizon
+        
+        if elevation >= 60:
+            # High in sky - pure white
+            return (255, 255, 255)
+        elif elevation >= 30:
+            # Medium height - slight warmth
+            factor = (elevation - 30) / 30  # 0 to 1
+            return (255, int(255 * (0.9 + 0.1 * factor)), int(255 * (0.8 + 0.2 * factor)))
+        elif elevation >= 10:
+            # Getting lower - more orange
+            factor = (elevation - 10) / 20  # 0 to 1
+            return (255, int(255 * (0.7 + 0.2 * factor)), int(255 * (0.4 + 0.4 * factor)))
+        else:
+            # Near horizon - deep orange
+            factor = max(0, elevation / 10)  # 0 to 1
+            return (255, int(255 * (0.5 + 0.2 * factor)), int(255 * (0.2 + 0.2 * factor)))
+    
+    def _generate_sun_dodecagon(self, center: Vector3, radius: float, color: Tuple[int, int, int],
+                              elevation_rad: float, azimuth_rad: float):
+        """Generate 12-sided sun polygon made of triangles"""
+        # Create 12 vertices around the center in a plane perpendicular to view direction
+        vertices = []
+        
+        # Create local coordinate system for the sun plane
+        # Sun faces toward observer
+        forward = Vector3(-math.sin(azimuth_rad) * math.cos(elevation_rad),
+                         -math.cos(azimuth_rad) * math.cos(elevation_rad),
+                         -math.sin(elevation_rad)).normalize()
+        
+        # Create perpendicular vectors for the sun plane
+        up = Vector3(0, 0, 1)  # World up
+        right = forward.cross(up).normalize()
+        plane_up = right.cross(forward).normalize()
+        
+        # Generate 12 vertices in a circle
+        for i in range(12):
+            angle = i * 2 * math.pi / 12
+            local_x = radius * math.cos(angle)
+            local_y = radius * math.sin(angle)
+            
+            # Transform to world coordinates
+            vertex_pos = center + right * local_x + plane_up * local_y
+            # Normal points toward observer (same as forward direction)
+            vertex_normal = forward
+            vertex = TerrainVertex(vertex_pos, vertex_normal, color, 0.0, 0.0)  # Sun uses default lat/lon
+            vertices.append(vertex)
+        
+        # Create triangles from center to each edge (12 triangles total)
+        center_vertex = TerrainVertex(center, forward, color)
+        
+        for i in range(12):
+            next_i = (i + 1) % 12
+            triangle = TerrainTriangle(center_vertex, vertices[i], vertices[next_i])
+            self.sun_triangles.append(triangle)
+    
     def _generate_mesh_layer(self, center_lat: float, center_lon: float, camera_altitude: float,
                            radius_deg: float, resolution: int, land_triangles: List[TerrainTriangle], 
                            sea_triangles: List[TerrainTriangle], layer_name: str):
@@ -244,14 +398,14 @@ class TerrainMesh:
                 # Determine vertex type and create appropriate vertex
                 if elevation > self.sea_level:
                     # Land vertex
-                    vertices[(i, j)] = TerrainVertex(position, normal, color)
+                    vertices[(i, j)] = TerrainVertex(position, normal, color, lat, lon)
                 else:
                     # Sea vertex - create at sea surface
                     z_sea = (self.sea_surface_elevation - camera_altitude) * self.scale_vertical
                     position_sea = Vector3(x, y, z_sea)
                     normal_sea = Vector3(0, 0, 1)
                     sea_color = self._get_sea_color(color, elevation)
-                    vertices[(i, j)] = TerrainVertex(position_sea, normal_sea, sea_color)
+                    vertices[(i, j)] = TerrainVertex(position_sea, normal_sea, sea_color, lat, lon)
         
         # Generate all triangles in grid (no gaps - ensure continuous coverage)
         for i in range(resolution):
@@ -265,6 +419,10 @@ class TerrainMesh:
                 # Create triangles for this quad
                 triangle1 = TerrainTriangle(v1, v2, v3)
                 triangle2 = TerrainTriangle(v2, v4, v3)
+                
+                # Update triangle colors based on centroid sampling for better coastline rendering
+                self._update_triangle_color_from_centroid(triangle1, center_lat, center_lon)
+                self._update_triangle_color_from_centroid(triangle2, center_lat, center_lon)
                 
                 # Determine if triangles are primarily land or sea based on vertex elevations
                 quad_elevations = [
@@ -281,6 +439,25 @@ class TerrainMesh:
                     land_triangles.extend([triangle1, triangle2])
                 else:  # Majority sea
                     sea_triangles.extend([triangle1, triangle2])
+    
+    def _update_triangle_color_from_centroid(self, triangle, center_lat, center_lon):
+        """
+        Update all vertices in a triangle to use the color sampled from the triangle's centroid.
+        This provides more consistent colors across triangles, especially for coastlines.
+        """
+        # Calculate triangle centroid in geographic coordinates
+        total_lat = triangle.v1.lat + triangle.v2.lat + triangle.v3.lat
+        total_lon = triangle.v1.lon + triangle.v2.lon + triangle.v3.lon
+        centroid_lat = total_lat / 3.0
+        centroid_lon = total_lon / 3.0
+        
+        # Sample color at the centroid
+        centroid_color = self._sample_world_map_color_corrected(centroid_lat, centroid_lon)
+        
+        # Apply this color to all vertices in the triangle
+        triangle.v1.color = centroid_color
+        triangle.v2.color = centroid_color
+        triangle.v3.color = centroid_color
     
     def _sample_world_map_color_corrected(self, lat: float, lon: float) -> Tuple[int, int, int]:
         """Sample color from world map with correct coordinate mapping (0,0 lat/lon at center)"""
@@ -396,6 +573,11 @@ class TerrainMesh:
             distance = camera.get_distance_to(triangle.center)
             all_triangles.append((triangle, 'land', 'inner', distance))
         
+        # Add sun triangles - render last (closest to camera)
+        for triangle in self.sun_triangles:
+            distance = camera.get_distance_to(triangle.center)
+            all_triangles.append((triangle, 'sun', 'sun', distance))
+        
         # Sort by distance (back to front) then by layer (outer first, then inner)
         sorted_triangles = sorted(all_triangles, 
                                 key=lambda t: (t[3], t[2] == 'inner'),  # Distance first, then layer priority
@@ -410,9 +592,11 @@ class TerrainMesh:
             # Render each triangle with layer-specific handling
             for triangle, triangle_type, layer, distance in sorted_triangles:
                 # Skip distant triangles that are too far or behind camera
-                if distance > 100000.0:  # 100km max draw distance
+                # Use higher limit for sun triangles since they're at astronomical distances
+                max_distance = 5000000.0 if triangle_type == 'sun' else 100000.0
+                if distance > max_distance:
                     continue
-                    
+                
                 self._render_triangle(surface, triangle, camera, viewport_x, viewport_y, 
                                     viewport_w, viewport_h, triangle_type, layer)
         finally:
@@ -420,14 +604,19 @@ class TerrainMesh:
             surface.set_clip(old_clip)
     
     def _has_any_triangles(self) -> bool:
-        """Check if any triangles exist in either LOD level"""
+        """Check if any triangles exist in either LOD level or sun"""
         return (len(self.inner_land_triangles) > 0 or len(self.inner_sea_triangles) > 0 or
-                len(self.outer_land_triangles) > 0 or len(self.outer_sea_triangles) > 0)
+                len(self.outer_land_triangles) > 0 or len(self.outer_sea_triangles) > 0 or
+                len(self.sun_triangles) > 0)
     
     def _render_triangle(self, surface: pygame.Surface, triangle: TerrainTriangle, camera: Camera3D,
                         viewport_x: int, viewport_y: int, viewport_w: int, viewport_h: int, 
                         triangle_type: str = 'land', layer: str = 'inner'):
         """Render a single triangle to the surface with layer and type-specific lighting"""
+        
+        if triangle_type == 'sun':
+            print(f"Rendering sun triangle at center {triangle.center}")
+        
         # Project vertices to screen coordinates with proper clipping
         screen_coords = []
         vertices_behind_camera = 0
@@ -458,9 +647,16 @@ class TerrainMesh:
             if len(valid_coords) < 2:
                 return  # Can't form a meaningful triangle with less than 2 visible vertices
                 
-            # Check if any valid vertex is within extended viewport bounds
-            viewport_bounds = pygame.Rect(viewport_x - 100, viewport_y - 100, 
-                                        viewport_w + 200, viewport_h + 200)
+            # For sun triangles, be much more permissive with viewport bounds
+            if triangle_type == 'sun':
+                # Sun can be anywhere in the sky - use much larger bounds
+                viewport_bounds = pygame.Rect(viewport_x - 1000, viewport_y - 1000, 
+                                            viewport_w + 2000, viewport_h + 2000)
+            else:
+                # For terrain triangles, use conservative bounds
+                viewport_bounds = pygame.Rect(viewport_x - 100, viewport_y - 100, 
+                                            viewport_w + 200, viewport_h + 200)
+            
             any_visible = False
             for coord in valid_coords:
                 if viewport_bounds.collidepoint(coord):
@@ -470,9 +666,11 @@ class TerrainMesh:
             if not any_visible:
                 return
                 
-            # For partially clipped triangles, only use the valid coordinates
-            # Skip rendering to avoid artifacts from invalid coordinates
-            return
+            # For sun triangles, be more permissive with partial clipping
+            if triangle_type != 'sun':
+                # For terrain triangles, skip partial clipping to avoid artifacts
+                return
+            # Sun triangles can handle partial clipping better due to their simple geometry
         
         # At this point, all vertices are valid - proceed with normal rendering
         final_screen_coords = [coord for coord in screen_coords if coord is not None]
@@ -481,7 +679,17 @@ class TerrainMesh:
             return
         
         # Calculate triangle color with lighting
-        if triangle_type == 'sea':
+        if triangle_type == 'sun':
+            # Sun triangles - no lighting, use vertex color directly
+            avg_color = (
+                (triangle.v1.color[0] + triangle.v2.color[0] + triangle.v3.color[0]) // 3,
+                (triangle.v1.color[1] + triangle.v2.color[1] + triangle.v3.color[1]) // 3,
+                (triangle.v1.color[2] + triangle.v2.color[2] + triangle.v3.color[2]) // 3
+            )
+            # No atmospheric haze for sun
+            final_color = avg_color
+            
+        elif triangle_type == 'sea':
             # Sea surface lighting - more uniform, slight wave effect
             light_direction = Vector3(0.2, 0.3, 0.9).normalize()  # More vertical light
             light_intensity = max(0.7, 0.85 + 0.15 * triangle.normal.dot(light_direction))  # Higher ambient
@@ -490,36 +698,62 @@ class TerrainMesh:
             shimmer = 0.05 * math.sin(triangle.center.x * 0.0005 + triangle.center.y * 0.0005)
             light_intensity = min(1.0, light_intensity + shimmer)
             
+            # Use average color of vertices
+            avg_color = (
+                (triangle.v1.color[0] + triangle.v2.color[0] + triangle.v3.color[0]) // 3,
+                (triangle.v1.color[1] + triangle.v2.color[1] + triangle.v3.color[1]) // 3,
+                (triangle.v1.color[2] + triangle.v2.color[2] + triangle.v3.color[2]) // 3
+            )
+            
+            # Apply atmospheric haze for outer layer
+            if layer == 'outer':
+                haze_factor = 0.25
+                haze_color = (160, 180, 200)  # Light blue-grey atmospheric haze
+                avg_color = (
+                    int(avg_color[0] * (1 - haze_factor) + haze_color[0] * haze_factor),
+                    int(avg_color[1] * (1 - haze_factor) + haze_color[1] * haze_factor),
+                    int(avg_color[2] * (1 - haze_factor) + haze_color[2] * haze_factor)
+                )
+                # Reduce lighting contrast for distant objects
+                light_intensity = 0.6 + (light_intensity - 0.6) * 0.7
+            
+            # Apply lighting
+            final_color = (
+                int(avg_color[0] * light_intensity),
+                int(avg_color[1] * light_intensity),
+                int(avg_color[2] * light_intensity)
+            )
+            
         else:
             # Land lighting - more dramatic shadows but not too dark
             light_direction = Vector3(0.5, 0.3, 0.8).normalize()  # Sunlight direction
             light_intensity = max(0.4, triangle.normal.dot(light_direction))  # Higher ambient for visibility
-        
-        # Use average color of vertices
-        avg_color = (
-            (triangle.v1.color[0] + triangle.v2.color[0] + triangle.v3.color[0]) // 3,
-            (triangle.v1.color[1] + triangle.v2.color[1] + triangle.v3.color[1]) // 3,
-            (triangle.v1.color[2] + triangle.v2.color[2] + triangle.v3.color[2]) // 3
-        )
-        
-        # Apply atmospheric haze for outer layer
-        if layer == 'outer':
-            haze_factor = 0.25
-            haze_color = (160, 180, 200)  # Light blue-grey atmospheric haze
+            
+            # Use average color of vertices
             avg_color = (
-                int(avg_color[0] * (1 - haze_factor) + haze_color[0] * haze_factor),
-                int(avg_color[1] * (1 - haze_factor) + haze_color[1] * haze_factor),
-                int(avg_color[2] * (1 - haze_factor) + haze_color[2] * haze_factor)
+                (triangle.v1.color[0] + triangle.v2.color[0] + triangle.v3.color[0]) // 3,
+                (triangle.v1.color[1] + triangle.v2.color[1] + triangle.v3.color[1]) // 3,
+                (triangle.v1.color[2] + triangle.v2.color[2] + triangle.v3.color[2]) // 3
             )
-            # Reduce lighting contrast for distant objects
-            light_intensity = 0.6 + (light_intensity - 0.6) * 0.7
-        
-        # Apply lighting
-        final_color = (
-            int(avg_color[0] * light_intensity),
-            int(avg_color[1] * light_intensity),
-            int(avg_color[2] * light_intensity)
-        )
+            
+            # Apply atmospheric haze for outer layer
+            if layer == 'outer':
+                haze_factor = 0.25
+                haze_color = (160, 180, 200)  # Light blue-grey atmospheric haze
+                avg_color = (
+                    int(avg_color[0] * (1 - haze_factor) + haze_color[0] * haze_factor),
+                    int(avg_color[1] * (1 - haze_factor) + haze_color[1] * haze_factor),
+                    int(avg_color[2] * (1 - haze_factor) + haze_color[2] * haze_factor)
+                )
+                # Reduce lighting contrast for distant objects
+                light_intensity = 0.6 + (light_intensity - 0.6) * 0.7
+            
+            # Apply lighting
+            final_color = (
+                int(avg_color[0] * light_intensity),
+                int(avg_color[1] * light_intensity),
+                int(avg_color[2] * light_intensity)
+            )
         
         # Draw filled triangle only (no wireframes)
         try:
@@ -538,8 +772,10 @@ class TerrainMesh:
             "inner_sea_triangles": len(self.inner_sea_triangles),
             "outer_land_triangles": len(self.outer_land_triangles),
             "outer_sea_triangles": len(self.outer_sea_triangles),
+            "sun_triangles": len(self.sun_triangles),
             "total_triangles": (len(self.inner_land_triangles) + len(self.inner_sea_triangles) + 
-                               len(self.outer_land_triangles) + len(self.outer_sea_triangles)),
+                               len(self.outer_land_triangles) + len(self.outer_sea_triangles) +
+                               len(self.sun_triangles)),
             "inner_total": len(self.inner_land_triangles) + len(self.inner_sea_triangles),
             "outer_total": len(self.outer_land_triangles) + len(self.outer_sea_triangles),
             "inner_mesh_resolution": self.inner_mesh_resolution,

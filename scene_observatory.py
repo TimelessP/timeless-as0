@@ -222,6 +222,10 @@ class ObservatoryScene:
                 # Print mesh info for debugging
                 if self._is_viewport_focused():
                     self._print_mesh_info()
+            elif event.key == pygame.K_c:
+                # Center camera view on ship's heading
+                if self._is_viewport_focused():
+                    self._center_view_on_heading()
         elif event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1:
                 logical_pos = self._screen_to_logical(event.pos)
@@ -233,13 +237,10 @@ class ObservatoryScene:
                             return self._activate_focused()
         elif event.type == pygame.MOUSEMOTION:
             if self._is_viewport_focused():
-                # Mouse motion changes view angle when viewport is focused
-                rel_x = event.rel[0] if hasattr(event, 'rel') else 0
-                rel_y = event.rel[1] if hasattr(event, 'rel') else 0
-                if rel_x != 0:
-                    self._rotate_view(rel_x * 0.5)  # Horizontal mouse movement
-                if rel_y != 0:
-                    self._tilt_view(-rel_y * 0.3)  # Vertical mouse movement (inverted)
+                # Use absolute mouse position within viewport for camera control
+                logical_pos = self._screen_to_logical(event.pos)
+                if logical_pos:
+                    self._update_camera_from_mouse_pos(logical_pos)
         elif event.type == pygame.MOUSEWHEEL:
             if self._is_viewport_focused():
                 # Mouse wheel changes tilt angle instead of rotation
@@ -261,6 +262,39 @@ class ObservatoryScene:
         """Tilt the view up/down by the specified amount"""
         self.tilt_angle = max(-30.0, min(30.0, self.tilt_angle + delta_degrees))
     
+    def _center_view_on_heading(self):
+        """Center the camera view to face the airship's current heading"""
+        self.view_angle = 0.0  # Reset to forward (ship's heading)
+        self.tilt_angle = 0.0  # Reset tilt to level
+        print("Observatory: Camera centered on ship's heading")
+    
+    def _update_camera_from_mouse_pos(self, logical_pos):
+        """Update camera angles based on absolute mouse position within viewport"""
+        # Get viewport widget dimensions
+        viewport_widget = next((w for w in self.widgets if w["id"] == "viewport"), None)
+        if not viewport_widget:
+            return
+            
+        vp_x, vp_y = viewport_widget["position"]
+        vp_w, vp_h = viewport_widget["size"]
+        
+        # Check if mouse is within viewport
+        mouse_x, mouse_y = logical_pos
+        if not (vp_x <= mouse_x <= vp_x + vp_w and vp_y <= mouse_y <= vp_y + vp_h):
+            return
+            
+        # Calculate relative position within viewport (0.0 to 1.0)
+        rel_x = (mouse_x - vp_x) / vp_w
+        rel_y = (mouse_y - vp_y) / vp_h
+        
+        # Convert to camera angles
+        # Center of viewport (0.5, 0.5) should be forward (0°) and level (0°)
+        max_rotation = 90.0  # Maximum rotation in either direction
+        max_tilt = 30.0      # Maximum tilt up/down
+        
+        self.view_angle = (rel_x - 0.5) * 2.0 * max_rotation  # -90° to +90°
+        self.tilt_angle = -(rel_y - 0.5) * 2.0 * max_tilt     # -30° to +30° (inverted Y)
+    
     def _regenerate_mesh(self):
         """Force regeneration of dual-LOD terrain mesh for current position"""
         if self.terrain_mesh and self.use_3d_rendering:
@@ -269,15 +303,22 @@ class ObservatoryScene:
             current_lat = position["latitude"]
             current_lon = position["longitude"]
             current_alt = position["altitude"]
+            time_info = game_state.get("environment", {}).get("time", {})
             
             print(f"Observatory: Regenerating dual-LOD terrain mesh around {current_lat:.3f}°, {current_lon:.3f}° at {current_alt:.0f}m")
             self.terrain_mesh.generate_dual_lod_mesh_around_position(current_lat, current_lon, current_alt)
+            
+            # Generate 3D sun
+            self.terrain_mesh.generate_3d_sun(current_lat, current_lon, current_alt, time_info)
+            
             self.mesh_last_update_pos = (current_lat, current_lon, current_alt)
             
             # Print mesh statistics
             stats = self.terrain_mesh.get_mesh_statistics()
             print(f"Observatory: Generated {stats['inner_total']} inner triangles ({stats['inner_land_triangles']} land, {stats['inner_sea_triangles']} sea)")
             print(f"Observatory: Generated {stats['outer_total']} outer triangles ({stats['outer_land_triangles']} land, {stats['outer_sea_triangles']} sea)")
+            if stats['sun_triangles'] > 0:
+                print(f"Observatory: Generated 3D sun with {stats['sun_triangles']} triangles")
             print(f"Observatory: Total triangles: {stats['total_triangles']}")
             print(f"Observatory: Altitude reference: {current_alt:.0f}m, Vertical scale: {stats['scale_vertical']:.1f}x")
     
@@ -409,7 +450,11 @@ class ObservatoryScene:
             stats = self.terrain_mesh.get_mesh_statistics()
             land_count = stats['inner_land_triangles'] + stats['outer_land_triangles']
             sea_count = stats['inner_sea_triangles'] + stats['outer_sea_triangles']
-            self._update_widget_text("mesh_status_label", f"3D: {land_count}L+{sea_count}S tri")
+            sun_count = stats['sun_triangles']
+            if sun_count > 0:
+                self._update_widget_text("mesh_status_label", f"3D: {land_count}L+{sea_count}S+{sun_count}☀ tri")
+            else:
+                self._update_widget_text("mesh_status_label", f"3D: {land_count}L+{sea_count}S tri")
         else:
             self._update_widget_text("mesh_status_label", "2D: Fallback mode")
         
@@ -425,8 +470,13 @@ class ObservatoryScene:
                 abs(current_lon - self.mesh_last_update_pos[1]) > 0.5 or
                 abs(current_alt - self.mesh_last_update_pos[2]) > 500):  # 500m altitude change
                 
+                time_info = game_state.get("environment", {}).get("time", {})
                 print(f"Observatory: Updating dual-LOD terrain mesh for position {current_lat:.3f}°, {current_lon:.3f}° at {current_alt:.0f}m")
                 self.terrain_mesh.generate_dual_lod_mesh_around_position(current_lat, current_lon, current_alt)
+                
+                # Generate 3D sun
+                self.terrain_mesh.generate_3d_sun(current_lat, current_lon, current_alt, time_info)
+                
                 self.mesh_last_update_pos = (current_lat, current_lon, current_alt)
         
         # Render the horizon viewport using 3D mesh or 2D fallback
@@ -479,7 +529,7 @@ class ObservatoryScene:
         
         # Draw overlays on top
         self._draw_forward_indicator(game_state)
-        self._draw_sun_indicator(game_state)
+        # Note: Sun is now rendered as 3D geometry, not as overlay
         self._draw_crosshair()
     
     def _render_2d_fallback(self, game_state):
