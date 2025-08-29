@@ -1127,13 +1127,12 @@ class TerrainMesh:
         
         # Only render triangles with enough valid coordinates
         # Allow partial triangles for ALL LOD levels to enable proper edge clipping
-        if len(final_coords) < 2:
-            # Need at least 2 valid vertices to render any triangle
+        if len(final_coords) < 1:
+            # Need at least 1 valid vertex to render any triangle
             return
         
-        # Skip triangles that don't have exactly 3 coordinates for proper rendering
-        if len(final_coords) != 3:
-            return
+        # For triangles with fewer than 3 vertices, we'll handle them as partial triangles
+        # Remove the exact-3-coordinate requirement to allow edge clipping
         
         # Calculate triangle color with consistent lighting across all LOD levels
         if triangle_type == 'sun':
@@ -1209,8 +1208,9 @@ class TerrainMesh:
                 int(avg_color[2] * light_intensity)
             )
         
-        # Draw filled triangle with permissive validation
-        if len(final_coords) == 3:
+        # Draw filled triangle/polygon with support for partial triangles
+        if len(final_coords) >= 3:
+            # Full triangle - use normal polygon drawing
             # Basic coordinate validation to prevent extreme rendering issues
             valid_triangle = True
             for coord in final_coords:
@@ -1220,6 +1220,21 @@ class TerrainMesh:
             
             if valid_triangle:
                 pygame.draw.polygon(surface, final_color, final_coords)
+        elif len(final_coords) == 2:
+            # Partial triangle with 2 vertices - draw as a thick line
+            valid_line = True
+            for coord in final_coords:
+                if abs(coord[0]) > 50000 or abs(coord[1]) > 50000:
+                    valid_line = False
+                    break
+            
+            if valid_line:
+                pygame.draw.line(surface, final_color, final_coords[0], final_coords[1], 2)
+        elif len(final_coords) == 1:
+            # Partial triangle with 1 vertex - draw as a small circle/point
+            coord = final_coords[0]
+            if abs(coord[0]) <= 50000 and abs(coord[1]) <= 50000:
+                pygame.draw.circle(surface, final_color, coord, 1)
     
     def get_terrain_height_at_camera(self, lat: float, lon: float) -> float:
         """Get terrain height at camera position for ground level reference"""
