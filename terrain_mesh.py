@@ -99,17 +99,17 @@ class Camera3D:
         y_cam = relative_pos.dot(self.up)
         z_cam = relative_pos.dot(self.forward)
         
-        # Very lenient culling for close vertices to prevent triangle pop-in/pop-out
-        camera_distance = relative_pos.length()
-        if camera_distance < 3000.0:  # Very close vertices - extremely lenient
-            # Allow vertices significantly behind camera for close terrain viewing
-            if z_cam <= -camera_distance * 0.8:  # Allow up to 80% behind for very close objects
-                return None
-        elif camera_distance < 8000.0:  # Close vertices - lenient
-            if z_cam <= -camera_distance * 0.3:  # Allow up to 30% behind for close objects
-                return None
-        else:  # Distant vertices - standard culling
-            if z_cam <= 0:
+        # Calculate distance to vertex
+        distance = relative_pos.length()
+        
+        # For very close terrain (within 200m), disable all culling completely
+        # This prevents close triangles from being culled when landing or flying low
+        if distance < 200.0:
+            # Absolutely no culling at all for very close terrain
+            pass
+        else:
+            # Only cull vertices that are way behind camera for distant terrain
+            if z_cam < -1000.0:  # Only cull if very far behind camera
                 return None
         
         # Perspective projection with aspect ratio correction
@@ -117,33 +117,42 @@ class Camera3D:
         tan_half_fov = math.tan(fov_rad / 2)
         aspect_ratio = viewport_w / viewport_h
         
-        # Prevent division by zero or near-zero z_cam values
-        # For vertices very close to or behind camera, return None instead of extreme projections
-        z_cam_safe = max(z_cam, 0.1)  # Start with minimum safe distance
-        if z_cam_safe <= 0.5:  # Too close to camera - likely to cause extreme coordinates
-            return None
+        # Handle very close vertices and negative z_cam more carefully
+        # For very close terrain, use absolute distance to prevent division issues
+        if distance < 200.0:
+            # For very close terrain, use the distance as z_cam to prevent issues
+            z_cam_safe = max(distance, 0.1)
+        else:
+            # For normal terrain, use regular z_cam with small minimum
+            z_cam_safe = max(z_cam, 0.1)
         
         # Normalized device coordinates [-1, 1] with aspect ratio correction
         x_ndc = x_cam / (z_cam_safe * tan_half_fov * aspect_ratio)
         y_ndc = y_cam / (z_cam_safe * tan_half_fov)
         
-        # Prevent extreme coordinates that cause visual glitches
-        # Clamp NDC coordinates to reasonable range
-        if abs(x_ndc) > 10.0 or abs(y_ndc) > 10.0:  # Way outside view, would cause extreme coordinates
-            return None
-        
         # Convert to screen coordinates
         screen_x = int((x_ndc + 1) * viewport_w / 2)
         screen_y = int((1 - y_ndc) * viewport_h / 2)  # Flip Y for screen coordinates
         
-        # Allow points well outside viewport for triangle clipping
-        # Extended bounds to catch triangles that intersect viewport
-        extended_margin = max(viewport_w, viewport_h)
-        if (-extended_margin <= screen_x <= viewport_w + extended_margin and 
-            -extended_margin <= screen_y <= viewport_h + extended_margin):
+        # For vertices very close to camera, be completely permissive - NO CULLING AT ALL
+        distance_to_camera = relative_pos.length()
+        if distance_to_camera < 200:  # Within 200m - absolutely no culling for landing safety
             return (screen_x, screen_y)
         
-        return None
+        # For medium distance terrain, still be very permissive with viewport bounds
+        if distance_to_camera < 1000:
+            # For medium distance, use large margin to prevent corner culling
+            extended_margin = max(viewport_w, viewport_h) * 5
+        else:
+            # For distant terrain, moderate margin
+            extended_margin = max(viewport_w, viewport_h) * 3
+        
+        # Check viewport bounds with appropriate margin (only for distant terrain)
+        if (screen_x < -extended_margin or screen_x > viewport_w + extended_margin or
+            screen_y < -extended_margin or screen_y > viewport_h + extended_margin):
+            return None
+            
+        return (screen_x, screen_y)
     
     def get_distance_to(self, world_pos: Vector3) -> float:
         """Get distance from camera to world position"""
@@ -969,15 +978,18 @@ class TerrainMesh:
         
         try:
             # Calculate minimum no-cull distance based on triangle spacing
-            # Ultra mesh: 0.5° radius / 32 resolution = 0.03125° per triangle  
-            # At scale_horizontal = 13050: triangle_edge ≈ 0.03125° × 13050 = ~407 units
-            # 3 triangle distances = ~1221 units for safe close-range rendering
-            min_no_cull_distance = 5000.0  # Never cull triangles closer than this (conservative)
+            # Ultra mesh: 1.0° radius / 28 resolution = 0.036° per triangle  
+            # At scale_horizontal = 13050: triangle_edge ≈ 0.036° × 13050 = ~470 units
+            # 3 triangle distances = ~1410 units for safe close-range rendering
+            min_no_cull_distance = 8000.0  # Never cull triangles closer than this (very conservative)
             
             # Render each triangle with proper layer priority and distance culling only
             for triangle, triangle_type, layer, distance in sorted_triangles:
-                # Distance culling - only maximum distance for performance, no minimum distance exclusion
-                if triangle_type == 'sun':
+                # Ultra LOD gets absolute protection - never cull for landing safety
+                if layer == 'ultra':
+                    # Ultra LOD triangles always render - critical for landing and close terrain
+                    pass  # Skip all culling checks
+                elif triangle_type == 'sun':
                     max_distance = 5000000.0  # Sun triangles at astronomical distances
                 elif distance <= min_no_cull_distance:
                     # Always render close triangles regardless of frustum culling (for landing safety)
@@ -992,8 +1004,6 @@ class TerrainMesh:
                         max_distance = 50000.0   # ~50km for mid-range
                     elif layer == 'inner':
                         max_distance = 20000.0   # ~20km for detailed terrain
-                    elif layer == 'ultra':
-                        max_distance = 25000.0   # ~25km for ultra-high detail (extended coverage)
                     else:
                         max_distance = 100000.0  # Default fallback
                     
@@ -1021,25 +1031,54 @@ class TerrainMesh:
                         triangle_type: str = 'land', layer: str = 'inner', distance: float = 0.0):
         """Render a single triangle to the surface with layer and type-specific lighting"""
         
-        # Calculate if this is a close triangle that should avoid aggressive culling
-        min_no_cull_distance = 5000.0  # Same as main culling distance
-        is_close_triangle = distance <= min_no_cull_distance
+        # Ultra LOD gets absolute protection from all culling for landing safety
+        if layer == 'ultra':
+            is_ultra_lod = True
+            is_close_triangle = True  # Treat all ultra triangles as close
+        else:
+            is_ultra_lod = False
+            # Calculate if this is a close triangle that should avoid aggressive culling
+            min_no_cull_distance = 8000.0  # Increased from 5000 for more permissive close triangle handling
+            is_close_triangle = distance <= min_no_cull_distance
         
-        # Project vertices to screen coordinates with optimized validation
+        # Project vertices to screen coordinates with permissive culling
         screen_coords = []
         valid_coords = []
         
         for vertex in [triangle.v1, triangle.v2, triangle.v3]:
             screen_pos = camera.project_to_2d(vertex.position, viewport_w, viewport_h)
             if screen_pos is not None:
-                # Offset by viewport position and validate in one step
+                # Offset by viewport position
                 coord = (screen_pos[0] + viewport_x, screen_pos[1] + viewport_y)
-                # Quick bounds check - reject extreme coordinates early
-                if -5000 < coord[0] < 15000 and -5000 < coord[1] < 15000:
-                    valid_coords.append(coord)
+                screen_coords.append(coord)
+                valid_coords.append(coord)
+            else:
+                screen_coords.append(None)
         
-        # Fast exit for invisible triangles
-        if len(valid_coords) != 3:
+        # Render triangle if ANY vertex is visible OR if close to camera OR if ultra LOD
+        # This prevents triangle pop-in/pop-out during camera movement
+        if len(valid_coords) == 0 and not is_close_triangle and not is_ultra_lod:
+            # No vertices visible, not close, and not ultra LOD - can skip
+            return
+        
+        # Handle partial triangles - remove coordinate substitution that caused tent effect
+        final_coords = []
+        for i, coord in enumerate(screen_coords):
+            if coord is not None:
+                final_coords.append(coord)
+        
+        # Only render triangles with enough valid coordinates
+        if is_ultra_lod:
+            # Ultra LOD: need at least 2 valid vertices, but no coordinate faking
+            if len(final_coords) < 2:
+                return
+        else:
+            # Other LODs: need all 3 coordinates to avoid artifacts
+            if len(final_coords) < 3:
+                return
+        
+        # Skip triangles that don't have exactly 3 coordinates for proper rendering
+        if len(final_coords) != 3:
             return
         
         # Calculate triangle color with consistent lighting across all LOD levels
@@ -1116,17 +1155,17 @@ class TerrainMesh:
                 int(avg_color[2] * light_intensity)
             )
         
-        # Draw filled triangle with optimized validation
-        if len(valid_coords) == 3:
-            # Final coordinate validation - simplified
+        # Draw filled triangle with permissive validation
+        if len(final_coords) == 3:
+            # Basic coordinate validation to prevent extreme rendering issues
             valid_triangle = True
-            for coord in valid_coords:
-                if abs(coord[0]) > 10000 or abs(coord[1]) > 10000:
+            for coord in final_coords:
+                if abs(coord[0]) > 50000 or abs(coord[1]) > 50000:
                     valid_triangle = False
                     break
             
             if valid_triangle:
-                pygame.draw.polygon(surface, final_color, valid_coords)
+                pygame.draw.polygon(surface, final_color, final_coords)
     
     def get_terrain_height_at_camera(self, lat: float, lon: float) -> float:
         """Get terrain height at camera position for ground level reference"""
