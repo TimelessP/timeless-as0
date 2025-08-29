@@ -185,23 +185,23 @@ class TerrainMesh:
         # Heightmap resolution: 0.117188 degrees per pixel at equator (13.05 km per pixel)
         
         # Ultra-high detail (immediate vicinity)
-        self.ultra_mesh_resolution = 32   # Very high detail for landing/close terrain
+        self.ultra_mesh_resolution = 28   # Reduced from 32 for performance
         self.ultra_radius_deg = 1.0       # ~111km radius - extended immediate area
         
         # High detail (close terrain)
-        self.inner_mesh_resolution = 24   # High detail for nearby terrain
+        self.inner_mesh_resolution = 20   # Reduced from 24 for performance
         self.inner_radius_deg = 1.2       # ~133km radius - close detail
         
         # Medium detail (mid-range)
-        self.mid_mesh_resolution = 16     # Medium detail for mid-range
+        self.mid_mesh_resolution = 14     # Reduced from 16 for performance
         self.mid_radius_deg = 3.0         # ~333km radius - mid-range view
         
         # Low detail (distant terrain)
-        self.outer_mesh_resolution = 12   # Low detail for distant terrain
+        self.outer_mesh_resolution = 10   # Reduced from 12 for performance
         self.outer_radius_deg = 8.0       # ~889km radius - extended draw distance
         
         # Ultra-low detail (horizon)
-        self.horizon_mesh_resolution = 8  # Minimal detail for horizon
+        self.horizon_mesh_resolution = 6  # Reduced from 8 for performance
         self.horizon_radius_deg = 15.0    # ~1667km radius - horizon visibility
         
         # Scale calibrated to heightmap pixel width at equator: 13.05 km per pixel
@@ -212,10 +212,10 @@ class TerrainMesh:
         self.sea_surface_elevation = 0.0 # Sea surface at actual sea level
         self.camera_altitude = 1000.0    # Current camera altitude for culling
         
-        # Mesh caching system for performance
+        # Mesh caching system for performance - more aggressive caching
         self.cached_meshes = {}  # Key: (lat_grid, lon_grid, alt_grid), Value: mesh data
-        self.cache_grid_size = 0.02  # Finer cache grid resolution in degrees (~2.2km)
-        self.cache_invalidation_distance_km = 0.8  # More aggressive caching - invalidate when moved this far
+        self.cache_grid_size = 0.03  # Slightly larger cache grid (~3.3km) for better hit rate
+        self.cache_invalidation_distance_km = 1.2  # More aggressive caching - cache longer
         self.last_cache_position = None
         
         # Sun caching system (sun changes very slowly)
@@ -490,11 +490,20 @@ class TerrainMesh:
                     sea_triangles.extend([triangle1, triangle2])
     
     def _calculate_vertex_normal_fast(self, lat: float, lon: float, sample_distance: float) -> Vector3:
-        """Ultra-fast vertex normal calculation with minimal overhead"""
-        # For performance, use a simple upward-pointing normal
-        # In most cases, terrain normals don't dramatically affect the visual result
-        # when viewing from altitude, so we can simplify this
-        return Vector3(0, 0, 1)  # Simple upward normal
+        """Ultra-fast vertex normal calculation optimized for performance"""
+        # For performance at altitude, use simplified terrain-aware normals
+        # Sample only 2 points instead of 4 for major performance gain
+        h_center = self.heightmap.height_at(lat, lon)
+        h_east = self.heightmap.height_at(lat, lon + sample_distance)
+        h_north = self.heightmap.height_at(min(89.9, lat + sample_distance), lon)
+        
+        # Calculate simple gradient
+        dx = (h_east - h_center) / (sample_distance * self.scale_horizontal)
+        dy = (h_north - h_center) / (sample_distance * self.scale_horizontal)
+        
+        # Simple normal from gradient - much faster than cross product
+        normal_magnitude = math.sqrt(dx*dx + dy*dy + 1.0)
+        return Vector3(-dx/normal_magnitude, -dy/normal_magnitude, 1.0/normal_magnitude)
     
     def generate_3d_sun(self, observer_lat: float, observer_lon: float, observer_alt: float, 
                        time_info: dict):
@@ -1016,48 +1025,24 @@ class TerrainMesh:
         min_no_cull_distance = 5000.0  # Same as main culling distance
         is_close_triangle = distance <= min_no_cull_distance
         
-        # Project vertices to screen coordinates with proper clipping
+        # Project vertices to screen coordinates with optimized validation
         screen_coords = []
-        vertices_behind_camera = 0
         valid_coords = []
         
         for vertex in [triangle.v1, triangle.v2, triangle.v3]:
             screen_pos = camera.project_to_2d(vertex.position, viewport_w, viewport_h)
-            if screen_pos is None:
-                vertices_behind_camera += 1
-                screen_coords.append(None)  # Mark as invalid instead of placeholder
-            else:
-                # Offset by viewport position
+            if screen_pos is not None:
+                # Offset by viewport position and validate in one step
                 coord = (screen_pos[0] + viewport_x, screen_pos[1] + viewport_y)
-                screen_coords.append(coord)
-                valid_coords.append(coord)
+                # Quick bounds check - reject extreme coordinates early
+                if -5000 < coord[0] < 15000 and -5000 < coord[1] < 15000:
+                    valid_coords.append(coord)
         
-        # CRITICAL: If ANY vertex projects successfully (is in view frustum), render the triangle
-        # This prevents triangle pop-in/pop-out during camera rotation
-        if len(valid_coords) == 0:
-            # No vertices are in the view frustum - can skip this triangle
+        # Fast exit for invisible triangles
+        if len(valid_coords) != 3:
             return
         
-        # For triangles with vertices partially outside frustum, we need proper clipping
-        # Only render triangles where we have valid coordinates for ALL vertices
-        if len(valid_coords) < 3:
-            # Partial triangle - skip to avoid visual glitches and degenerate triangles
-            # This prevents the vertex position glitch issue
-            return
-        
-        # Use the valid coordinates directly - no coordinate replacement needed
-        final_screen_coords = valid_coords
-        
-        # Ensure we have exactly 3 coordinates for a proper triangle
-        if len(final_screen_coords) != 3:
-            return  # Skip degenerate triangles
-            
-        # For close triangles, be extra permissive with any rendering issues
-        if is_close_triangle:
-            # Close triangles get maximum protection from culling
-            pass  # Continue to rendering
-        
-        # Calculate triangle color with lighting
+        # Calculate triangle color with consistent lighting across all LOD levels
         if triangle_type == 'sun':
             # Sun triangles - no lighting, use vertex color directly
             avg_color = (
@@ -1065,13 +1050,12 @@ class TerrainMesh:
                 (triangle.v1.color[1] + triangle.v2.color[1] + triangle.v3.color[1]) // 3,
                 (triangle.v1.color[2] + triangle.v2.color[2] + triangle.v3.color[2]) // 3
             )
-            # No atmospheric haze for sun
             final_color = avg_color
             
         elif triangle_type == 'sea':
-            # Sea surface lighting - more uniform, slight wave effect
-            light_direction = Vector3(0.2, 0.3, 0.9).normalize()  # More vertical light
-            light_intensity = max(0.7, 0.85 + 0.15 * triangle.normal.dot(light_direction))  # Higher ambient
+            # Sea surface lighting - consistent across all LOD levels
+            light_direction = Vector3(0.2, 0.3, 0.9).normalize()
+            light_intensity = max(0.7, 0.85 + 0.15 * triangle.normal.dot(light_direction))
             
             # Add slight shimmer effect for water
             shimmer = 0.05 * math.sin(triangle.center.x * 0.0005 + triangle.center.y * 0.0005)
@@ -1084,17 +1068,16 @@ class TerrainMesh:
                 (triangle.v1.color[2] + triangle.v2.color[2] + triangle.v3.color[2]) // 3
             )
             
-            # Apply atmospheric haze for outer layer
-            if layer == 'outer':
-                haze_factor = 0.25
-                haze_color = (160, 180, 200)  # Light blue-grey atmospheric haze
+            # Apply consistent atmospheric haze only for horizon layer
+            if layer == 'horizon':
+                haze_factor = 0.15  # Reduced haze
+                haze_color = (160, 180, 200)
                 avg_color = (
                     int(avg_color[0] * (1 - haze_factor) + haze_color[0] * haze_factor),
                     int(avg_color[1] * (1 - haze_factor) + haze_color[1] * haze_factor),
                     int(avg_color[2] * (1 - haze_factor) + haze_color[2] * haze_factor)
                 )
-                # Reduce lighting contrast for distant objects
-                light_intensity = 0.6 + (light_intensity - 0.6) * 0.7
+                light_intensity = 0.7 + (light_intensity - 0.7) * 0.8
             
             # Apply lighting
             final_color = (
@@ -1104,9 +1087,9 @@ class TerrainMesh:
             )
             
         else:
-            # Land lighting - more dramatic shadows but not too dark
-            light_direction = Vector3(0.5, 0.3, 0.8).normalize()  # Sunlight direction
-            light_intensity = max(0.4, triangle.normal.dot(light_direction))  # Higher ambient for visibility
+            # Land lighting - consistent across all LOD levels
+            light_direction = Vector3(0.5, 0.3, 0.8).normalize()
+            light_intensity = max(0.5, triangle.normal.dot(light_direction))  # Consistent base lighting
             
             # Use average color of vertices
             avg_color = (
@@ -1115,17 +1098,16 @@ class TerrainMesh:
                 (triangle.v1.color[2] + triangle.v2.color[2] + triangle.v3.color[2]) // 3
             )
             
-            # Apply atmospheric haze for outer layer
-            if layer == 'outer':
-                haze_factor = 0.25
-                haze_color = (160, 180, 200)  # Light blue-grey atmospheric haze
+            # Apply consistent atmospheric haze only for horizon layer
+            if layer == 'horizon':
+                haze_factor = 0.15  # Reduced haze
+                haze_color = (160, 180, 200)
                 avg_color = (
                     int(avg_color[0] * (1 - haze_factor) + haze_color[0] * haze_factor),
                     int(avg_color[1] * (1 - haze_factor) + haze_color[1] * haze_factor),
                     int(avg_color[2] * (1 - haze_factor) + haze_color[2] * haze_factor)
                 )
-                # Reduce lighting contrast for distant objects
-                light_intensity = 0.6 + (light_intensity - 0.6) * 0.7
+                light_intensity = 0.7 + (light_intensity - 0.7) * 0.8
             
             # Apply lighting
             final_color = (
@@ -1134,20 +1116,17 @@ class TerrainMesh:
                 int(avg_color[2] * light_intensity)
             )
         
-        # Draw filled triangle with proper validation
-        # We should now have exactly 3 valid coordinates
-        if len(final_screen_coords) == 3:
-            # Validate coordinates are reasonable (prevent extreme values)
+        # Draw filled triangle with optimized validation
+        if len(valid_coords) == 3:
+            # Final coordinate validation - simplified
             valid_triangle = True
-            for coord in final_screen_coords:
-                if (not isinstance(coord[0], int) or not isinstance(coord[1], int) or
-                    abs(coord[0]) > 10000 or abs(coord[1]) > 10000):
+            for coord in valid_coords:
+                if abs(coord[0]) > 10000 or abs(coord[1]) > 10000:
                     valid_triangle = False
                     break
             
             if valid_triangle:
-                pygame.draw.polygon(surface, final_color, final_screen_coords)
-            # Skip invalid triangles silently (no exception)
+                pygame.draw.polygon(surface, final_color, valid_coords)
     
     def get_terrain_height_at_camera(self, lat: float, lon: float) -> float:
         """Get terrain height at camera position for ground level reference"""
