@@ -605,9 +605,12 @@ class NavigationScene:
         lon_str = f"{abs(position['longitude']):.4f}°{'E' if position['longitude'] >= 0 else 'W'}"
         self._update_widget_text("position_label", f"POS: {lat_str} {lon_str}")
         
-        # Update heading and speed
+        # Update heading
         self._update_widget_text("heading_label", f"HDG: {position['heading']:03.0f}°")
-        self._update_widget_text("ground_speed_label", f"GS: {motion['groundSpeed']:.0f}")
+
+        # Use simulator-provided ground speed (centralized calculation)
+        ground_speed = motion['groundSpeed']
+        self._update_widget_text("ground_speed_label", f"GS: {ground_speed:.0f}")
         
     def _update_widget_text(self, widget_id: str, new_text: str):
         """Update widget text"""
@@ -1174,9 +1177,44 @@ class NavigationScene:
         # Get ship's position
         current_lat = position["latitude"]
         current_lon = position["longitude"]
-        bearing = position["heading"]
-        current_speed = motion.get("groundSpeed", 0)  # knots
-        travel_distance_nm = current_speed * 12  # 12 hours of travel in nautical miles
+
+        # Compute ground-track from aircraft airspeed vector (thrust direction) plus wind vector
+        # Use true airspeed as the aircraft's vector relative to the air mass
+        true_airspeed = motion.get("trueAirspeed", motion.get("indicatedAirspeed", 0.0))  # knots
+        air_heading = position.get("heading", 0.0)  # degrees, 0 = north
+
+        # Wind in game state is meteorological (windDirection = FROM). Convert to vector direction (TO)
+        env = game_state.get("environment", {}).get("weather", {})
+        wind_from = env.get("windDirection", 0.0)
+        wind_speed = env.get("windSpeed", 0.0)
+        wind_to = (wind_from + 180.0) % 360.0
+
+        # Convert headings to radians (0 = north). For our lat/lon math: north component = cos(theta), east = sin(theta)
+        air_rad = math.radians(air_heading)
+        wind_rad = math.radians(wind_to)
+
+        # Vector components in knots
+        air_north = true_airspeed * math.cos(air_rad)
+        air_east = true_airspeed * math.sin(air_rad)
+
+        wind_north = wind_speed * math.cos(wind_rad)
+        wind_east = wind_speed * math.sin(wind_rad)
+
+        # Combine to get ground speed vector (knots)
+        ground_north = air_north + wind_north
+        ground_east = air_east + wind_east
+
+        # Ground speed magnitude and bearing (0 = north)
+        ground_speed = math.hypot(ground_north, ground_east)
+        if ground_speed > 0:
+            ground_bearing_rad = math.atan2(ground_east, ground_north)
+            ground_bearing = (math.degrees(ground_bearing_rad) + 360.0) % 360.0
+        else:
+            ground_bearing = position.get("heading", 0.0)
+
+        # Travel distance over 12 hours at the computed ground speed
+        travel_distance_nm = ground_speed * 12.0
+        bearing = ground_bearing
         
         # Get the current viewport
         map_rect = self._get_visible_map_rect()

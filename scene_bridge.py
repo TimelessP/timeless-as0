@@ -427,8 +427,15 @@ class BridgeScene:
         surface_ft = surface_m * 3.28084 if surface_m is not None else 0.0
         agl = max(0, altitude_ft - surface_ft)
         self._update_widget_text("altitude_agl", f"ALT AGL: {agl:.0f} ft")
+
+        # Update indicated airspeed (IAS) display
         self._update_widget_text("airspeed", f"IAS: {nav['motion']['indicatedAirspeed']:.0f} kts")
-        self._update_widget_text("ground_speed", f"GS: {nav['motion']['groundSpeed']:.0f} kts")
+
+        # Use simulator-provided ground speed (centralized calculation)
+        ground_speed = nav['motion']['groundSpeed']
+        self._update_widget_text("ground_speed", f"GS: {ground_speed:.0f} kts")
+
+        # Update numeric heading display
         self._update_widget_text("heading", f"HDG: {nav['position']['heading']:03.0f}°")
 
         # Update engine displays

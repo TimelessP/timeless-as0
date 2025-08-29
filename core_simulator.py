@@ -1039,13 +1039,21 @@ class CoreSimulator:
         tas_factor = 1.0 / math.sqrt(altitude_density_factor)
         motion["trueAirspeed"] = motion["indicatedAirspeed"] * tas_factor
         
-        # Ground speed affected by wind (meteorological: windDirection is FROM)
-        # To get the wind's effect, use: heading - (windDirection + 180)
-        wind_from = (env["windDirection"] + 180) % 360
-        wind_component = env["windSpeed"] * math.cos(
-            math.radians(position["heading"] - wind_from)
-        )
-        motion["groundSpeed"] = motion["trueAirspeed"] + wind_component
+        # Ground speed should be the magnitude of the vector sum of the
+        # aircraft's true-airspeed vector (along the aircraft heading) and
+        # the wind vector (convert meteorological FROM to TO by +180°).
+        hdg_rad = math.radians(position["heading"])
+        air_n = math.cos(hdg_rad) * motion["trueAirspeed"]
+        air_e = math.sin(hdg_rad) * motion["trueAirspeed"]
+
+        wind_to = (env["windDirection"] + 180.0) % 360.0
+        wind_rad = math.radians(wind_to)
+        wind_n = math.cos(wind_rad) * env["windSpeed"]
+        wind_e = math.sin(wind_rad) * env["windSpeed"]
+
+        ground_n = air_n + wind_n
+        ground_e = air_e + wind_e
+        motion["groundSpeed"] = math.hypot(ground_n, ground_e)
         
         # Position updates based on ground speed and heading
         if motion["groundSpeed"] > 0:
