@@ -739,19 +739,6 @@ class ObservatoryScene:
             compass_x = 320 - compass_text.get_width() - 8
             surface.blit(compass_text, (compass_x, 4))
         
-        # Draw help text in a small font at bottom
-        if self.font:
-            help_texts = [
-                "CONTROLS: ←→ Rotate  ↑↓ Tilt  R Rebuild  M Mode  I Info",
-            ]
-            for i, help_text in enumerate(help_texts):
-                text_surface = self.font.render(help_text, self.is_text_antialiased, (150, 150, 150))
-                # Scale down the text
-                scaled_text = pygame.transform.scale(text_surface, 
-                                                   (text_surface.get_width() // 2, 
-                                                    text_surface.get_height() // 2))
-                surface.blit(scaled_text, (8, 320 - 16 + i * 8))
-        
         # Render viewport
         viewport_widget = next((w for w in self.widgets if w["id"] == "viewport"), None)
         if viewport_widget:
