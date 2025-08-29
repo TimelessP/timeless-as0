@@ -3,7 +3,7 @@ requires-python = ">=3.12"
 
 [[package]]
 name = "airshipzero"
-version = "0.6.9"
+version = "0.6.10"
 source = { editable = "." }
 dependencies = [
     { name = "markdown" },

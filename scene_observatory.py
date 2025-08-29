@@ -58,19 +58,8 @@ class ObservatoryScene:
             from main import get_assets_dir
             assets_dir = get_assets_dir()
             world_map_path = os.path.join(assets_dir, "png", "world-map.png")
-            print(f"Observatory: Looking for world map at: {world_map_path}")
-            print(f"Observatory: Current working directory: {os.getcwd()}")
-            print(f"Observatory: Assets directory: {assets_dir}")
-            print(f"Observatory: World map exists: {os.path.exists(world_map_path)}")
-            if os.path.exists(assets_dir):
-                print(f"Observatory: Assets directory contents: {os.listdir(assets_dir)}")
-                png_dir = os.path.join(assets_dir, "png")
-                if os.path.exists(png_dir):
-                    png_files = os.listdir(png_dir)[:10]  # First 10 files
-                    print(f"Observatory: PNG directory contents: {png_files}")
             
             self.world_map = pygame.image.load(world_map_path)
-            print(f"Observatory: Successfully loaded world map: {self.world_map.get_size()}")
         except Exception as e:
             print(f"Observatory: Could not load world-map.png: {e}")
             import traceback
@@ -97,15 +86,11 @@ class ObservatoryScene:
             # Try to get heightmap from simulator
             if hasattr(self.simulator, 'heightmap') and self.simulator.heightmap:
                 heightmap = self.simulator.heightmap
-                print("Observatory: Using heightmap from simulator")
             else:
                 # Create heightmap instance if not available
-                print("Observatory: Creating new HeightMap instance")
                 heightmap = HeightMap()
-                print("Observatory: HeightMap created successfully")
             
             if self.world_map and heightmap:
-                print(f"Observatory: World map size: {self.world_map.get_size()}")
                 self.terrain_mesh = TerrainMesh(heightmap, self.world_map)
                 print("Observatory: 3D terrain mesh system initialized")
             else:
@@ -289,7 +274,6 @@ class ObservatoryScene:
         ship_heading = game_state["navigation"]["position"]["heading"]
         self.view_angle = 0.0  # Reset to forward (relative to ship heading)
         self.tilt_angle = 0.0  # Reset tilt to level
-        print(f"Observatory: Camera centered on ship's heading ({ship_heading:.1f}°)")
     
     def _update_camera_from_mouse_pos(self, logical_pos):
         """Update camera angles based on absolute mouse position within viewport"""
@@ -334,22 +318,12 @@ class ObservatoryScene:
             current_alt = position["altitude"]
             time_info = game_state.get("environment", {}).get("time", {})
             
-            print(f"Observatory: Regenerating dual-LOD terrain mesh around {current_lat:.3f}°, {current_lon:.3f}° at {current_alt:.0f}m")
             self.terrain_mesh.generate_dual_lod_mesh_around_position(current_lat, current_lon, current_alt)
             
             # Generate 3D sun
             self.terrain_mesh.generate_3d_sun(current_lat, current_lon, current_alt, time_info)
             
             self.mesh_last_update_pos = (current_lat, current_lon, current_alt)
-            
-            # Print mesh statistics
-            stats = self.terrain_mesh.get_mesh_statistics()
-            print(f"Observatory: Generated {stats['inner_total']} inner triangles ({stats['inner_land_triangles']} land, {stats['inner_sea_triangles']} sea)")
-            print(f"Observatory: Generated {stats['outer_total']} outer triangles ({stats['outer_land_triangles']} land, {stats['outer_sea_triangles']} sea)")
-            if stats['sun_triangles'] > 0:
-                print(f"Observatory: Generated 3D sun with {stats['sun_triangles']} triangles")
-            print(f"Observatory: Total triangles: {stats['total_triangles']}")
-            print(f"Observatory: Altitude reference: {current_alt:.0f}m, Vertical scale: {stats['scale_vertical']:.1f}x")
     
     def _toggle_rendering_mode(self):
         """Toggle between 3D mesh and 2D fallback rendering"""
@@ -487,7 +461,6 @@ class ObservatoryScene:
                 abs(current_alt - self.mesh_last_update_pos[2]) > 500):  # 500m altitude change
                 
                 time_info = game_state.get("environment", {}).get("time", {})
-                print(f"Observatory: Updating dual-LOD terrain mesh for position {current_lat:.3f}°, {current_lon:.3f}° at {current_alt:.0f}m")
                 self.terrain_mesh.generate_dual_lod_mesh_around_position(current_lat, current_lon, current_alt)
                 
                 # Generate 3D sun

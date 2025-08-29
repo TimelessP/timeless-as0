@@ -620,9 +620,6 @@ class TerrainMesh:
                         triangle_type: str = 'land', layer: str = 'inner'):
         """Render a single triangle to the surface with layer and type-specific lighting"""
         
-        if triangle_type == 'sun':
-            print(f"Rendering sun triangle at center {triangle.center}")
-        
         # Project vertices to screen coordinates with proper clipping
         screen_coords = []
         vertices_behind_camera = 0
