@@ -79,18 +79,29 @@ class ObservatoryScene:
             # Try to get heightmap from simulator
             if hasattr(self.simulator, 'heightmap') and self.simulator.heightmap:
                 heightmap = self.simulator.heightmap
+                print("Observatory: Using heightmap from simulator")
             else:
                 # Create heightmap instance if not available
+                print("Observatory: Creating new HeightMap instance")
                 heightmap = HeightMap()
+                print("Observatory: HeightMap created successfully")
             
             if self.world_map and heightmap:
+                print(f"Observatory: World map size: {self.world_map.get_size()}")
                 self.terrain_mesh = TerrainMesh(heightmap, self.world_map)
                 print("Observatory: 3D terrain mesh system initialized")
             else:
-                print("Observatory: Falling back to 2D rendering (missing heightmap or world map)")
+                missing = []
+                if not self.world_map:
+                    missing.append("world map")
+                if not heightmap:
+                    missing.append("heightmap")
+                print(f"Observatory: Falling back to 2D rendering (missing: {', '.join(missing)})")
                 self.use_3d_rendering = False
         except Exception as e:
             print(f"Observatory: Error initializing terrain mesh: {e}")
+            import traceback
+            traceback.print_exc()
             self.use_3d_rendering = False
             
     def _init_widgets(self):

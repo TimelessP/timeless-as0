@@ -1,6 +1,6 @@
 [project]
 name = "airshipzero"
-version = "0.6.2"
+version = "0.6.3"
 description = "Realistic airship flight simulator with complex systems management"
 authors = [{name = "Timeless Prototype"}]
 requires-python = ">=3.12"
@@ -47,8 +47,9 @@ include = [
     "assets/**/*",
     "assets/books/*.md",
     "assets/fonts/**/*", 
-    "assets/png/*",
-    "assets/tiff/*",
+    "assets/png/*.png",
+    "assets/png/*.json",
+    "assets/tiff/*.tif",
     # Documentation
     "LICENSE",
     "README.md",
