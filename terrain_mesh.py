@@ -7,12 +7,6 @@ import pygame
 from typing import List, Tuple, Optional, Dict, Any
 from heightmap import HeightMap
 
-# Debug mode for tracking rare edge cases
-DEBUG_SKY_FILLING = False  # Disabled after confirming it works
-DEBUG_CULLING = False
-# Special tracking for rare edge cases that slip through
-TRACK_EDGE_CASES = False
-
 
 class Vector3:
     """3D vector for terrain mesh vertices"""
@@ -278,14 +272,6 @@ class TerrainMesh:
         self.cached_sun_triangles = []
         self.last_sun_generation_time = 0
         self.sun_cache_duration_minutes = 10  # Regenerate sun every 10 minutes
-        
-        # Debug frame counter to limit debug output
-        self.debug_frame_counter = 0
-        self.sky_fill_events_this_frame = 0
-        self.large_triangles_this_frame = 0  # Track unusually large triangles
-        
-        # Track unique large triangles to avoid spam
-        self.logged_large_triangles = set()
     
     def generate_mesh_around_position(self, center_lat: float, center_lon: float, camera_altitude: float, radius_deg: float = 3.0):
         """Generate dual-LOD terrain mesh around a central position with proper coastline handling"""
@@ -963,15 +949,6 @@ class TerrainMesh:
         if not self._has_any_triangles():
             return
         
-        # Increment debug frame counter for limiting debug output
-        self.debug_frame_counter = (self.debug_frame_counter + 1) % 60  # Reset every 60 frames
-        self.sky_fill_events_this_frame = 0  # Reset sky-fill event counter
-        self.large_triangles_this_frame = 0  # Reset large triangle counter
-        
-        # Periodically clear logged triangles to catch new edge cases
-        if self.debug_frame_counter == 0:
-            self.logged_large_triangles.clear()
-        
         # Combine all triangles with distance and layer information
         all_triangles = []
         
@@ -1081,10 +1058,6 @@ class TerrainMesh:
             # Restore original clipping
             surface.set_clip(old_clip)
             
-            # Debug summary for sky-filling events
-            if DEBUG_SKY_FILLING and self.sky_fill_events_this_frame > 3:
-                print(f"SKY-FILL SUMMARY: {self.sky_fill_events_this_frame} triangles blocked this frame")
-    
     def _has_any_triangles(self) -> bool:
         """Check if any triangles exist in any LOD level or sun"""
         return (len(self.ultra_land_triangles) > 0 or len(self.ultra_sea_triangles) > 0 or
@@ -1164,30 +1137,6 @@ class TerrainMesh:
         # Render triangle if ANY vertex is visible OR if close to camera OR if ultra LOD
         # This prevents triangle pop-in/pop-out during camera movement
         if len(valid_coords) == 0 and not is_close_triangle and not is_ultra_lod:
-            # Debug: Check if this is a near-triangle culling issue
-            if DEBUG_CULLING and distance < 20000:  # Only debug relatively close triangles
-                # Check if any vertex is actually in frustum
-                vertices_in_frustum = 0
-                for vertex in [triangle.v1, triangle.v2, triangle.v3]:
-                    relative_pos = vertex.position - camera.position
-                    z_cam = relative_pos.dot(camera.forward)
-                    if z_cam > 1.0:  # In front of camera
-                        # Calculate frustum bounds
-                        x_cam = relative_pos.dot(camera.right)
-                        y_cam = relative_pos.dot(camera.up)
-                        fov_rad = math.radians(60.0)
-                        tan_half_fov = math.tan(fov_rad / 2)
-                        aspect_ratio = viewport_w / viewport_h
-                        
-                        # Check if within frustum
-                        x_bound = z_cam * tan_half_fov * aspect_ratio
-                        y_bound = z_cam * tan_half_fov
-                        if abs(x_cam) <= x_bound and abs(y_cam) <= y_bound:
-                            vertices_in_frustum += 1
-                
-                if vertices_in_frustum > 0:
-                    print(f"CULL ERROR: Near triangle at dist={distance:.0f} layer={layer} has {vertices_in_frustum} vertices in frustum but was culled")
-            
             # No vertices visible, not close, and not ultra LOD - can skip
             return
         
@@ -1281,75 +1230,32 @@ class TerrainMesh:
             )
         
         # Draw filled triangle/polygon with support for partial triangles
+        # Validate final coordinates before rendering
         if len(final_coords) >= 3:
-            # Full triangle - use normal polygon drawing
-            # Basic coordinate validation to prevent extreme rendering issues
-            # Use moderately permissive validation - balance between edge cases and extreme projections
+            # Full triangle - check for extreme coordinates that could cause sky-filling
             valid_triangle = True
-            extreme_coords = []
             for coord in final_coords:
                 if abs(coord[0]) > 75000 or abs(coord[1]) > 75000:  # 1.5x more permissive than original
                     valid_triangle = False
-                    extreme_coords.append(coord)
+                    break
             
             if valid_triangle:
-                # Track rare edge cases - look for triangles that pass validation but are still large
-                if TRACK_EDGE_CASES and len(final_coords) >= 3:
-                    max_coord = max(max(abs(c[0]), abs(c[1])) for c in final_coords)
-                    if max_coord > 50000:  # Large but still valid triangles
-                        # Create a unique key for this triangle to avoid spam
-                        triangle_key = tuple(sorted(final_coords[:3]))
-                        if triangle_key not in self.logged_large_triangles:
-                            self.large_triangles_this_frame += 1
-                            if self.large_triangles_this_frame <= 2:  # Log first 2 unique per frame
-                                triangle_area = self._calculate_triangle_area(final_coords)
-                                print(f"LARGE TRIANGLE: coords={final_coords[:3]} max_coord={max_coord} area={triangle_area}")
-                                self.logged_large_triangles.add(triangle_key)
-                
                 pygame.draw.polygon(surface, final_color, final_coords)
-            elif DEBUG_SKY_FILLING:
-                # Count sky-filling events but only log first few per frame
-                self.sky_fill_events_this_frame += 1
-                if self.sky_fill_events_this_frame <= 3:  # Only log first 3 per frame
-                    max_coord = max(max(abs(c[0]), abs(c[1])) for c in extreme_coords) if extreme_coords else 0
-                    print(f"SKY-FILL BLOCKED: Triangle at {triangle.center.x:.1f},{triangle.center.y:.1f} max_coord={max_coord}")
         elif len(final_coords) == 2:
             # Partial triangle with 2 vertices - draw as a thick line
             valid_line = True
-            extreme_coords = []
             for coord in final_coords:
                 if abs(coord[0]) > 75000 or abs(coord[1]) > 75000:  # 1.5x more permissive than original
                     valid_line = False
-                    extreme_coords.append(coord)
+                    break
             
             if valid_line:
                 pygame.draw.line(surface, final_color, final_coords[0], final_coords[1], 2)
-            elif DEBUG_SKY_FILLING and self.sky_fill_events_this_frame <= 3:
-                self.sky_fill_events_this_frame += 1
-                print(f"SKY-FILL BLOCKED: Line at {triangle.center.x:.1f},{triangle.center.y:.1f}")
         elif len(final_coords) == 1:
             # Partial triangle with 1 vertex - draw as a small circle/point
             coord = final_coords[0]
             if abs(coord[0]) <= 75000 and abs(coord[1]) <= 75000:  # 1.5x more permissive than original
                 pygame.draw.circle(surface, final_color, coord, 1)
-            elif DEBUG_SKY_FILLING and self.sky_fill_events_this_frame <= 3:
-                self.sky_fill_events_this_frame += 1
-                print(f"SKY-FILL BLOCKED: Point at {triangle.center.x:.1f},{triangle.center.y:.1f} coord={abs(coord[0])},{abs(coord[1])}")
-        
-        # Show debug summary every 60 frames
-        if TRACK_EDGE_CASES and self.debug_frame_counter == 0:
-            total_large = len(self.logged_large_triangles)
-            if total_large > 0:
-                print(f"🔍 EDGE CASE SUMMARY: {total_large} unique large triangles detected in last 60 frames")
-    
-    def _calculate_triangle_area(self, coords):
-        """Calculate the area of a triangle given three screen coordinates"""
-        if len(coords) < 3:
-            return 0
-        x1, y1 = coords[0]
-        x2, y2 = coords[1]
-        x3, y3 = coords[2]
-        return abs((x1*(y2-y3) + x2*(y3-y1) + x3*(y1-y2)) / 2)
     
     def get_terrain_height_at_camera(self, lat: float, lon: float) -> float:
         """Get terrain height at camera position for ground level reference"""

@@ -216,18 +216,10 @@ class ObservatoryScene:
             elif event.key == pygame.K_DOWN:
                 if self._is_viewport_focused():
                     self._tilt_view(-2.0)
-            elif event.key == pygame.K_r:
-                # Regenerate 3D mesh for testing
-                if self._is_viewport_focused():
-                    self._regenerate_mesh()
             elif event.key == pygame.K_m:
                 # Toggle 3D/2D rendering mode
                 if self._is_viewport_focused():
                     self._toggle_rendering_mode()
-            elif event.key == pygame.K_i:
-                # Print mesh info for debugging
-                if self._is_viewport_focused():
-                    self._print_mesh_info()
             elif event.key == pygame.K_c:
                 # Center camera view on ship's heading
                 if self._is_viewport_focused():
@@ -308,47 +300,10 @@ class ObservatoryScene:
         self.view_angle = relative_angle  # Store relative angle, not absolute
         self.tilt_angle = -(rel_y - 0.5) * 2.0 * max_tilt     # -30° to +30° (inverted Y)
     
-    def _regenerate_mesh(self):
-        """Force regeneration of dual-LOD terrain mesh for current position"""
-        if self.terrain_mesh and self.use_3d_rendering:
-            game_state = self.simulator.get_state()
-            position = game_state["navigation"]["position"]
-            current_lat = position["latitude"]
-            current_lon = position["longitude"]
-            current_alt = position["altitude"]
-            time_info = game_state.get("environment", {}).get("time", {})
-            
-            self.terrain_mesh.generate_dual_lod_mesh_around_position(current_lat, current_lon, current_alt)
-            
-            # Generate 3D sun
-            self.terrain_mesh.generate_3d_sun(current_lat, current_lon, current_alt, time_info)
-            
-            self.mesh_last_update_pos = (current_lat, current_lon, current_alt)
-    
     def _toggle_rendering_mode(self):
         """Toggle between 3D mesh and 2D fallback rendering"""
         if self.terrain_mesh:
             self.use_3d_rendering = not self.use_3d_rendering
-            mode = "3D MESH" if self.use_3d_rendering else "2D FALLBACK"
-            print(f"Observatory: Switched to {mode} rendering mode")
-        else:
-            print("Observatory: 3D terrain mesh not available")
-    
-    def _print_mesh_info(self):
-        """Print detailed mesh information for debugging"""
-        if self.terrain_mesh:
-            stats = self.terrain_mesh.get_mesh_statistics()
-            print("Observatory: Mesh Statistics:")
-            print(f"  Land triangles: {stats['land_triangles']}")
-            print(f"  Sea triangles: {stats['sea_triangles']}")
-            print(f"  Total triangles: {stats['total_triangles']}")
-            print(f"  Mesh resolution: {stats['mesh_resolution']}x{stats['mesh_resolution']}")
-            print(f"  Sea level: {stats['sea_level']}m")
-            print(f"  Horizontal scale: {stats['scale_horizontal']:.0f}m/deg")
-            print(f"  Vertical scale: {stats['scale_vertical']:.0f}x")
-            print(f"  Rendering mode: {'3D MESH' if self.use_3d_rendering else '2D FALLBACK'}")
-        else:
-            print("Observatory: No terrain mesh available")
         
     def _screen_to_logical(self, screen_pos) -> Optional[tuple]:
         """Convert screen coordinates to logical 320x320 coordinates"""
