@@ -181,14 +181,6 @@ class ObservatoryScene:
                 "focused": False
             },
             {
-                "id": "mesh_status_label",
-                "type": "label",
-                "position": [170, 272],
-                "size": [142, 16],
-                "text": "MESH: 0L+0S triangles",
-                "focused": False
-            },
-            {
                 "id": "prev_scene",
                 "type": "button",
                 "position": [8, 290],
@@ -482,19 +474,6 @@ class ObservatoryScene:
         sun_lon_str = f"{abs(sun_lon):.1f}°{'E' if sun_lon >= 0 else 'W'}"
         self._update_widget_text("sun_label", f"SUN: {sun_lat_str} {sun_lon_str}")
         
-        # Update mesh status display
-        if self.terrain_mesh and self.use_3d_rendering:
-            stats = self.terrain_mesh.get_mesh_statistics()
-            land_count = stats['inner_land_triangles'] + stats['outer_land_triangles']
-            sea_count = stats['inner_sea_triangles'] + stats['outer_sea_triangles']
-            sun_count = stats['sun_triangles']
-            if sun_count > 0:
-                self._update_widget_text("mesh_status_label", f"3D: {land_count}L+{sea_count}S+{sun_count}☀ tri")
-            else:
-                self._update_widget_text("mesh_status_label", f"3D: {land_count}L+{sea_count}S tri")
-        else:
-            self._update_widget_text("mesh_status_label", "2D: Fallback mode")
-        
         # Update 3D terrain mesh if position has changed significantly
         if self.use_3d_rendering and self.terrain_mesh:
             current_lat = position["latitude"]
@@ -550,11 +529,6 @@ class ObservatoryScene:
                     self.camera_3d,
                     0, 0, viewport_w, viewport_h
                 )
-                
-                # Add mode indicator
-                if self.font:
-                    mode_text = self.font.render("3D MESH", self.is_text_antialiased, FOCUS_COLOR)
-                    self.viewport_surface.blit(mode_text, (5, 5))
                     
             except Exception as e:
                 print(f"Observatory: 3D rendering error: {e}")
@@ -586,11 +560,6 @@ class ObservatoryScene:
             time_info,
             field_of_view=120.0  # Wide field of view for observatory
         )
-        
-        # Add mode indicator
-        if self.font:
-            mode_text = self.font.render("2D FALLBACK", self.is_text_antialiased, TEXT_COLOR)
-            self.viewport_surface.blit(mode_text, (5, 5))
         
         # Draw forward direction indicator on top
         self._draw_forward_indicator(game_state)
