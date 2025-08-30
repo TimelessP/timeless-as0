@@ -82,6 +82,36 @@ def get_assets_path(subdir: str = "") -> str:
 
 
 class CoreSimulator:
+    def is_engine_damaged(self) -> bool:
+        """Return True if the engine is currently damaged."""
+        return self.game_state["engine"].get("damaged", False)
+
+    def get_engine_health(self) -> float:
+        """Return engine health (1.0 = perfect, 0.0 = destroyed)."""
+        return self.game_state["engine"].get("health", 1.0)
+
+    def apply_engine_damage(self, health: float = 0.0):
+        """Apply engine damage (health 0.0-1.0)."""
+        self.game_state["engine"]["damaged"] = True
+        self.game_state["engine"]["health"] = max(0.0, min(1.0, health))
+        # Force the throttle to max 5% or current
+        self.set_engine_control("throttle", min(0.05, self.get_engine_control("throttle")))
+
+    def repair_engine(self):
+        """Repair engine to full health."""
+        self.game_state["engine"]["damaged"] = False
+        self.game_state["engine"]["health"] = 1.0
+
+    def can_repair_engine_with_crate(self) -> bool:
+        """Return True if engine is damaged and a spare parts crate is in cargo hold."""
+        if not self.is_engine_damaged():
+            return False
+        cargo = self.get_cargo_state()
+        for crate in cargo.get("cargoHold", []):
+            if crate.get("type") == "spare_parts":
+                return True
+        return False
+
     def move_book_to_cargo(self, book_id: str) -> bool:
         """Remove an in-game book from the library, create a crate for it, and attach to winch."""
         # Remove book from library (by id)
@@ -496,7 +526,8 @@ class CoreSimulator:
                         "dimensions": {"width": 5, "height": 3},
                         "contents": {"amount": 1, "unit": "set"},
                         "colors": CRATE_TYPE_COLORS.get("spare_parts", {"outline": "#5C5C5C", "fill": "#A0A0A0"}),
-                        "usable": False,
+                        "usable": True,
+                        "useAction": "repair_engine",
                         "weight": 15.0
                     },
                     "luxury_goods": {
@@ -917,7 +948,7 @@ class CoreSimulator:
         nav = self.game_state["navigation"]
         engine = self.game_state["engine"]
         env = self.game_state["environment"]["weather"]
-        
+
         # Simple flight dynamics
         position = nav["position"]
         motion = nav["motion"]
@@ -1099,6 +1130,12 @@ class CoreSimulator:
         surface_ft = nav_surface_height * 3.28084 if nav_surface_height is not None else float('-inf')
         # If at/below ground or sea level, rest on the higher of the two
         if altitude_ft <= surface_ft or altitude_ft <= 0.0:
+            # Check for hard landing damage before stopping motion
+            ground_speed = motion.get("groundSpeed", 0.0)
+            if ground_speed > 20.0:
+                # Hard landing: damage engine
+                self.apply_engine_damage(health=0.0)
+            
             new_altitude = max(surface_ft, 0.0)
             position["altitude"] = new_altitude
             # Stop all calculated speeds (but not user controls)
@@ -1479,9 +1516,15 @@ class CoreSimulator:
         
     def set_engine_control(self, control: str, value: float):
         """Set engine control position"""
+        if control == "throttle" and self.is_engine_damaged():
+            value = min(value, 0.05)
         if control in ["throttle", "mixture", "propeller"]:
             self.game_state["engine"]["controls"][control] = max(0.0, min(1.0, value))
-            
+
+    def get_engine_control(self, control: str) -> float:
+        """Get engine control position"""
+        return self.game_state["engine"]["controls"].get(control, 0.0)
+
     def toggle_engine(self):
         """Toggle engine on/off"""
         engine = self.game_state["engine"]
@@ -1830,6 +1873,13 @@ class CoreSimulator:
             book_id = crate.get("book_id")
             if book_id:
                 self.add_in_game_book_to_library(book_id)
+                success = True
+            else:
+                success = False
+        elif use_action == "repair_engine":
+            # Use spare parts to repair engine
+            if self.is_engine_damaged():
+                self.repair_engine()
                 success = True
             else:
                 success = False

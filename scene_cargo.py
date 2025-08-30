@@ -96,11 +96,11 @@ class CargoScene:
             {"id": "winch_down", "type": "button", "position": [198, 28], "size": [68, 18], "text": "Down v", "focused": False, "holdable": True},
             
             # Action buttons (bottom area) - adjusted for smaller cargo area
-            {"id": "attach", "type": "button", "position": [20, 245], "size": [60, 20], "text": "Attach", "focused": False, "holdable": False},
-            {"id": "detach", "type": "button", "position": [90, 245], "size": [60, 20], "text": "Detach", "focused": False, "holdable": False},
-            {"id": "use_crate", "type": "button", "position": [160, 245], "size": [60, 20], "text": "Use", "focused": False, "holdable": False},
-            {"id": "refresh", "type": "button", "position": [230, 245], "size": [60, 20], "text": "Refresh", "focused": False, "holdable": False},
-            
+            {"id": "attach", "type": "button", "position": [20, 245], "size": [60, 20], "text": "Attach", "focused": False, "holdable": False, "enabled": False},
+            {"id": "detach", "type": "button", "position": [90, 245], "size": [60, 20], "text": "Detach", "focused": False, "holdable": False, "enabled": False},
+            {"id": "use_crate", "type": "button", "position": [160, 245], "size": [60, 20], "text": "Use", "focused": False, "holdable": False, "enabled": False},
+            {"id": "refresh", "type": "button", "position": [230, 245], "size": [60, 20], "text": "Refresh", "focused": False, "holdable": False, "enabled": False},
+
             # Navigation controls
             # Move up to match other scenes: y=290 for height 24
             {"id": "prev_scene", "type": "button", "position": [8, 290], "size": [60, 24], "text": "< [", "focused": False, "holdable": False},
@@ -194,9 +194,12 @@ class CargoScene:
                 clicked_widget = self._get_widget_at_pos(logical_pos)
                 clicked_crate = self._get_crate_at_pos(logical_pos)
                 
-                if clicked_widget is not None:
+                # Also check if the widget is enabled
+                _ = self._is_widget_enabled(clicked_widget)
+                if clicked_widget is not None and self.widgets[clicked_widget].get("enabled", True):
                     self._set_focus(clicked_widget)
                     widget = self.widgets[clicked_widget]
+                    # check and is enabled - using our new enabled attribute if set - too, else clicking a disabled button moves winch left
                     if widget.get("holdable", False):
                         # Start continuous movement for holdable buttons
                         self.mouse_held = True
@@ -514,35 +517,31 @@ class CargoScene:
         """Check if a widget should be enabled based on game state"""
         cargo_state = self.simulator.get_cargo_state()
         winch = cargo_state.get("winch", {})
-        
+        enabled = True
         if widget_id == "attach":
-            # Can attach if winch is near a crate and nothing is attached
-            return winch.get("attachedCrate") is None and self._can_attach_to_nearby_crate()
+            enabled = winch.get("attachedCrate") is None and self._can_attach_to_nearby_crate()
         elif widget_id == "detach":
-            # Can detach if something is attached and placement would be valid
             if winch.get("attachedCrate") is None:
-                return False
-            # Ask simulator for validity
-            try:
-                return bool(getattr(self.simulator, "can_place_attached_crate")())
-            except Exception:
-                return True  # fallback
+                enabled = False
+            else:
+                try:
+                    enabled = bool(getattr(self.simulator, "can_place_attached_crate")())
+                except Exception:
+                    enabled = True  # fallback
         elif widget_id == "use_crate":
-            # Can use if a usable crate is selected, it's in cargo hold, and not attached to winch
             if self.selected_crate is None:
-                return False
-            if not self._is_crate_usable(self.selected_crate):
-                return False
-            # Check if crate is attached to winch (can't use attached crates)
-            attached_crate_id = winch.get("attachedCrate")
-            if attached_crate_id == self.selected_crate.get("id"):
-                return False
-            # Check if crate is in cargo hold (can't use crates in loading bay)
-            cargo_hold = cargo_state.get("cargoHold", [])
-            crate_in_cargo_hold = any(c.get("id") == self.selected_crate.get("id") for c in cargo_hold)
-            return crate_in_cargo_hold
+                enabled = False
+            elif not self._is_crate_usable(self.selected_crate):
+                enabled = False
+            else:
+                attached_crate_id = winch.get("attachedCrate")
+                if attached_crate_id == self.selected_crate.get("id"):
+                    enabled = False
+                else:
+                    cargo_hold = cargo_state.get("cargoHold", [])
+                    crate_in_cargo_hold = any(c.get("id") == self.selected_crate.get("id") for c in cargo_hold)
+                    enabled = crate_in_cargo_hold
         elif widget_id == "refresh":
-            # Only enable if IAS <= 0.1 knots AND Altitude AGL <= 6 ft
             nav_state = self.simulator.get_state().get("navigation", {})
             nav_motion = nav_state.get("motion", {})
             nav_pos = nav_state.get("position", {})
@@ -551,11 +550,16 @@ class CargoScene:
             surface_m = nav_pos.get("surfaceHeight", 0.0)
             surface_ft = surface_m * 3.28084 if surface_m is not None else 0.0
             agl = max(0, altitude_ft - surface_ft)
-            # Only allow refresh if nearly stopped and AGL <= 6 ft
-            return indicated_airspeed <= 0.1 and agl <= 6.0
+            enabled = indicated_airspeed <= 0.1 and agl <= 6.0
         else:
-            # All other widgets (movement, navigation) are always enabled
-            return True
+            enabled = True
+
+        # Set the enabled attribute on the widget if it exists
+        for widget in self.widgets:
+            if widget.get("id") == widget_id:
+                widget["enabled"] = enabled
+                break
+        return enabled
 
     def _can_attach_to_nearby_crate(self) -> bool:
         """Check if winch can attach to a nearby crate"""
@@ -591,9 +595,14 @@ class CargoScene:
         """Check if a crate can be used"""
         if not crate:
             return False
+        # Spare parts crate is usable if engine is damaged
+        # if crate.get("type") == "spare_parts":
+        #     return self.simulator.is_engine_damaged()
         cargo_state = self.simulator.get_cargo_state()
         crate_types = cargo_state.get("crateTypes", {})
         crate_type = crate_types.get(crate["type"], {})
+        if crate_type.get("useAction") == "repair_engine":
+            return self.simulator.is_engine_damaged()
         return crate_type.get("usable", False)
 
     def _get_widget_at_pos(self, pos):
@@ -773,6 +782,7 @@ class CargoScene:
             self.simulator.detach_crate()
         elif widget_id == "use_crate":
             if self.selected_crate:
+                # Use the standard use_crate method for all crate types
                 success = self.simulator.use_crate(self.selected_crate["id"])
                 if success:
                     self.selected_crate = None  # Clear selection after use

@@ -274,7 +274,10 @@ class EngineRoomScene:
         if 0 <= self.focus_index < len(self.widgets):
             widget = self.widgets[self.focus_index]
             if widget["type"] == "slider":
-                widget["value"] = max(0.0, min(1.0, widget["value"] + delta))
+                if widget["id"] == "throttle_control" and self.simulator.is_engine_damaged():
+                    widget["value"] = min(max(widget["value"] + delta, 0.0), 0.05)
+                else:
+                    widget["value"] = max(0.0, min(1.0, widget["value"] + delta))
                 self._apply_slider_change(widget)
     
     def _set_slider_value_from_mouse(self, widget_index: int, pos):
@@ -458,6 +461,9 @@ class EngineRoomScene:
         # Update control positions from game state
         controls = engine.get("controls", {})
         throttle_pos = controls.get("throttle", 0.75)
+        # Clamp throttle slider if engine is damaged
+        if self.simulator.is_engine_damaged():
+            throttle_pos = min(throttle_pos, 0.05)
         self._update_widget_value("throttle_control", throttle_pos)
         
         mixture_pos = controls.get("mixture", 0.85)
