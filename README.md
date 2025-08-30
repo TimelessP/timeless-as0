@@ -82,6 +82,16 @@ airshipzero
 
 ---
 
+## ☕ Support the Project
+
+Creating Airship Zero has been an incredible technical adventure - from building a complete 3D terrain system in Pygame to implementing realistic physics and atmospheric effects. If you enjoy flying through our pixel-perfect world, consider supporting continued development:
+
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-ffdd00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/timelessp)
+
+Every contribution helps fund new features, performance improvements, and keeping this passion project alive. Thank you for being part of the Airship Zero community! 🚀✨
+
+---
+
 ## ❤️ Community & Contributing
 
 - Fork the project and check out `CONTRIBUTORS.md` for dev setup, coding style, and more.
