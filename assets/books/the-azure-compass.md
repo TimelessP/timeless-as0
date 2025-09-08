@@ -1,5 +1,8 @@
 ## The Azure Compass
 
+![The Azure Compass](../png/azure-compass.png)
+
+
 **Chapter 1: Dust & Dreams**
 
 The scent of ozone and oiled brass hung thick in the air, a familiar comfort to Captain Lyra Meridian. She ran a calloused thumb along the polished mahogany railing of *The Azure Compass’s* bridge, her gaze sweeping across the sprawling city of Aethoria below. Towers of sandstone and shimmering crystal pierced the perpetual twilight, connected by a web of sky-bridges humming with energy conduits.  Aethoria, the last bastion of true civilization in the Shattered Lands.
