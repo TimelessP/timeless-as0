@@ -60,6 +60,7 @@ airshipzero
 
 ## 📸 Screenshots
 
+![Observatory](assets/screenshots/Screenshot%20from%202025-09-19%2019-38-03.png)
 ![Navigation](assets/screenshots/Screenshot%20from%202025-08-24%2019-18-21.png)
 ![Book reader](assets/screenshots/Screenshot%20from%202025-08-24%2019-21-23.png)
 
